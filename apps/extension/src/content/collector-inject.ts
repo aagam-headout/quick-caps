@@ -1,5 +1,6 @@
 import { parkCollectorResult } from './collector.js';
 import { serializePage } from './serialize.js';
+import { SERIALIZE_PROGRESS } from './protocol.js';
 
 /**
  * The build entry injected wholesale by
@@ -10,5 +11,14 @@ import { serializePage } from './serialize.js';
  * module stays loadable — and testable — in Node.
  */
 void parkCollectorResult(window as unknown as Record<string, unknown>, {
-  serialize: serializePage,
+  serialize: (settings) =>
+    serializePage(settings, {
+      onProgress: (progress) => {
+        // Fire and forget: the worker may not be listening, and progress is
+        // never worth failing a capture over.
+        void chrome.runtime
+          .sendMessage({ type: SERIALIZE_PROGRESS, ...progress })
+          .catch(() => {});
+      },
+    }),
 });

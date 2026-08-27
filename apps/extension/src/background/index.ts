@@ -4,7 +4,12 @@ import { OffscreenClient } from './offscreen-client.js';
 import { CaptureSession } from './session.js';
 import { hasHostPermission as checkHostPermission } from './permissions.js';
 import { restrictionFor } from './restricted.js';
-import { FETCH_RESOURCE, IR_KEY, SETTINGS_KEY } from '../content/protocol.js';
+import {
+  FETCH_RESOURCE,
+  IR_KEY,
+  SERIALIZE_PROGRESS,
+  SETTINGS_KEY,
+} from '../content/protocol.js';
 import { fetchResourceForPage } from './resource-proxy.js';
 import type { CollectorOutcome } from '../content/collector.js';
 import {
@@ -55,7 +60,7 @@ async function recordHistory(entry: {
 async function collect(
   tabId: number,
   settings: CaptureSettings,
-  timeoutMs = 60_000,
+  timeoutMs = 150_000,
 ): Promise<{ ir: PageIR; html: string }> {
   const readGlobal = async <T>(key: string): Promise<T | undefined> => {
     const [frame] = await chrome.scripting.executeScript({
@@ -144,11 +149,25 @@ chrome.runtime.onConnect.addListener((port) => {
     }
   };
 
-  // Progress originates in the offscreen document, which has no port of its own.
+  // Progress originates in two places that have no port of their own: the
+  // offscreen document, and the serializer running in the page.
   const relay = (message: unknown): undefined => {
-    const candidate = message as OffscreenProgress;
+    const candidate = message as
+      | OffscreenProgress
+      | { type: typeof SERIALIZE_PROGRESS; done?: number; total?: number }
+      | undefined;
     if (candidate?.type === 'offscreen:progress') {
       post({ type: 'capture:progress', progress: candidate.progress });
+    } else if (candidate?.type === SERIALIZE_PROGRESS) {
+      post({
+        type: 'capture:progress',
+        progress: {
+          phase: 'collecting',
+          done: candidate.done ?? 0,
+          total: candidate.total ?? 0,
+          warningCount: 0,
+        },
+      });
     }
     return undefined;
   };

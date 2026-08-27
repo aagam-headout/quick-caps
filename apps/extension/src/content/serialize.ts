@@ -66,11 +66,25 @@ function ensureInit(): void {
 
 export type SerializedPage = { html: string; title: string };
 
+export type SerializeOptions = {
+  onProgress?: (progress: { done: number; total: number }) => void;
+  timeoutMs?: number;
+};
+
+type ProgressEvent = {
+  type: string;
+  detail?: { max?: number; index?: number };
+  RESOURCES_INITIALIZED: string;
+  RESOURCE_LOADED: string;
+  PAGE_ENDED: string;
+};
+
 export async function serializePage(
   settings: CaptureSettings,
-  timeoutMs = 45_000,
+  options: SerializeOptions = {},
 ): Promise<SerializedPage> {
   ensureInit();
+  const timeoutMs = options.timeoutMs ?? 120_000;
 
   // Settle layout and fonts before SingleFile reads the DOM.
   void document.documentElement.offsetHeight;
@@ -81,12 +95,28 @@ export async function serializePage(
   }
   await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
 
+  let done = 0;
+  let total = 0;
+  const onprogress = (event: ProgressEvent): void => {
+    if (event.type === event.RESOURCES_INITIALIZED) {
+      total = event.detail?.max ?? 0;
+      done = 0;
+    } else if (event.type === event.RESOURCE_LOADED) {
+      done += 1;
+    }
+    options.onProgress?.({ done, total });
+  };
+
   const timeout = new Promise<never>((_resolve, reject) =>
-    setTimeout(
-      () =>
-        reject(new Error(`page serialization timed out after ${timeoutMs}ms`)),
-      timeoutMs,
-    ),
+    setTimeout(() => {
+      // Say how far it got: "timed out" alone gives nobody anything to act on.
+      const progress = total > 0 ? ` after ${done} of ${total} resources` : '';
+      reject(
+        new Error(
+          `page serialization stalled${progress} (${timeoutMs / 1000}s limit)`,
+        ),
+      );
+    }, timeoutMs),
   );
 
   const data = (await Promise.race([
@@ -100,9 +130,14 @@ export async function serializePage(
       removeUnusedStyles: false,
       removeHiddenElements: false,
       compressHTML: false,
-      loadDeferredImages: settings.scrollToLoadLazy,
-      loadDeferredImagesMaxIdleTime: settings.scrollToLoadLazy ? 1500 : 0,
-      // The reason a capture of a busy page was 42 MB.
+      // Never let SingleFile wait for deferred images. Pages built on
+      // IntersectionObserver frequently never trigger inside its timing window
+      // and the whole serialization hangs — this is what made a real capture
+      // time out. The worker does its own scroll pass before injecting, so
+      // lazy content is already materialized by the time we get here.
+      loadDeferredImages: false,
+      loadDeferredImagesMaxIdleTime: 0,
+      // The reason a capture of a busy page came to 42 MB.
       groupDuplicateImages: true,
       saveOriginalUrls: false,
       blockMixedContent: false,
@@ -114,6 +149,7 @@ export async function serializePage(
       insertSingleFileComment: false,
       insertMetaCSP: false,
       backgroundSave: false,
+      onprogress,
     }),
     timeout,
   ])) as { content: string; title?: string };

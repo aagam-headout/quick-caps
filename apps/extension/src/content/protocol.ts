@@ -19,5 +19,11 @@ export const LOGS_ATTRIBUTE = 'data-page-capture-logs';
  */
 export const FETCH_RESOURCE = '__page-capture-fetch-resource';
 
+/**
+ * Progress from the page-context serializer, relayed by the worker to the
+ * popup. Without it a large page looks frozen for the whole serialization.
+ */
+export const SERIALIZE_PROGRESS = '__page-capture-serialize-progress';
+
 /** Event the recorder listens for, to flush synchronously. */
 export const FLUSH_EVENT = '__page-capture-flush-logs';
