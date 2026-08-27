@@ -14,20 +14,56 @@ export type CaptureResultView = {
 
 const ALL_URLS: chrome.permissions.Permissions = { origins: ['<all_urls>'] };
 
+/** An origin match pattern for the page being captured, e.g. https://x.test/*. */
+function originPatternFor(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    if (!parsed.protocol.startsWith('http')) return null;
+    return `${parsed.protocol}//${parsed.hostname}/*`;
+  } catch {
+    return null;
+  }
+}
+
+export type HostAccess = {
+  /** Cross-origin assets are reachable. */
+  all: boolean;
+  /** The captured page itself is readable. */
+  page: boolean;
+};
+
 /**
- * Asks for the cross-origin host permission.
+ * Asks for host access, broad first and narrow as a fallback.
  *
  * This must happen here rather than in the service worker: chrome requires
- * permissions.request to be called during a user gesture, and a worker handling
- * a message has none. Declining is a supported outcome — the capture proceeds
- * with same-origin material and reports what it skipped.
+ * permissions.request to run during a user gesture, and a worker handling a
+ * message has none.
+ *
+ * Two grants matter for different reasons. `<all_urls>` is what makes
+ * cross-origin stylesheets and images fetchable, and declining it only degrades
+ * the capture. Access to the page's own origin is what makes the page readable
+ * at all — activeTab is supposed to cover that, but it does not survive every
+ * path through the permission dialog, so ask for it explicitly rather than
+ * failing with Chrome's opaque "Cannot access contents of the page".
  */
-async function requestHostPermission(): Promise<boolean> {
+async function requestHostAccess(pageUrl: string): Promise<HostAccess> {
   try {
-    if (await chrome.permissions.contains(ALL_URLS)) return true;
-    return await chrome.permissions.request(ALL_URLS);
+    if (await chrome.permissions.contains(ALL_URLS)) {
+      return { all: true, page: true };
+    }
+    if (await chrome.permissions.request(ALL_URLS)) {
+      return { all: true, page: true };
+    }
+
+    const pattern = originPatternFor(pageUrl);
+    if (!pattern) return { all: false, page: false };
+    const origins = { origins: [pattern] };
+    if (await chrome.permissions.contains(origins)) {
+      return { all: false, page: true };
+    }
+    return { all: false, page: await chrome.permissions.request(origins) };
   } catch {
-    return false;
+    return { all: false, page: false };
   }
 }
 
@@ -71,11 +107,12 @@ export function useCapture() {
       return;
     }
 
-    const hasHostPermission = await requestHostPermission();
+    const access = await requestHostAccess(tab.url ?? '');
     port.current?.postMessage({
       type: 'capture:start',
       tabId: tab.id,
-      hasHostPermission,
+      hasHostPermission: access.all,
+      hasPageAccess: access.page,
     });
   }, []);
 

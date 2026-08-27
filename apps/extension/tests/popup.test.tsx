@@ -112,6 +112,7 @@ describe('popup', () => {
         type: 'capture:start',
         tabId: 5,
         hasHostPermission: true,
+        hasPageAccess: true,
       });
     });
   });
@@ -125,7 +126,7 @@ describe('popup', () => {
     });
   });
 
-  it('still captures when the permission is declined', async () => {
+  it('reports both grants as absent when everything is declined', async () => {
     contains.mockResolvedValue(false);
     request.mockResolvedValue(false);
     render(<App />);
@@ -135,7 +136,27 @@ describe('popup', () => {
         type: 'capture:start',
         tabId: 5,
         hasHostPermission: false,
+        hasPageAccess: false,
       });
+    });
+  });
+
+  it("falls back to the page's own origin when all_urls is declined", async () => {
+    contains.mockResolvedValue(false);
+    // Decline <all_urls>, then allow the narrower origin grant.
+    request.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    render(<App />);
+    await clickCapture();
+    await waitFor(() => {
+      expect(posted).toContainEqual({
+        type: 'capture:start',
+        tabId: 5,
+        hasHostPermission: false,
+        hasPageAccess: true,
+      });
+    });
+    expect(request).toHaveBeenNthCalledWith(2, {
+      origins: ['https://example.com/*'],
     });
   });
 

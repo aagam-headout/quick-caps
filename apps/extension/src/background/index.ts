@@ -153,6 +153,16 @@ chrome.runtime.onConnect.addListener((port) => {
         const hasHostPermission =
           message.hasHostPermission && (await checkHostPermission());
 
+        if (!message.hasPageAccess) {
+          post({
+            type: 'capture:failed',
+            reason:
+              'Page Capture needs permission to read this page. Click Capture again and choose Allow.',
+            recoverable: true,
+          });
+          return;
+        }
+
         if (settings.scrollToLoadLazy) {
           await scrollToLoadLazyContent(driver);
         }
@@ -214,11 +224,13 @@ chrome.runtime.onConnect.addListener((port) => {
           warnings: result.warnings,
         });
       } catch (error) {
-        post({
-          type: 'capture:failed',
-          reason: error instanceof Error ? error.message : String(error),
-          recoverable: true,
-        });
+        const raw = error instanceof Error ? error.message : String(error);
+        // Chrome's wording here names the manifest, which is useless to a user
+        // who just needs to accept the prompt.
+        const reason = raw.includes('Cannot access contents')
+          ? 'Page Capture could not read this page. Click Capture again and choose Allow, or reload the page and retry.'
+          : raw;
+        post({ type: 'capture:failed', reason, recoverable: true });
       } finally {
         await session.clear();
         await offscreen.close();

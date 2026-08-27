@@ -66,6 +66,8 @@ export type PopupToWorker =
        * gesture, which a message-handling worker does not have.
        */
       hasHostPermission: boolean;
+      /** Whether the captured page's own origin is readable. */
+      hasPageAccess: boolean;
     }
   | { type: 'capture:cancel' };
 
