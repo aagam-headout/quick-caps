@@ -7,13 +7,11 @@ const regionOptions = { maxDepth: 12 };
 
 describe('scoreOf', () => {
   it('scores a landmark role higher than a generic one', () => {
-    const [nav] = buildRegions(fixtureDocument('spa'), regionOptions);
     const article = flattenRegions(
       buildRegions(fixtureDocument('static'), regionOptions),
     ).find((e) => e.region.tag === 'article')!.region;
-    const genericDiv = { ...article, role: 'generic', actions: [] };
-    expect(scoreOf(article)).toBeGreaterThan(scoreOf(genericDiv));
-    expect(nav).toBeTruthy(); // sanity: fixture actually has content
+    const genericRole = { ...article, role: 'generic' };
+    expect(scoreOf(article)).toBeGreaterThan(scoreOf(genericRole));
   });
 
   it('scores a region with actions higher than an identical one without', () => {
