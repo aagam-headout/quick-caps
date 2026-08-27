@@ -27,7 +27,7 @@ export const manifest = {
   content_scripts: [
     {
       matches: ['<all_urls>'],
-      js: ['src/content/recorder.ts'],
+      js: ['src/content/recorder-entry.ts'],
       run_at: 'document_start' as const,
       world: 'MAIN' as const,
       all_frames: false,

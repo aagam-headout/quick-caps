@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "pnpm run theme && vite build",
+    "build": "pnpm run theme && vite build && vite build --config vite.collector.config.ts",
     "theme": "tsx scripts/generate-theme-css.ts",
     "icons": "tsx scripts/generate-icons.ts"
   },
