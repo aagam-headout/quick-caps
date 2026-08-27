@@ -24,15 +24,6 @@ export {
   type FetchedAsset,
 } from './assets.js';
 export {
-  extractCssUrls,
-  inlineDocument,
-  resolveImports,
-  rewriteCssUrls,
-  toDataUri,
-  type InlineInput,
-  type InlineResult,
-} from './inline.js';
-export {
   assetPathFor,
   buildSingleFile,
   buildZip,

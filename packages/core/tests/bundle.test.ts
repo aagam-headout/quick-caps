@@ -9,7 +9,6 @@ import {
 import { defaultSettings } from '../src/settings.js';
 import { emptyTally } from '../src/collect.js';
 import type { PageIR } from '../src/ir.js';
-import type { FetchedAsset } from '../src/assets.js';
 
 const ir: PageIR = {
   metadata: {
@@ -35,8 +34,6 @@ const input = {
   ir,
   settings: defaultSettings,
   html: '<html><head></head><body><h1>Hi</h1></body></html>',
-  assets: new Map<string, FetchedAsset>(),
-  styleTexts: new Map<string, string>(),
   tokens: { color: { '#000000': 3 } },
   screenshot: undefined,
   rawSources: new Map([['https://example.com/a/page?q=1', 'raw html']]),
@@ -175,20 +172,14 @@ describe('buildZip', () => {
     expect(metadata.warnings[0]!.reason).toBe('boom');
   });
 
-  it('writes each stylesheet under styles/', () => {
-    const files = unzipSync(
-      buildZip({
-        ...input,
-        styleTexts: new Map([
-          ['https://example.com/s/site.css', 'a{color:red}'],
-        ]),
-      }).bytes,
-    );
-    const styleFiles = Object.keys(files).filter((f) =>
-      f.startsWith('styles/'),
-    );
-    expect(styleFiles).toHaveLength(1);
-    expect(strFromU8(files[styleFiles[0]!]!)).toBe('a{color:red}');
+  it('contains no asset directories: the page is already self-contained', () => {
+    const names = Object.keys(unzipSync(buildZip(input).bytes));
+    for (const prefix of ['images/', 'styles/', 'scripts/', 'fonts/']) {
+      expect(
+        names.some((name) => name.startsWith(prefix)),
+        prefix,
+      ).toBe(false);
+    }
   });
 
   it('includes screenshot.png only when a screenshot was captured', () => {
@@ -208,7 +199,11 @@ describe('buildZip', () => {
     const files = unzipSync(
       buildZip({
         ...input,
-        styleTexts: new Map([['https://example.com/../../evil.css', 'a{}']]),
+        settings: {
+          ...defaultSettings,
+          include: { ...defaultSettings.include, rawSources: true },
+        },
+        rawSources: new Map([['https://example.com/../../evil.js', 'x']]),
       }).bytes,
     );
     for (const name of Object.keys(files)) {

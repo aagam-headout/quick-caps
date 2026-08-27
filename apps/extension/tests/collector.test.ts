@@ -114,17 +114,27 @@ describe('runCollector', () => {
   });
 
   it('parks the result under IR_KEY when settings are present', async () => {
-    installPage('<html><head><title>Parked</title></head><body></body></html>');
+    installPage('<html><head><title>Live</title></head><body></body></html>');
     const { parkCollectorResult } = await loadEntry();
     const globals: Record<string, unknown> = {
       [SETTINGS_KEY]: defaultSettings,
     };
 
-    parkCollectorResult(globals);
+    await parkCollectorResult(globals, {
+      serialize: async () => ({
+        html: '<html>serialized</html>',
+        title: 'Live',
+      }),
+    });
 
-    expect(
-      (globals[IR_KEY] as { metadata: { title: string } }).metadata.title,
-    ).toBe('Parked');
+    const outcome = globals[IR_KEY] as {
+      status: string;
+      html: string;
+      ir: { metadata: { title: string } };
+    };
+    expect(outcome.status).toBe('done');
+    expect(outcome.html).toBe('<html>serialized</html>');
+    expect(outcome.ir.metadata.title).toBe('Live');
   });
 
   it('parks nothing when no settings were handed in', async () => {
@@ -132,8 +142,27 @@ describe('runCollector', () => {
     const { parkCollectorResult } = await loadEntry();
     const globals: Record<string, unknown> = {};
 
-    parkCollectorResult(globals);
+    await parkCollectorResult(globals, {
+      serialize: async () => ({ html: '', title: '' }),
+    });
 
     expect(globals[IR_KEY]).toBeUndefined();
+  });
+
+  it('parks a failure rather than throwing when serialization fails', async () => {
+    installPage('<html><body></body></html>');
+    const { parkCollectorResult } = await loadEntry();
+    const globals: Record<string, unknown> = {
+      [SETTINGS_KEY]: defaultSettings,
+    };
+
+    await parkCollectorResult(globals, {
+      serialize: () => Promise.reject(new Error('serialization timed out')),
+    });
+
+    expect(globals[IR_KEY]).toMatchObject({
+      status: 'failed',
+      error: 'serialization timed out',
+    });
   });
 });

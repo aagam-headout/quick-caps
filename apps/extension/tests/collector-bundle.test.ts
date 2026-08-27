@@ -32,18 +32,25 @@ describe('built collector artifact', () => {
     expect(code).not.toMatch(/^\s*export\s/m);
   });
 
-  it('references no bare module specifier', () => {
-    expect(code).not.toMatch(/\bfrom\s*["'][^"'.][^"']*["']/);
+  it('is a single self-contained expression', () => {
+    // The precise invariant: an IIFE with no module scaffolding. A substring
+    // search for `from "..."` false-positives on string literals inside a
+    // 900 kB minified bundle, so anchor on statement position instead.
+    expect(code.trimStart().startsWith('(function(')).toBe(true);
+    expect(code).not.toMatch(/^\s*from\s*["']/m);
+    expect(code).not.toMatch(/^\s*(?:import|export)\b/m);
+  });
+
+  it('resolves no workspace package at runtime', () => {
     expect(code).not.toContain('@page-capture/core');
+    expect(code).not.toContain('single-file-core/single-file.js');
   });
 
-  it('is not a module', () => {
-    expect(code).not.toContain('import.meta');
-  });
-
-  it('inlines the core logic it depends on', () => {
+  it('inlines both the core logic and the serializer it depends on', () => {
     // Proof it is genuinely self-contained rather than accidentally empty.
     expect(code).toContain('data-page-capture-logs');
-    expect(code.length).toBeGreaterThan(10_000);
+    // single-file-core is ~900 kB; anything much smaller means it was not
+    // bundled and injection would fail at runtime.
+    expect(code.length).toBeGreaterThan(500_000);
   });
 });

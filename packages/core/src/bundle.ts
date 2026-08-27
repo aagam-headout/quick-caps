@@ -1,16 +1,16 @@
 import { strToU8, zipSync } from 'fflate';
 import type { AssetKind, PageIR } from './ir.js';
-import type { FetchedAsset } from './assets.js';
 import type { CaptureSettings } from './settings.js';
 import type { TokenReport } from './tokens.js';
 
 export type BundleInput = {
   ir: PageIR;
   settings: CaptureSettings;
-  /** The rewritten document, already serialized by the caller. */
+  /**
+   * The self-contained document. Produced by single-file-core in the page
+   * context, so assets are already inlined by the time it arrives here.
+   */
   html: string;
-  assets: Map<string, FetchedAsset>;
-  styleTexts: Map<string, string>;
   tokens?: TokenReport | undefined;
   screenshot?: Uint8Array | undefined;
   rawSources?: Map<string, string> | undefined;
@@ -125,6 +125,13 @@ export function buildSingleFile(input: BundleInput): BundleOutput {
   };
 }
 
+/**
+ * Zip output is the self-contained page plus the artifacts a single file cannot
+ * carry naturally: the screenshot, the token report, metadata, logs, and raw
+ * sources. There are no asset directories — single-file-core inlines assets
+ * into page.html, and splitting them back out would only risk breaking what it
+ * got right.
+ */
 export function buildZip(input: BundleInput): BundleOutput {
   const entries: Record<string, Uint8Array> = {
     'page.html': strToU8(input.html),
@@ -143,12 +150,6 @@ export function buildZip(input: BundleInput): BundleOutput {
   }
   if (input.screenshot) entries['screenshot.png'] = input.screenshot;
 
-  for (const [url, text] of input.styleTexts) {
-    entries[assetPathFor(url, 'stylesheet')] = strToU8(text);
-  }
-  for (const [url, asset] of input.assets) {
-    entries[assetPathFor(url, asset.ref.kind)] = asset.bytes;
-  }
   if (input.settings.include.rawSources && input.rawSources) {
     for (const [url, text] of input.rawSources) {
       const basename = assetPathFor(url, 'script').split('/').pop() ?? 'source';

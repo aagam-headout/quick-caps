@@ -1,10 +1,14 @@
 import { parkCollectorResult } from './collector.js';
+import { serializePage } from './serialize.js';
 
 /**
  * The build entry injected wholesale by
  * chrome.scripting.executeScript({ files: ['collector.js'] }).
  *
- * Side effects live only in *-entry / *-inject files. Everything else stays
- * importable from Node, which is what keeps it testable.
+ * Side effects and browser-only dependencies live only in *-entry / *-inject
+ * files. single-file-core is imported here rather than in collector.ts so that
+ * module stays loadable — and testable — in Node.
  */
-parkCollectorResult(window as unknown as Record<string, unknown>);
+void parkCollectorResult(window as unknown as Record<string, unknown>, {
+  serialize: serializePage,
+});

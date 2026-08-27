@@ -13,5 +13,11 @@ export const SETTINGS_KEY = '__pageCaptureSettings';
 /** DOM attribute the MAIN-world recorder flushes its ring buffer into. */
 export const LOGS_ATTRIBUTE = 'data-page-capture-logs';
 
+/**
+ * Message the page-context serializer sends to the worker to fetch a resource
+ * on its behalf. SingleFile runs in the page and cannot fetch cross-origin.
+ */
+export const FETCH_RESOURCE = '__page-capture-fetch-resource';
+
 /** Event the recorder listens for, to flush synchronously. */
 export const FLUSH_EVENT = '__page-capture-flush-logs';

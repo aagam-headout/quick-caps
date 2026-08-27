@@ -36,13 +36,9 @@ const STYLE_PROPERTIES = [
  * Reads the recorder's ring buffer across the world boundary.
  *
  * The recorder must run in the MAIN world — patching the ISOLATED world's
- * console and fetch would observe nothing the page does. The collector runs
- * ISOLATED, so it cannot read a MAIN-world global at all, and passing objects
- * through CustomEvent detail across worlds is not dependable.
- *
- * A DOM attribute is genuinely shared between worlds. The collector asks for a
- * flush with a synchronous event, the recorder writes JSON into the attribute
- * inside its listener, and the collector reads and clears it.
+ * console and fetch would observe nothing the page does. A DOM attribute is
+ * genuinely shared between worlds, so the collector asks for a flush with a
+ * synchronous event and reads the result out of the attribute.
  */
 export function readRecorderLogs(): LogEntry[] | undefined {
   try {
@@ -52,12 +48,18 @@ export function readRecorderLogs(): LogEntry[] | undefined {
     document.documentElement.removeAttribute(LOGS_ATTRIBUTE);
     return JSON.parse(raw) as LogEntry[];
   } catch {
-    // No recorder present, or unparseable output. Logs are optional; the rest
-    // of the capture is not.
+    // Logs are optional; the rest of the capture is not.
     return undefined;
   }
 }
 
+/**
+ * The structural and stylistic read of the page: metadata, region tree, and the
+ * computed-style tally that design tokens come from.
+ *
+ * The page's *content* is serialized separately by single-file-core, which is
+ * far better at it than anything here would be.
+ */
 export function runCollector(settings: CaptureSettings): PageIR {
   const logs = settings.include.logs ? readRecorderLogs() : undefined;
 
@@ -83,18 +85,46 @@ export function runCollector(settings: CaptureSettings): PageIR {
   });
 }
 
+export type CollectorOutcome =
+  | { status: 'running' }
+  | { status: 'done'; ir: PageIR; html: string }
+  | { status: 'failed'; error: string };
+
+export type ParkDeps = {
+  /** Injected so this module never imports single-file-core, which is
+   * browser-only and cannot be loaded by a Node test. */
+  serialize: (
+    settings: CaptureSettings,
+  ) => Promise<{ html: string; title: string }>;
+};
+
 /**
- * Runs the collector and parks the result on the given global object.
+ * Runs both halves and parks the outcome on the ISOLATED-world global.
  *
- * The result is parked rather than returned because Vite's IIFE output ends in
- * an assignment, so the injected script's completion value is not the IR. The
- * worker reads IR_KEY in a second, tiny executeScript call.
- *
- * Takes its globals as a parameter so it is testable without depending on
- * module-cache re-execution.
+ * Parked rather than returned for two reasons: an injected file's completion
+ * value is not its result, and serialization is asynchronous. The worker polls
+ * this key until the status settles.
  */
-export function parkCollectorResult(globals: Record<string, unknown>): void {
+export async function parkCollectorResult(
+  globals: Record<string, unknown>,
+  deps: ParkDeps,
+): Promise<void> {
   const settings = globals[SETTINGS_KEY] as CaptureSettings | undefined;
   if (!settings) return;
-  globals[IR_KEY] = runCollector(settings);
+
+  globals[IR_KEY] = { status: 'running' } satisfies CollectorOutcome;
+  try {
+    const ir = runCollector(settings);
+    const { html, title } = await deps.serialize(settings);
+    globals[IR_KEY] = {
+      status: 'done',
+      ir: { ...ir, metadata: { ...ir.metadata, title } },
+      html,
+    } satisfies CollectorOutcome;
+  } catch (error) {
+    globals[IR_KEY] = {
+      status: 'failed',
+      error: error instanceof Error ? error.message : String(error),
+    } satisfies CollectorOutcome;
+  }
 }

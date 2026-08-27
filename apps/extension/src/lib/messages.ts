@@ -5,8 +5,9 @@ import type { Frame } from './capture.js';
 export type OffscreenCaptureRequest = {
   type: 'offscreen:capture';
   ir: PageIR;
+  /** Already self-contained: single-file-core inlined it in the page. */
+  html: string;
   settings: CaptureSettings;
-  hasHostPermission: boolean;
   frames?: Frame[];
 };
 

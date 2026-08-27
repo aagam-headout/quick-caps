@@ -4,7 +4,9 @@ import { OffscreenClient } from './offscreen-client.js';
 import { CaptureSession } from './session.js';
 import { hasHostPermission as checkHostPermission } from './permissions.js';
 import { restrictionFor } from './restricted.js';
-import { IR_KEY, SETTINGS_KEY } from '../content/protocol.js';
+import { FETCH_RESOURCE, IR_KEY, SETTINGS_KEY } from '../content/protocol.js';
+import { fetchResourceForPage } from './resource-proxy.js';
+import type { CollectorOutcome } from '../content/collector.js';
 import {
   CAPTURE_PORT,
   type OffscreenProgress,
@@ -43,14 +45,29 @@ async function recordHistory(entry: {
 }
 
 /**
- * Injects the built collector and reads back the IR it parks on the
- * ISOLATED-world global. Two calls, because an injected file's completion value
- * is not its result — see src/content/collector-inject.ts.
+ * Injects the built collector and waits for the outcome it parks on the
+ * ISOLATED-world global.
+ *
+ * Polled rather than returned for two reasons: an injected file's completion
+ * value is not its result, and serializing a page is asynchronous — SingleFile
+ * has to fetch every asset before it can finish.
  */
 async function collect(
   tabId: number,
   settings: CaptureSettings,
-): Promise<PageIR> {
+  timeoutMs = 60_000,
+): Promise<{ ir: PageIR; html: string }> {
+  const readGlobal = async <T>(key: string): Promise<T | undefined> => {
+    const [frame] = await chrome.scripting.executeScript({
+      target: { tabId },
+      world: 'ISOLATED',
+      func: (name: string) =>
+        (window as unknown as Record<string, unknown>)[name] as unknown,
+      args: [key],
+    });
+    return frame?.result as T | undefined;
+  };
+
   await chrome.scripting.executeScript({
     target: { tabId },
     world: 'ISOLATED',
@@ -66,15 +83,19 @@ async function collect(
     files: ['collector.js'],
   });
 
-  const [frame] = await chrome.scripting.executeScript({
-    target: { tabId },
-    world: 'ISOLATED',
-    func: (key: string) =>
-      (window as unknown as Record<string, unknown>)[key] as unknown,
-    args: [IR_KEY],
-  });
-  if (!frame?.result) throw new Error('the page did not return a capture');
-  return frame.result as PageIR;
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const outcome = await readGlobal<CollectorOutcome>(IR_KEY);
+    if (outcome?.status === 'done') {
+      return { ir: outcome.ir, html: outcome.html };
+    }
+    if (outcome?.status === 'failed') throw new Error(outcome.error);
+    if (!outcome) throw new Error('the page did not start a capture');
+    if (Date.now() > deadline) {
+      throw new Error('the page did not finish capturing in time');
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
 }
 
 /** Materializes lazy content, then restores the user's scroll position. */
@@ -94,6 +115,21 @@ async function scrollToLoadLazyContent(driver: ChromeDriver): Promise<void> {
     await driver.scrollTo(origin.x, origin.y);
   }
 }
+
+/**
+ * Resource fetching on behalf of the page-context serializer. SingleFile runs
+ * in the page and is bound by its CORS policy; the worker fetches under the
+ * extension's host permissions instead.
+ */
+chrome.runtime.onMessage.addListener((message: unknown, _sender, respond) => {
+  const request = message as { type?: string; url?: string };
+  if (request?.type !== FETCH_RESOURCE || !request.url) return undefined;
+  void fetchResourceForPage(request.url, {
+    timeoutMs: 20_000,
+    maxBytes: 25 * 1024 * 1024,
+  }).then(respond);
+  return true; // keep the channel open for the async respond
+});
 
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== CAPTURE_PORT) return;
@@ -176,7 +212,14 @@ chrome.runtime.onConnect.addListener((port) => {
             warningCount: 0,
           },
         });
-        const ir = await collect(message.tabId, settings);
+        const { ir, html } = await collect(message.tabId, settings);
+        if (!hasHostPermission) {
+          ir.warnings.push({
+            phase: 'permissions',
+            reason:
+              'host permission declined - cross-origin assets could not be fetched',
+          });
+        }
 
         const frames = settings.include.screenshot
           ? (await driver.captureFrames()).frames
@@ -189,8 +232,8 @@ chrome.runtime.onConnect.addListener((port) => {
         });
         const result = await offscreen.capture({
           ir,
+          html,
           settings,
-          hasHostPermission,
           ...(frames ? { frames } : {}),
         });
 

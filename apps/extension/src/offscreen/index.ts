@@ -1,5 +1,5 @@
 import { runCapture, type CaptureDeps } from '../lib/capture.js';
-import { fetchAssetBytes, fetchAssetText } from '../lib/http.js';
+import { fetchAssetText } from '../lib/http.js';
 import { stitchFrames } from './stitch.js';
 import type {
   OffscreenCaptureRequest,
@@ -24,19 +24,16 @@ function createObjectUrl(bytes: Uint8Array, mimeType: string): string {
 }
 
 /**
- * The offscreen document does the parts of a capture a service worker cannot:
- * parse HTML, compose images, and mint a download URL. Fetching happens here
- * too, so asset bytes are never serialized across a message boundary.
+ * The offscreen document does the two things a service worker cannot: compose
+ * images on a canvas, and mint an object URL for the download.
+ *
+ * It no longer inlines anything. single-file-core does that in the page, so the
+ * html arriving here is already self-contained.
  */
 function captureDeps(): CaptureDeps {
-  const parser = new DOMParser();
-  const serializer = new XMLSerializer();
   return {
-    fetchAsset: (url, options) => fetchAssetBytes(url, options),
     fetchText: (url, options) => fetchAssetText(url, options),
     stitch: (input) => stitchFrames(input),
-    parseDocument: (html) => parser.parseFromString(html, 'text/html'),
-    serializeDocument: (doc) => serializer.serializeToString(doc),
     createObjectUrl: async (bytes, mimeType) =>
       createObjectUrl(bytes, mimeType),
     onProgress: (progress) => {
@@ -58,8 +55,8 @@ async function capture(
   const result = await runCapture(
     {
       ir: request.ir,
+      html: request.html,
       settings: request.settings,
-      hasHostPermission: request.hasHostPermission,
       frames: request.frames,
     },
     captureDeps(),
