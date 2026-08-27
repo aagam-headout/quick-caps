@@ -24,12 +24,12 @@ export function Checkbox({ id, label, hint, checked, onChange }: Props) {
           checked={checked}
           onChange={(event) => onChange(event.target.checked)}
           aria-describedby={hint ? `${id}-hint` : undefined}
-          className="peer h-[15px] w-[15px] cursor-pointer appearance-none rounded-[4px] border border-[var(--border)] bg-[var(--surface)] transition-all duration-[var(--duration-fast)] checked:border-[var(--accent)] checked:bg-[var(--accent)] group-hover:border-[var(--gray-500)] checked:group-hover:border-[var(--accent)]"
+          className="peer h-[15px] w-[15px] cursor-pointer appearance-none rounded-[4px] border border-[var(--border)] bg-[var(--surface)] transition-all duration-[var(--duration-fast)] checked:border-[var(--accent)] group-hover:border-[var(--gray-500)] checked:group-hover:border-[var(--accent)]"
         />
         <svg
           viewBox="0 0 12 12"
           aria-hidden="true"
-          className="pointer-events-none absolute h-[10px] w-[10px] scale-50 text-white opacity-0 transition-all duration-[var(--duration-fast)] peer-checked:scale-100 peer-checked:opacity-100"
+          className="pointer-events-none absolute h-[10px] w-[10px] scale-50 text-[var(--accent)] opacity-0 transition-all duration-[var(--duration-fast)] peer-checked:scale-100 peer-checked:opacity-100"
         >
           <path
             d="M2 6.2 4.6 8.8 10 3.4"

@@ -10,6 +10,7 @@ describe('manifest', () => {
     expect([...manifest.permissions].sort()).toEqual([
       'activeTab',
       'downloads',
+      'downloads.open',
       'offscreen',
       'scripting',
       'storage',

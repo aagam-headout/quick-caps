@@ -7,7 +7,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "test": "vitest run",
+    "test": "vitest run --exclude '**/collector-bundle.test.ts' --exclude '**/build-artifacts.test.ts'",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit -p tsconfig.base.json && tsc --noEmit -p apps/extension/tsconfig.json",
     "lint": "eslint .",

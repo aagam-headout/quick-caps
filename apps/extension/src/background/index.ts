@@ -23,6 +23,7 @@ import type { PageIR } from '@page-capture/core';
 const SETTINGS_KEY_STORAGE = 'settings';
 const HISTORY_KEY = 'history';
 const HISTORY_LIMIT = 50;
+const DOWNLOAD_FOLDER = 'QuickCaps';
 
 /**
  * The capture in flight, if any.
@@ -50,6 +51,7 @@ async function recordHistory(entry: {
   byteLength: number;
   warningCount: number;
   at: number;
+  downloadId: number;
 }): Promise<void> {
   const stored = await chrome.storage.local.get(HISTORY_KEY);
   const existing = stored[HISTORY_KEY];
@@ -281,7 +283,7 @@ chrome.runtime.onConnect.addListener((port) => {
           post({
             type: 'capture:failed',
             reason:
-              'Page Capture needs permission to read this page. Click Capture again and choose Allow.',
+              'QuickCaps needs permission to read this page. Click Capture again and choose Allow.',
             recoverable: true,
           });
           return;
@@ -334,9 +336,13 @@ chrome.runtime.onConnect.addListener((port) => {
             warningCount: result.warnings.length,
           },
         });
-        await chrome.downloads.download({
+        const downloadId = await chrome.downloads.download({
           url: result.objectUrl,
-          filename: result.filename,
+          // A forward slash here is a subfolder under the platform's default
+          // Downloads directory on Mac, Windows, and Linux alike — Chrome
+          // normalizes the separator itself, so this needs no per-OS branch.
+          // The bare filename (shown in the UI and in history) is unchanged.
+          filename: `${DOWNLOAD_FOLDER}/${result.filename}`,
         });
         await offscreen.revoke(result.objectUrl);
 
@@ -346,6 +352,7 @@ chrome.runtime.onConnect.addListener((port) => {
           byteLength: result.byteLength,
           warningCount: result.warnings.length,
           at: Date.now(),
+          downloadId,
         });
 
         post({
@@ -359,7 +366,7 @@ chrome.runtime.onConnect.addListener((port) => {
         // Chrome's wording here names the manifest, which is useless to a user
         // who just needs to accept the prompt.
         const reason = raw.includes('Cannot access contents')
-          ? 'Page Capture could not read this page. Click Capture again and choose Allow, or reload the page and retry.'
+          ? 'QuickCaps could not read this page. Click Capture again and choose Allow, or reload the page and retry.'
           : raw;
         post({ type: 'capture:failed', reason, recoverable: true });
       } finally {

@@ -6,6 +6,9 @@ export type HistoryEntry = {
   byteLength: number;
   warningCount: number;
   at: number;
+  // Optional: entries recorded before this field existed won't have one, and
+  // an entry can lose it if chrome.downloads later evicts the record.
+  downloadId?: number;
 };
 
 /** Metadata for recent captures. Never the archives themselves. */

@@ -1,8 +1,9 @@
 import { useEffect } from 'react';
 import type { CaptureSettings } from '@page-capture/core';
 import { Checkbox } from './components/Checkbox.js';
-import { Segmented } from './components/Segmented.js';
 import { Section } from './components/Section.js';
+import { MultiSelectDropdown } from './components/MultiSelectDropdown.js';
+import { SingleSelectDropdown } from './components/SingleSelectDropdown.js';
 import { Progress } from './components/Progress.js';
 import { CaptureButton } from './components/CaptureButton.js';
 import { WarningList } from './components/WarningList.js';
@@ -39,6 +40,20 @@ const EXTRA_TOGGLES: Toggle[] = [
     key: 'rawSources',
     label: 'Raw network sources',
     hint: 'What the server sent, before JavaScript',
+  },
+];
+
+type OptionKey = 'scrollToLoadLazy' | 'inertSnapshot';
+const OPTION_TOGGLES: { key: OptionKey; label: string; hint: string }[] = [
+  {
+    key: 'scrollToLoadLazy',
+    label: 'Scroll to load lazy content',
+    hint: 'Materializes lazy images before capturing',
+  },
+  {
+    key: 'inertSnapshot',
+    label: 'Inert snapshot',
+    hint: 'Archive scripts without letting them run when reopened',
   },
 ];
 
@@ -158,11 +173,6 @@ function matchingPreset(include: Include): string {
   return found?.value ?? '';
 }
 
-function countSelected(include: Include, toggles: Toggle[]): string {
-  const selected = toggles.filter((toggle) => include[toggle.key]).length;
-  return `${selected}/${toggles.length}`;
-}
-
 export function App() {
   const { settings, update } = useSettings();
   const { start, progress, result, error, running } = useCapture();
@@ -178,34 +188,45 @@ export function App() {
     update({ include: { ...settings.include, [key]: value } });
   };
 
+  const setOption = (key: OptionKey, value: boolean): void => {
+    update({ [key]: value });
+  };
+
   return (
     <main className="flex flex-col gap-[14px] p-[14px]">
       <header className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-[7px]">
-          <span className="flex h-[18px] w-[18px] items-center justify-center rounded-[5px] bg-[var(--accent)] text-white">
+          <span className="flex h-[18px] w-[18px] items-center justify-center rounded-[5px] bg-gradient-to-br from-[#5eb0ff] to-[#003a9e] text-white shadow-[inset_0_0_0_1px_rgba(0,40,120,0.55)]">
             <svg
               viewBox="0 0 16 16"
               aria-hidden="true"
               className="h-[11px] w-[11px]"
             >
+              {/* Viewfinder corner brackets around a faceted focus dot —
+                  matches the extension icon. */}
               <path
-                d="M8 3v6m0 0L5.4 6.4M8 9l2.6-2.6M3.5 12.5h9"
+                d="M2 5V2h3M14 5V2h-3M2 11v3h3M14 11v3h-3"
                 fill="none"
                 stroke="currentColor"
-                strokeWidth="1.8"
+                strokeWidth="2.2"
                 strokeLinecap="round"
                 strokeLinejoin="round"
+              />
+              <circle cx="8" cy="8" r="2.4" fill="currentColor" />
+              <path
+                d="M8 8L8 5.6A2.4 2.4 0 0 1 10.08 6.8Z"
+                fill="currentColor"
+                opacity="0.85"
               />
             </svg>
           </span>
           <h1 className="text-[13px] font-medium tracking-[-0.01em] text-[var(--text-primary)]">
-            Page Capture
+            QuickCaps
           </h1>
         </div>
-        <Segmented
-          name="theme"
+        <SingleSelectDropdown
           legend="Theme"
-          hideLegend
+          compact
           value={settings.theme}
           options={[
             { value: 'system', label: 'System', icon: THEME_ICONS.system },
@@ -218,9 +239,9 @@ export function App() {
         />
       </header>
 
-      <Segmented
-        name="preset"
+      <SingleSelectDropdown
         legend="Preset"
+        emphasis
         value={matchingPreset(settings.include)}
         options={PRESETS.map(({ value, label }) => ({ value, label }))}
         onChange={(value) => {
@@ -245,49 +266,26 @@ export function App() {
           </div>
         </Section>
 
-        <Section
-          title="Extras"
-          collapsible
-          summary={countSelected(settings.include, EXTRA_TOGGLES)}
-        >
-          <div className="-mx-[6px]">
-            {EXTRA_TOGGLES.map(({ key, label, hint }) => (
-              <Checkbox
-                key={key}
-                id={`include-${key}`}
-                label={label}
-                {...(hint ? { hint } : {})}
-                checked={settings.include[key]}
-                onChange={(checked) => setInclude(key, checked)}
-              />
-            ))}
-          </div>
-        </Section>
+        <MultiSelectDropdown
+          legend="Extras"
+          options={EXTRA_TOGGLES}
+          values={settings.include}
+          onChange={setInclude}
+        />
 
-        <Section title="Options" collapsible>
-          <div className="-mx-[6px]">
-            <Checkbox
-              id="scroll-lazy"
-              label="Scroll to load lazy content"
-              hint="Materializes lazy images before capturing"
-              checked={settings.scrollToLoadLazy}
-              onChange={(scrollToLoadLazy) => update({ scrollToLoadLazy })}
-            />
-            <Checkbox
-              id="inert"
-              label="Inert snapshot"
-              hint="Archive scripts without letting them run when reopened"
-              checked={settings.inertSnapshot}
-              onChange={(inertSnapshot) => update({ inertSnapshot })}
-            />
-          </div>
-        </Section>
+        <MultiSelectDropdown
+          legend="Options"
+          options={OPTION_TOGGLES}
+          values={{
+            scrollToLoadLazy: settings.scrollToLoadLazy,
+            inertSnapshot: settings.inertSnapshot,
+          }}
+          onChange={setOption}
+        />
       </div>
 
-      <Segmented
-        name="output"
+      <SingleSelectDropdown
         legend="Output"
-        stacked
         value={settings.output}
         options={[
           {

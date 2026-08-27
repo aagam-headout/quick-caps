@@ -12,6 +12,7 @@ let sync: Record<string, unknown>;
 let local: Record<string, unknown>;
 let contains: ReturnType<typeof vi.fn>;
 let request: ReturnType<typeof vi.fn>;
+let downloadsOpen: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   listeners = [];
@@ -21,6 +22,7 @@ beforeEach(() => {
   local = { history: [] };
   contains = vi.fn().mockResolvedValue(true);
   request = vi.fn().mockResolvedValue(true);
+  downloadsOpen = vi.fn();
 
   (globalThis as unknown as { chrome: unknown }).chrome = {
     runtime: {
@@ -39,6 +41,7 @@ beforeEach(() => {
       query: vi.fn().mockResolvedValue([{ id: 5, url: 'https://example.com' }]),
     },
     permissions: { contains, request },
+    downloads: { open: downloadsOpen },
     storage: {
       sync: {
         get: vi.fn(async (key: string) => ({ [key]: sync[key] })),
@@ -80,20 +83,37 @@ describe('popup', () => {
       /Scripts/,
       /Images/,
       /Fonts/,
+    ]) {
+      expect(await screen.findByLabelText(label), String(label)).toBeDefined();
+    }
+
+    // The rest live inside dropdowns, closed by default.
+    await userEvent.click(
+      await screen.findByRole('button', { name: /extras/i }),
+    );
+    for (const label of [
       /screenshot/i,
       /Design tokens/,
       /Metadata/,
       /Console \+ network/,
       /Raw network sources/,
-      /lazy content/,
-      /Inert snapshot/,
     ]) {
+      expect(await screen.findByLabelText(label), String(label)).toBeDefined();
+    }
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /options/i }),
+    );
+    for (const label of [/lazy content/, /Inert snapshot/]) {
       expect(await screen.findByLabelText(label), String(label)).toBeDefined();
     }
   });
 
   it('offers both output modes as radios', async () => {
     render(<App />);
+    await userEvent.click(
+      await screen.findByRole('button', { name: /^output/i }),
+    );
     expect(
       await screen.findByLabelText(/single self-contained html/i),
     ).toBeDefined();
@@ -102,6 +122,9 @@ describe('popup', () => {
 
   it('persists a toggle change to sync storage', async () => {
     render(<App />);
+    await userEvent.click(
+      await screen.findByRole('button', { name: /extras/i }),
+    );
     await userEvent.click(await screen.findByLabelText(/screenshot/i));
     await waitFor(() => {
       expect(
@@ -260,6 +283,7 @@ describe('popup', () => {
         byteLength: 2048,
         warningCount: 0,
         at: Date.UTC(2026, 7, 27, 10, 0, 0),
+        downloadId: 42,
       },
     ];
     render(<App />);
@@ -269,8 +293,79 @@ describe('popup', () => {
     ).toBeDefined();
   });
 
+  it('opens a recent capture on click', async () => {
+    local['history'] = [
+      {
+        url: 'https://example.com/a',
+        filename: 'example.com-20260827-100000.html',
+        byteLength: 2048,
+        warningCount: 0,
+        at: Date.UTC(2026, 7, 27, 10, 0, 0),
+        downloadId: 42,
+      },
+    ];
+    render(<App />);
+    await userEvent.click(await screen.findByText(/recent/i));
+    await userEvent.click(
+      await screen.findByRole('button', {
+        name: /open example\.com-20260827-100000\.html/i,
+      }),
+    );
+    expect(downloadsOpen).toHaveBeenCalledWith(42);
+  });
+
+  it('disables a recent entry with no known downloadId', async () => {
+    local['history'] = [
+      {
+        url: 'https://example.com/a',
+        filename: 'example.com-20260827-100000.html',
+        byteLength: 2048,
+        warningCount: 0,
+        at: Date.UTC(2026, 7, 27, 10, 0, 0),
+      },
+    ];
+    render(<App />);
+    await userEvent.click(await screen.findByText(/recent/i));
+    expect(
+      (
+        await screen.findByRole('button', {
+          name: /open example\.com-20260827-100000\.html/i,
+        })
+      ).hasAttribute('disabled'),
+    ).toBe(true);
+  });
+
+  it('shows a tick for each selected Extras item and toggles it closed', async () => {
+    render(<App />);
+    await userEvent.click(
+      await screen.findByRole('button', { name: /extras/i }),
+    );
+    expect(await screen.findByLabelText(/Metadata/)).toBeDefined();
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => {
+      expect(screen.queryByLabelText(/Metadata/)).toBeNull();
+    });
+  });
+
+  it('selecting a Preset closes the dropdown and updates the summary', async () => {
+    render(<App />);
+    await userEvent.click(
+      await screen.findByRole('button', { name: /^preset/i }),
+    );
+    await userEvent.click(await screen.findByLabelText(/^everything$/i));
+    await waitFor(() => {
+      expect(screen.queryByLabelText(/^everything$/i)).toBeNull();
+    });
+    expect(
+      await screen.findByRole('button', { name: /^preset\s+everything/i }),
+    ).toBeDefined();
+  });
+
   it('applies an explicit theme choice to the document root', async () => {
     render(<App />);
+    await userEvent.click(
+      await screen.findByRole('button', { name: /theme/i }),
+    );
     await userEvent.click(await screen.findByLabelText(/^dark$/i));
     await waitFor(() => {
       expect(document.documentElement.getAttribute('data-theme')).toBe('dark');

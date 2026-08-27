@@ -46,22 +46,37 @@ export function RecentList({ entries }: { entries: HistoryEntry[] }) {
           </p>
         ) : (
           <ul className="pt-[6px]">
-            {entries.slice(0, 8).map((entry) => (
-              <li
-                key={`${entry.filename}-${entry.at}`}
-                className="rounded-[var(--radius-control)] px-[6px] py-[5px] transition-colors duration-[var(--duration-fast)] hover:bg-[var(--surface-raised)]"
-              >
-                <span className="block truncate font-mono text-[11px] text-[var(--text-primary)]">
-                  {entry.filename}
-                </span>
-                <span className="text-[10.5px] text-[var(--text-secondary)]">
-                  {formatSize(entry.byteLength)} · {formatWhen(entry.at)}
-                  {entry.warningCount > 0
-                    ? ` · ${entry.warningCount} warning${entry.warningCount === 1 ? '' : 's'}`
-                    : ''}
-                </span>
-              </li>
-            ))}
+            {entries.slice(0, 8).map((entry) => {
+              const downloadId = entry.downloadId;
+              return (
+                <li key={`${entry.filename}-${entry.at}`}>
+                  <button
+                    type="button"
+                    // Entries recorded before downloadId existed, or whose
+                    // download chrome later forgot, fall back to a plain,
+                    // unclickable row rather than a button that silently
+                    // does nothing.
+                    disabled={downloadId === undefined}
+                    onClick={() => {
+                      if (downloadId !== undefined)
+                        chrome.downloads.open(downloadId);
+                    }}
+                    aria-label={`Open ${entry.filename}`}
+                    className="block w-full rounded-[var(--radius-control)] px-[6px] py-[5px] text-left transition-colors duration-[var(--duration-fast)] enabled:cursor-pointer enabled:hover:bg-[var(--surface-raised)] disabled:cursor-default"
+                  >
+                    <span className="block truncate font-mono text-[11px] text-[var(--text-primary)]">
+                      {entry.filename}
+                    </span>
+                    <span className="text-[10.5px] text-[var(--text-secondary)]">
+                      {formatSize(entry.byteLength)} · {formatWhen(entry.at)}
+                      {entry.warningCount > 0
+                        ? ` · ${entry.warningCount} warning${entry.warningCount === 1 ? '' : 's'}`
+                        : ''}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>

@@ -9,8 +9,8 @@ import pkg from './package.json';
  */
 export const manifest = {
   manifest_version: 3 as const,
-  name: 'Page Capture',
-  short_name: 'Capture',
+  name: 'QuickCaps',
+  short_name: 'QuickCaps',
   description:
     "Save a page's full front-end - HTML, CSS, JavaScript, images, fonts - to your own disk. Nothing is uploaded.",
   version: pkg.version,
@@ -19,7 +19,16 @@ export const manifest = {
     default_popup: 'src/popup/index.html',
     default_title: 'Capture page',
   },
-  permissions: ['activeTab', 'scripting', 'storage', 'downloads', 'offscreen'],
+  permissions: [
+    'activeTab',
+    'scripting',
+    'storage',
+    'downloads',
+    // Lets a click on a Recent entry open the captured file directly, rather
+    // than only revealing it in its folder.
+    'downloads.open',
+    'offscreen',
+  ],
   // <all_urls> is requested at capture time, not at install: a store reviewer
   // should not have to take a broad host grant on trust.
   optional_host_permissions: ['<all_urls>'],
