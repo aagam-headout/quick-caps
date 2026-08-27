@@ -9,6 +9,7 @@ import type {
 } from './ir.js';
 import type { CaptureSettings } from './settings.js';
 import { buildRegions } from './regions.js';
+import { tallyComputedStyles } from './tokens.js';
 
 export type CollectOptions = {
   settings: CaptureSettings;
@@ -171,7 +172,13 @@ export function collectFromDocument(
     regions: buildRegions(doc, { maxDepth: options.maxRegionDepth ?? 12 }),
     styles,
     assets: [...assets.values()],
-    styleTally: emptyTally(),
+    styleTally: options.computedStyle
+      ? tallyComputedStyles(
+          doc.querySelectorAll('body *'),
+          options.computedStyle,
+          emptyTally(),
+        )
+      : emptyTally(),
     ...(options.logs ? { logs: options.logs } : {}),
     warnings,
   };

@@ -31,3 +31,29 @@ export {
   type InlineInput,
   type InlineResult,
 } from './inline.js';
+export {
+  assetPathFor,
+  buildSingleFile,
+  buildZip,
+  captureFilename,
+  type BundleInput,
+  type BundleOutput,
+} from './bundle.js';
+export {
+  buildTokens,
+  normalizeColor,
+  normalizeLength,
+  tallyComputedStyles,
+  type BuildTokensOptions,
+  type TokenReport,
+} from './tokens.js';
+export {
+  contrastRatio,
+  darkTheme,
+  lightTheme,
+  relativeLuminance,
+  semanticPairs,
+  themeToCss,
+  type SemanticPair,
+  type ThemeTokens,
+} from './theme.js';

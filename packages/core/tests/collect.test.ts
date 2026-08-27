@@ -119,3 +119,17 @@ describe('collectFromDocument regions', () => {
     expect(ir.regions.every((r) => r.children.length === 0)).toBe(true);
   });
 });
+
+describe('collectFromDocument style tally', () => {
+  it('tallies computed styles when a reader is supplied', () => {
+    const ir = collectFromDocument(fixtureDocument('static'), {
+      ...options,
+      computedStyle: () => ({
+        color: 'rgb(23, 23, 23)',
+        'font-size': '16px',
+      }),
+    });
+    expect(ir.styleTally.color['#171717']).toBeGreaterThan(0);
+    expect(ir.styleTally.fontSize['16px']).toBeGreaterThan(0);
+  });
+});
