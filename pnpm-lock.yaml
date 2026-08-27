@@ -94,6 +94,18 @@ importers:
         specifier: ^5.4.10
         version: 5.4.21(@types/node@22.20.1)(lightningcss@1.32.0)
 
+  packages/cli:
+    dependencies:
+      '@page-capture/core':
+        specifier: workspace:*
+        version: link:../core
+      linkedom:
+        specifier: ^0.18.5
+        version: 0.18.13
+      playwright:
+        specifier: ^1.48.0
+        version: 1.62.1
+
   packages/core:
     dependencies:
       fflate:
