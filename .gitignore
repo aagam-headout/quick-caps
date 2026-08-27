@@ -13,3 +13,4 @@ test-results/
 release/
 test-results/
 playwright-report/
+.superpowers/
