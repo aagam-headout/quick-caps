@@ -11,19 +11,19 @@ export const IR_KEY = '__pageCaptureIR';
 export const SETTINGS_KEY = '__pageCaptureSettings';
 
 /** DOM attribute the MAIN-world recorder flushes its ring buffer into. */
-export const LOGS_ATTRIBUTE = 'data-page-capture-logs';
+export const LOGS_ATTRIBUTE = 'data-quickcaps-logs';
 
 /**
  * Message the page-context serializer sends to the worker to fetch a resource
  * on its behalf. SingleFile runs in the page and cannot fetch cross-origin.
  */
-export const FETCH_RESOURCE = '__page-capture-fetch-resource';
+export const FETCH_RESOURCE = '__quickcaps-fetch-resource';
 
 /**
  * Progress from the page-context serializer, relayed by the worker to the
  * popup. Without it a large page looks frozen for the whole serialization.
  */
-export const SERIALIZE_PROGRESS = '__page-capture-serialize-progress';
+export const SERIALIZE_PROGRESS = '__quickcaps-serialize-progress';
 
 /** Event the recorder listens for, to flush synchronously. */
-export const FLUSH_EVENT = '__page-capture-flush-logs';
+export const FLUSH_EVENT = '__quickcaps-flush-logs';

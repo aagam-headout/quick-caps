@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { zipSync, strToU8 } from 'fflate';
-import { defaultSettings } from '@page-capture/core';
+import { defaultSettings } from '@quickcaps/core';
 import {
   diffCaptures,
   extractCaptureMetadata,

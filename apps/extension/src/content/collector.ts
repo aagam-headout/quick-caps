@@ -3,7 +3,7 @@ import {
   type CaptureSettings,
   type LogEntry,
   type PageIR,
-} from '@page-capture/core';
+} from '@quickcaps/core';
 import {
   FLUSH_EVENT,
   IR_KEY,

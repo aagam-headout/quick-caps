@@ -1,5 +1,5 @@
 import { unzipSync, strFromU8 } from 'fflate';
-import type { CaptureSettings } from '@page-capture/core';
+import type { CaptureSettings } from '@quickcaps/core';
 
 /**
  * The `data-capture="metadata"` block bundle.ts embeds when the Metadata

@@ -35,7 +35,7 @@ importers:
 
   apps/extension:
     dependencies:
-      '@page-capture/core':
+      '@quickcaps/core':
         specifier: workspace:*
         version: link:../../packages/core
       react:
@@ -96,7 +96,7 @@ importers:
 
   packages/cli:
     dependencies:
-      '@page-capture/core':
+      '@quickcaps/core':
         specifier: workspace:*
         version: link:../core
       linkedom:

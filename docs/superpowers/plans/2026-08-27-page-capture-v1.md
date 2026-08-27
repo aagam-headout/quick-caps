@@ -1,4 +1,4 @@
-# Page Capture v1 Implementation Plan
+# QuickCaps v1 Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -8,7 +8,7 @@
 
 **Tech Stack:** TypeScript (strict), pnpm workspaces, Vite + `@crxjs/vite-plugin`, React 19, Tailwind CSS v4, `zod`, `fflate`, Vitest + `linkedom`, Playwright, ESLint + Prettier, GitHub Actions.
 
-**Spec:** `docs/superpowers/specs/2026-08-27-page-capture-design.md`
+**Spec:** `docs/superpowers/specs/2026-08-27-quickcaps-design.md`
 
 ## Global Constraints
 
@@ -81,7 +81,7 @@ Phases: **1** = Tasks 1–3 (foundation), **2** = Tasks 4–10 (core, fully test
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: a `pnpm -w test`, `pnpm -w lint`, `pnpm -w typecheck` script surface used by every later task. Workspace package name `@page-capture/core`.
+- Produces: a `pnpm -w test`, `pnpm -w lint`, `pnpm -w typecheck` script surface used by every later task. Workspace package name `@quickcaps/core`.
 
 The boundary rule is the deliverable here, not the scaffold. Without it, "core touches no host API" is a comment that rots within a week. We test it by asserting the ESLint config actually rejects a violating file.
 
@@ -99,7 +99,7 @@ packages:
 
 ```json
 {
-  "name": "page-capture",
+  "name": "quickcaps",
   "private": true,
   "packageManager": "pnpm@9.12.0",
   "engines": { "node": ">=22" },
@@ -161,7 +161,7 @@ warning when ESLint loads the flat config).
 
 ```json
 {
-  "name": "@page-capture/core",
+  "name": "@quickcaps/core",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -3455,7 +3455,7 @@ Phase 3 is where Chrome APIs finally appear. Note the split in test policy: `app
 - Test: `apps/extension/tests/manifest.test.ts`, `apps/extension/tests/theme-css.test.ts`
 
 **Interfaces:**
-- Consumes: `lightTheme`, `darkTheme`, `themeToCss` from `@page-capture/core`.
+- Consumes: `lightTheme`, `darkTheme`, `themeToCss` from `@quickcaps/core`.
 - Produces: a loadable unpacked build at `apps/extension/dist`, and `generateThemeCss(): string` used by the build.
 
 The manifest is tested rather than eyeballed because the permission list is a store-review commitment, and a stray permission added during debugging is exactly the kind of thing that ships unnoticed.
@@ -3466,7 +3466,7 @@ The manifest is tested rather than eyeballed because the permission list is a st
 
 ```json
 {
-  "name": "@page-capture/extension",
+  "name": "@quickcaps/extension",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -3476,7 +3476,7 @@ The manifest is tested rather than eyeballed because the permission list is a st
     "theme": "tsx scripts/generate-theme-css.ts"
   },
   "dependencies": {
-    "@page-capture/core": "workspace:*",
+    "@quickcaps/core": "workspace:*",
     "geist": "^1.3.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
@@ -3584,7 +3584,7 @@ import pkg from './package.json' with { type: 'json' };
 
 export default defineManifest({
   manifest_version: 3,
-  name: 'Page Capture',
+  name: 'QuickCaps',
   short_name: 'Capture',
   description:
     'Save a page’s full front-end — HTML, CSS, JavaScript, images, fonts — to your own disk. Nothing is uploaded.',
@@ -3682,7 +3682,7 @@ Expected: FAIL — module not found.
 import { writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { darkTheme, lightTheme, themeToCss } from '@page-capture/core';
+import { darkTheme, lightTheme, themeToCss } from '@quickcaps/core';
 
 const ALIASES = `:root {
   --surface: var(--background-100);
@@ -3775,7 +3775,7 @@ body {
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Page Capture</title>
+    <title>QuickCaps</title>
   </head>
   <body class="w-[380px]">
     <div id="root"></div>
@@ -3803,7 +3803,7 @@ export function App() {
   return (
     <main className="p-4">
       <h1 className="text-sm font-medium text-[var(--text-primary)]">
-        Page Capture
+        QuickCaps
       </h1>
     </main>
   );
@@ -3816,17 +3816,17 @@ Create `apps/extension/public/icons/icon-{16,32,48,128}.png`. Any solid placehol
 
 - [ ] **Step 13: Build and load unpacked**
 
-Run: `pnpm --filter @page-capture/extension build`
+Run: `pnpm --filter @quickcaps/extension build`
 Expected: `apps/extension/dist` is created with `manifest.json`, the popup HTML, and the icons.
 
-Then in Chrome: `chrome://extensions` → Developer mode → Load unpacked → select `apps/extension/dist`. Click the icon. Expected: a 380 px popup showing "Page Capture", correctly themed, and switching with your OS light/dark setting.
+Then in Chrome: `chrome://extensions` → Developer mode → Load unpacked → select `apps/extension/dist`. Click the icon. Expected: a 380 px popup showing "QuickCaps", correctly themed, and switching with your OS light/dark setting.
 
 - [ ] **Step 14: Add build to CI and gate**
 
 In root `package.json` scripts, add:
 
 ```json
-    "build": "pnpm --filter @page-capture/extension build"
+    "build": "pnpm --filter @quickcaps/extension build"
 ```
 
 Append to `.github/workflows/ci.yml`'s `check` job steps:
@@ -3853,7 +3853,7 @@ git commit -m "feat(extension): scaffold MV3 build with generated Geist theme CS
 - Test: `apps/extension/tests/chrome-driver.test.ts`, `apps/extension/tests/chrome-mock.ts`
 
 **Interfaces:**
-- Consumes: `PageDriver`, `AssetBytes`, `FetchOptions`, `Viewport` from `@page-capture/core`.
+- Consumes: `PageDriver`, `AssetBytes`, `FetchOptions`, `Viewport` from `@quickcaps/core`.
 - Produces: `class ChromeDriver implements PageDriver` with constructor `new ChromeDriver(tabId: number, deps?: ChromeDriverDeps)`, and `type ChromeDriverDeps` for injecting `fetch` and the screenshot function in tests.
 
 This is the seam Phase 2 was designed around. When it is done, every core function already proven against `FakeDriver` runs against a real browser with no change.
@@ -4074,7 +4074,7 @@ import type {
   FetchOptions,
   PageDriver,
   Viewport,
-} from '@page-capture/core';
+} from '@quickcaps/core';
 
 export type StitchRequest = {
   frames: { dataUrl: string; offsetY: number }[];
@@ -4206,7 +4206,7 @@ Create `apps/extension/tests/seam.test.ts`:
 
 ```ts
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fetchAssets, defaultSettings } from '@page-capture/core';
+import { fetchAssets, defaultSettings } from '@quickcaps/core';
 import { installChromeMock } from './chrome-mock.js';
 import { ChromeDriver } from '../src/background/chrome-driver.js';
 
@@ -4256,7 +4256,7 @@ git commit -m "feat(extension): implement PageDriver over chrome scripting and t
 - Test: `apps/extension/tests/collector-entry.test.ts`
 
 **Interfaces:**
-- Consumes: `collectFromDocument`, `CollectOptions`, `PageIR`, `CaptureSettings` from `@page-capture/core`.
+- Consumes: `collectFromDocument`, `CollectOptions`, `PageIR`, `CaptureSettings` from `@quickcaps/core`.
 - Produces: a built artifact at `dist/collector.js` whose last expression is a `PageIR`, injectable via `chrome.scripting.executeScript({ files: ['collector.js'] })`. Exports `runCollector(settings: CaptureSettings): PageIR` for unit testing.
 
 This is where the spec's "zero-import standalone function" requirement is actually enforced, and it is enforced against the **built** artifact. A source-level rule would not catch a bundler config change that starts emitting an import statement; a test over `dist/collector.js` does.
@@ -4270,7 +4270,7 @@ import {
   collectFromDocument,
   type CaptureSettings,
   type PageIR,
-} from '@page-capture/core';
+} from '@quickcaps/core';
 
 const RECORDER_KEY = '__pageCaptureRecorder';
 
@@ -4374,7 +4374,7 @@ export default defineConfig({
 ```ts
 import { describe, expect, it } from 'vitest';
 import { parseHTML } from 'linkedom';
-import { defaultSettings } from '@page-capture/core';
+import { defaultSettings } from '@quickcaps/core';
 import { runCollector } from '../src/content/collector-entry.js';
 
 function installPage(html: string): void {
@@ -4444,7 +4444,7 @@ describe('built collector artifact', () => {
   it('exists after a build', () => {
     expect(
       existsSync(artifact),
-      'run `pnpm --filter @page-capture/extension build` first',
+      'run `pnpm --filter @quickcaps/extension build` first',
     ).toBe(true);
   });
 
@@ -4457,7 +4457,7 @@ describe('built collector artifact', () => {
 
   it('references no bare module specifier', () => {
     const code = readFileSync(artifact, 'utf8');
-    expect(code).not.toContain('@page-capture/core');
+    expect(code).not.toContain('@quickcaps/core');
   });
 
   it('is a single self-contained expression, not a module', () => {
@@ -4469,7 +4469,7 @@ describe('built collector artifact', () => {
 
 - [ ] **Step 6: Build, then run the gate**
 
-Run: `pnpm --filter @page-capture/extension build && pnpm vitest run apps/extension/tests/collector-bundle.test.ts`
+Run: `pnpm --filter @quickcaps/extension build && pnpm vitest run apps/extension/tests/collector-bundle.test.ts`
 Expected: PASS, 4 tests. If the import assertions fail, the Rollup output config in Step 2 is not producing an IIFE for this entry — fix the config, not the test. This test failing is the exact regression it exists to catch.
 
 - [ ] **Step 7: Make CI run the gate after the build**
@@ -4497,7 +4497,7 @@ git commit -m "feat(extension): add collector entry with a zero-import build gat
 - Test: `apps/extension/tests/recorder.test.ts`
 
 **Interfaces:**
-- Consumes: `LogEntry` from `@page-capture/core`.
+- Consumes: `LogEntry` from `@quickcaps/core`.
 - Produces: `installRecorder(target: RecorderTarget, options: RecorderOptions): void` and `type RecorderTarget`. The module's side effect on import is `installRecorder(window, { size: 500 })`.
 
 Two properties matter more than the feature: the wrappers must be transparent to page code, and a throw inside the recorder must never propagate into the page. A capture tool that breaks the page it is capturing is worse than one without logs.
@@ -4642,7 +4642,7 @@ Expected: FAIL — `Cannot find module '../src/content/recorder.js'`.
 - [ ] **Step 3: Write `recorder.ts`**
 
 ```ts
-import type { LogEntry } from '@page-capture/core';
+import type { LogEntry } from '@quickcaps/core';
 
 export const RECORDER_KEY = '__pageCaptureRecorder';
 
@@ -4817,7 +4817,7 @@ git commit -m "feat(extension): record console and network into a transparent ri
 - Test: `apps/extension/tests/stitch.test.ts`, `apps/extension/tests/offscreen-client.test.ts`
 
 **Interfaces:**
-- Consumes: `BundleOutput` from `@page-capture/core`.
+- Consumes: `BundleOutput` from `@quickcaps/core`.
 - Produces: `stitchFrames(request: StitchRequest, deps: StitchDeps): Promise<Uint8Array>`; `class OffscreenClient` with `ensure()`, `stitch(request)`, `toObjectUrl(bytes, mimeType)`, `close()`; and the message types `OffscreenRequest`, `OffscreenResponse` in `messages.ts`.
 
 The offscreen document exists for three things a service worker cannot do: decode and compose images, create an object URL, and stay alive while doing it. `stitchFrames` takes its canvas factory as a dependency so the geometry is unit-testable without a real canvas.
@@ -4873,7 +4873,7 @@ export type WorkerToPopup =
     }
   | { type: 'capture:failed'; reason: string; recoverable: boolean };
 
-export const CAPTURE_PORT = 'page-capture';
+export const CAPTURE_PORT = 'quickcaps';
 ```
 
 - [ ] **Step 2: Write the failing stitch test**
@@ -5058,7 +5058,7 @@ Expected: PASS, 5 tests.
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Page Capture worker</title>
+    <title>QuickCaps worker</title>
   </head>
   <body>
     <script type="module" src="./index.ts"></script>
@@ -5566,7 +5566,7 @@ Expected: PASS, 8 tests total.
 ```ts
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseHTML } from 'linkedom';
-import { defaultSettings, emptyTally, type PageIR } from '@page-capture/core';
+import { defaultSettings, emptyTally, type PageIR } from '@quickcaps/core';
 import { runCapture } from '../src/background/capture.js';
 
 const ir: PageIR = {
@@ -5752,7 +5752,7 @@ import {
   type FetchedAsset,
   type PageIR,
   type Warning,
-} from '@page-capture/core';
+} from '@quickcaps/core';
 import type { CaptureProgress } from '../lib/messages.js';
 
 export type RunCaptureInput = {
@@ -5938,7 +5938,7 @@ Expected: PASS, 10 tests.
 `apps/extension/src/background/index.ts`:
 
 ```ts
-import { parseSettings, type CaptureSettings } from '@page-capture/core';
+import { parseSettings, type CaptureSettings } from '@quickcaps/core';
 import { ChromeDriver } from './chrome-driver.js';
 import { OffscreenClient } from './offscreen-client.js';
 import { CaptureSession } from './session.js';
@@ -6110,7 +6110,7 @@ git commit -m "feat(extension): orchestrate capture with permissions, phases, an
 - Test: `apps/extension/tests/use-settings.test.ts`, `apps/extension/tests/popup.test.tsx`
 
 **Interfaces:**
-- Consumes: `CaptureSettings`, `defaultSettings`, `parseSettings` from `@page-capture/core`; the message types from `lib/messages.ts`.
+- Consumes: `CaptureSettings`, `defaultSettings`, `parseSettings` from `@quickcaps/core`; the message types from `lib/messages.ts`.
 - Produces: `useSettings()` returning `{ settings, update, ready }`; `useCapture()` returning `{ start, progress, result, error, running }`; the components above; and the finished `App`.
 
 Accessibility is a gate here, not a polish pass: real labels, keyboard operability in DOM order, `aria-live` on progress, and errors associated by `aria-describedby`. The tests assert those properties because they are the ones that silently regress.
@@ -6189,7 +6189,7 @@ import {
   defaultSettings,
   parseSettings,
   type CaptureSettings,
-} from '@page-capture/core';
+} from '@quickcaps/core';
 
 const KEY = 'settings';
 
@@ -6708,7 +6708,7 @@ export function App() {
     <main className="flex flex-col gap-3 p-4">
       <header className="flex items-center justify-between">
         <h1 className="text-[13px] font-medium text-[var(--text-primary)]">
-          Page Capture
+          QuickCaps
         </h1>
         <ThemeToggle
           value={settings.theme}
@@ -6804,7 +6804,7 @@ Expected: PASS, 9 tests. If the "every toggle" test fails on `/fonts/i` matching
 
 - [ ] **Step 11: Verify in the real popup**
 
-Run: `pnpm --filter @page-capture/extension build`, reload the unpacked extension, open the popup. Check: all toggles render and persist across popup closes; Tab reaches every control in visual order; the theme control switches immediately and survives a reopen; a capture on a real page shows progress and then the filename.
+Run: `pnpm --filter @quickcaps/extension build`, reload the unpacked extension, open the popup. Check: all toggles render and persist across popup closes; Tab reaches every control in visual order; the theme control switches immediately and survives a reopen; a capture on a real page shows progress and then the filename.
 
 - [ ] **Step 12: Gate and commit**
 
@@ -6837,7 +6837,7 @@ against a rendered tree."
 
 **Interfaces:**
 - Consumes: the built extension at `apps/extension/dist`.
-- Produces: `pnpm e2e`, a release zip at `release/page-capture-<version>.zip`.
+- Produces: `pnpm e2e`, a release zip at `release/quickcaps-<version>.zip`.
 
 The end-to-end test's real assertion is the one no unit test can make: that a captured archive renders offline **with no network requests attempted**. That is the product working.
 
@@ -7065,7 +7065,7 @@ In `apps/extension/package.json` scripts, add:
 In root `package.json` scripts, add:
 
 ```json
-    "e2e": "pnpm -w build && pnpm --filter @page-capture/extension e2e"
+    "e2e": "pnpm -w build && pnpm --filter @quickcaps/extension e2e"
 ```
 
 Run: `pnpm -w e2e`
@@ -7096,7 +7096,7 @@ Produce final artwork at 16, 32, 48, and 128 px, plus a 1280×800 promo tile and
 set -euo pipefail
 
 version=$(node -p "require('./apps/extension/package.json').version")
-output="release/page-capture-${version}.zip"
+output="release/quickcaps-${version}.zip"
 
 rm -rf apps/extension/dist release
 mkdir -p release
@@ -7142,7 +7142,7 @@ Append to `.github/workflows/ci.yml`:
 - [ ] **Step 10: Full verification**
 
 Run: `./scripts/release.sh`
-Expected: every gate passes and `release/page-capture-0.1.0.zip` exists.
+Expected: every gate passes and `release/quickcaps-0.1.0.zip` exists.
 
 Then load `apps/extension/dist` unpacked one final time and run the manual pre-release pass from the spec's §9: real pages across static, SPA, and image-heavy categories; both output modes; permission granted and declined; light and dark themes. Confirm each captured archive opens offline and renders.
 

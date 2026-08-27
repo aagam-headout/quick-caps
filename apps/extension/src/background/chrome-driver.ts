@@ -3,8 +3,8 @@ import type {
   FetchOptions,
   PageDriver,
   Viewport,
-} from '@page-capture/core';
-import { fetchAssetBytes } from '@page-capture/core';
+} from '@quickcaps/core';
+import { fetchAssetBytes } from '@quickcaps/core';
 
 export type StitchRequest = {
   frames: { dataUrl: string; offsetY: number }[];

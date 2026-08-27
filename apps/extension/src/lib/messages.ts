@@ -1,4 +1,4 @@
-import type { CaptureSettings, PageIR, Warning } from '@page-capture/core';
+import type { CaptureSettings, PageIR, Warning } from '@quickcaps/core';
 import type { StitchRequest } from '../background/chrome-driver.js';
 import type { Frame } from './capture.js';
 
@@ -91,4 +91,4 @@ export type OffscreenProgress = {
   progress: CaptureProgress;
 };
 
-export const CAPTURE_PORT = 'page-capture';
+export const CAPTURE_PORT = 'quickcaps';

@@ -8,7 +8,7 @@
 
 **Tech Stack:** Playwright (`playwright`, bundled Chromium), `linkedom` (already a root devDependency, becomes a real dependency of `packages/cli`), Vitest, the existing pnpm workspace conventions.
 
-**Spec:** `docs/superpowers/specs/2026-08-27-page-capture-design.md`, §12.3 "Phase A — the Playwright driver". Per that spec, Phase A does not get its own design doc — this plan is the only additional artifact.
+**Spec:** `docs/superpowers/specs/2026-08-27-quickcaps-design.md`, §12.3 "Phase A — the Playwright driver". Per that spec, Phase A does not get its own design doc — this plan is the only additional artifact.
 
 **Deviation from the spec's literal wording:** §12.3 states Phase A's acceptance test is "the same `PageIR` goldens, produced through a different driver." That's not achievable yet: `collectFromDocument` (which produces a `PageIR`) is never called *through* `PageDriver` — the extension runs it by injecting a built script into the page (`chrome.scripting.executeScript`), not via `driver.evaluate`, because `evaluate`'s "no closures" constraint can't carry an entire imported function across the page boundary without bundling it first. Building that bundler is Phase C's job (the CLI orchestration layer), not Phase A's. This plan's actual acceptance test — a shared conformance suite every `PageDriver` implementation passes — is the achievable subset of that intent: proof the interface is real across three hosts, which is what "the seam was proven continuously... rather than discovered here" is about. Full `PageIR`-through-a-driver goldens become possible, and worth adding, once Phase C exists.
 
@@ -37,7 +37,7 @@
 
 **Interfaces:**
 - Consumes: `AssetBytes`, `FetchOptions` (already exported from `packages/core/src/driver.ts`, already re-exported from `packages/core/src/index.ts`)
-- Produces: `fetchAssetBytes(url: string, options: FetchOptions, fetchImpl?: typeof fetch): Promise<AssetBytes>` and `fetchAssetText(url: string, options: FetchOptions, fetchImpl?: typeof fetch): Promise<string>`, both exported from `@page-capture/core`. Task 3 (PlaywrightDriver) and Task 4 (StaticDriver) both call `fetchAssetBytes`.
+- Produces: `fetchAssetBytes(url: string, options: FetchOptions, fetchImpl?: typeof fetch): Promise<AssetBytes>` and `fetchAssetText(url: string, options: FetchOptions, fetchImpl?: typeof fetch): Promise<string>`, both exported from `@quickcaps/core`. Task 3 (PlaywrightDriver) and Task 4 (StaticDriver) both call `fetchAssetBytes`.
 
 - [ ] **Step 1: Create `packages/core/src/http.ts` with the moved, unchanged logic**
 
@@ -204,10 +204,10 @@ import { fetchAssetBytes } from '../lib/http.js';
 ```
 to:
 ```typescript
-import { fetchAssetBytes } from '@page-capture/core';
+import { fetchAssetBytes } from '@quickcaps/core';
 ```
 
-`apps/extension/src/background/resource-proxy.ts:2` — same change (`fetchAssetBytes` from `@page-capture/core`).
+`apps/extension/src/background/resource-proxy.ts:2` — same change (`fetchAssetBytes` from `@quickcaps/core`).
 
 `apps/extension/src/offscreen/index.ts:2` — same change, but for `fetchAssetText`.
 
@@ -241,13 +241,13 @@ don't have, so it belongs in core, not duplicated per host."
 - Modify: root `package.json` (no change needed — `pnpm typecheck` already runs `tsc --noEmit -p tsconfig.base.json`, which globs `packages/*/src`; nothing package-specific to add)
 
 **Interfaces:**
-- Produces: an installable, empty `@page-capture/cli` workspace package that `packages/cli/src/drivers/*` (Tasks 3–4) and `packages/cli/tests/*` (Task 3 onward) live under.
+- Produces: an installable, empty `@quickcaps/cli` workspace package that `packages/cli/src/drivers/*` (Tasks 3–4) and `packages/cli/tests/*` (Task 3 onward) live under.
 
 - [ ] **Step 1: Write `packages/cli/package.json`**
 
 ```json
 {
-  "name": "@page-capture/cli",
+  "name": "@quickcaps/cli",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -256,7 +256,7 @@ don't have, so it belongs in core, not duplicated per host."
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@page-capture/core": "workspace:*",
+    "@quickcaps/core": "workspace:*",
     "linkedom": "^0.18.5",
     "playwright": "^1.48.0"
   }
@@ -312,7 +312,7 @@ git commit -m "feat(cli): scaffold packages/cli for the Playwright and static dr
 - Modify: `packages/cli/src/index.ts` (export `PlaywrightDriver`)
 
 **Interfaces:**
-- Consumes: `PageDriver`, `AssetBytes`, `FetchOptions`, `Viewport` (`@page-capture/core`); `fetchAssetBytes` (`@page-capture/core`, from Task 1)
+- Consumes: `PageDriver`, `AssetBytes`, `FetchOptions`, `Viewport` (`@quickcaps/core`); `fetchAssetBytes` (`@quickcaps/core`, from Task 1)
 - Produces: `class PlaywrightDriver implements PageDriver`, constructed as `new PlaywrightDriver(page: import('playwright').Page)`; `runDriverConformance(name: string, factory: () => Promise<{ driver: PageDriver; teardown: () => Promise<void> }>, capabilities?: { screenshot?: boolean }): void` — a Vitest `describe` block Task 4 also calls.
 
 - [ ] **Step 1: Write the fixture page**
@@ -338,7 +338,7 @@ git commit -m "feat(cli): scaffold packages/cli for the Playwright and static dr
 
 ```typescript
 import { describe, expect, it } from 'vitest';
-import type { PageDriver } from '@page-capture/core';
+import type { PageDriver } from '@quickcaps/core';
 
 export type ConformanceFactory = () => Promise<{
   driver: PageDriver;
@@ -423,7 +423,7 @@ import {
   type FetchOptions,
   type PageDriver,
   type Viewport,
-} from '@page-capture/core';
+} from '@quickcaps/core';
 
 /**
  * PageDriver over a live Playwright page. Every core function already proven
@@ -581,7 +581,7 @@ git commit -m "feat(cli): implement PlaywrightDriver, proven by a shared driver-
 - Modify: `packages/cli/src/index.ts` (export `StaticDriver`)
 
 **Interfaces:**
-- Consumes: `PageDriver`, `fetchAssetBytes` (`@page-capture/core`); `runDriverConformance` (Task 3, `packages/cli/tests/driver-conformance.ts`); `linkedom`'s `parseHTML`
+- Consumes: `PageDriver`, `fetchAssetBytes` (`@quickcaps/core`); `runDriverConformance` (Task 3, `packages/cli/tests/driver-conformance.ts`); `linkedom`'s `parseHTML`
 - Produces: `class StaticDriver implements PageDriver`, constructed as `new StaticDriver(html: string)`; a static async factory `StaticDriver.fetch(url: string): Promise<StaticDriver>` that fetches `url` and parses the response (this is the actual no-browser fast path the spec's `--static` flag will call in Phase C — this task builds the driver, not the flag).
 
 - [ ] **Step 1: Write `StaticDriver`**
@@ -594,7 +594,7 @@ import {
   type FetchOptions,
   type PageDriver,
   type Viewport,
-} from '@page-capture/core';
+} from '@quickcaps/core';
 
 /**
  * PageDriver over a linkedom-parsed document with no browser and no layout

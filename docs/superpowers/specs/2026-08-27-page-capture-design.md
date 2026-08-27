@@ -1,8 +1,8 @@
-# Page Capture — Design Spec
+# QuickCaps — Design Spec
 
 **Date:** 2026-08-27
 **Status:** Approved for planning
-**Repo:** `~/code/fun-proj/page-capture` (standalone; no dependency on Proto)
+**Repo:** `~/code/fun-proj/quickcaps` (standalone; no dependency on Proto)
 
 ---
 
@@ -558,9 +558,9 @@ producing the store-upload zip from a clean build.
 ## 11. Repository layout
 
 ```text
-page-capture/
+quickcaps/
 ├── packages/
-│   └── core/                  @page-capture/core — no host APIs, Node-testable
+│   └── core/                  @quickcaps/core — no host APIs, Node-testable
 │       ├── src/
 │       │   ├── ir.ts          PageIR, Region, Warning types
 │       │   ├── driver.ts      PageDriver interface
@@ -627,16 +627,16 @@ for the rendered-page and design-extraction cases — for plain article text,
 ### 12.2 Shape
 
 ```text
-npx @page-capture/pc open <url>     # distill: numbered regions + actions
-npx @page-capture/pc do <n>         # follow action [n]
-npx @page-capture/pc read <n>       # full text of region [n]
-npx @page-capture/pc find <query>   # search current page
-npx @page-capture/pc next           # next slice of a paged render
-npx @page-capture/pc layout         # structural tree: regions, roles, boxes
-npx @page-capture/pc tokens         # colors, type scale, spacing, radii
-npx @page-capture/pc scrape <shape> # schema-driven field extraction
-npx @page-capture/pc capture        # full archive to disk (v1 formats)
-npx @page-capture/pc mcp            # same tools over stdio MCP
+npx @quickcaps/pc open <url>     # distill: numbered regions + actions
+npx @quickcaps/pc do <n>         # follow action [n]
+npx @quickcaps/pc read <n>       # full text of region [n]
+npx @quickcaps/pc find <query>   # search current page
+npx @quickcaps/pc next           # next slice of a paged render
+npx @quickcaps/pc layout         # structural tree: regions, roles, boxes
+npx @quickcaps/pc tokens         # colors, type scale, spacing, radii
+npx @quickcaps/pc scrape <shape> # schema-driven field extraction
+npx @quickcaps/pc capture        # full archive to disk (v1 formats)
+npx @quickcaps/pc mcp            # same tools over stdio MCP
 ```
 
 Stateful across invocations: a session file under the project or a temp root

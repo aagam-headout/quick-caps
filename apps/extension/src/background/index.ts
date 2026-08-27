@@ -1,4 +1,4 @@
-import { parseSettings, type CaptureSettings } from '@page-capture/core';
+import { parseSettings, type CaptureSettings } from '@quickcaps/core';
 import { ChromeDriver } from './chrome-driver.js';
 import { OffscreenClient } from './offscreen-client.js';
 import { CaptureSession } from './session.js';
@@ -18,7 +18,7 @@ import {
   type PopupToWorker,
   type WorkerToPopup,
 } from '../lib/messages.js';
-import type { PageIR } from '@page-capture/core';
+import type { PageIR } from '@quickcaps/core';
 
 const SETTINGS_KEY_STORAGE = 'settings';
 const HISTORY_KEY = 'history';

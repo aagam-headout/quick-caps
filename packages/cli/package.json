@@ -1,5 +1,5 @@
 {
-  "name": "@page-capture/cli",
+  "name": "@quickcaps/cli",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -8,7 +8,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@page-capture/core": "workspace:*",
+    "@quickcaps/core": "workspace:*",
     "linkedom": "^0.18.5",
     "playwright": "^1.48.0"
   }

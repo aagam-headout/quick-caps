@@ -23,7 +23,7 @@ describe('built collector artifact', () => {
   it('exists after a build', () => {
     expect(
       existsSync(artifact),
-      'run `pnpm --filter @page-capture/extension build` first',
+      'run `pnpm --filter @quickcaps/extension build` first',
     ).toBe(true);
   });
 
@@ -42,13 +42,13 @@ describe('built collector artifact', () => {
   });
 
   it('resolves no workspace package at runtime', () => {
-    expect(code).not.toContain('@page-capture/core');
+    expect(code).not.toContain('@quickcaps/core');
     expect(code).not.toContain('single-file-core/single-file.js');
   });
 
   it('inlines both the core logic and the serializer it depends on', () => {
     // Proof it is genuinely self-contained rather than accidentally empty.
-    expect(code).toContain('data-page-capture-logs');
+    expect(code).toContain('data-quickcaps-logs');
     // single-file-core is ~900 kB; anything much smaller means it was not
     // bundled and injection would fail at runtime.
     expect(code.length).toBeGreaterThan(500_000);
