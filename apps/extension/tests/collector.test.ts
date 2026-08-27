@@ -149,6 +149,55 @@ describe('runCollector', () => {
     expect(globals[IR_KEY]).toBeUndefined();
   });
 
+  it('removes elements matching excludeSelector before capture and restores them after', async () => {
+    installPage(
+      '<html><body><div id="keep">Keep</div><div class="banner">Cookie banner</div></body></html>',
+    );
+    const { applyExclusions } = await loadEntry();
+    const restore = applyExclusions('.banner');
+    expect(document.querySelector('.banner')).toBeNull();
+    expect(document.getElementById('keep')).not.toBeNull();
+    restore();
+    expect(document.querySelector('.banner')?.textContent).toBe(
+      'Cookie banner',
+    );
+  });
+
+  it('treats an empty or invalid exclude selector as a no-op', async () => {
+    installPage('<html><body><div class="banner">Cookie banner</div></body></html>');
+    const { applyExclusions } = await loadEntry();
+    expect(applyExclusions('')).toBeInstanceOf(Function);
+    expect(document.querySelector('.banner')).not.toBeNull();
+    // An invalid selector must not throw the whole capture.
+    expect(() => applyExclusions(':::not-a-selector')()).not.toThrow();
+    expect(document.querySelector('.banner')).not.toBeNull();
+  });
+
+  it('excludes matching elements from the region tree parked by parkCollectorResult', async () => {
+    installPage(
+      '<html><body><div class="banner">Cookie banner</div><h1>Page title</h1></body></html>',
+    );
+    const { parkCollectorResult } = await loadEntry();
+    const globals: Record<string, unknown> = {
+      [SETTINGS_KEY]: { ...defaultSettings, excludeSelector: '.banner' },
+    };
+
+    await parkCollectorResult(globals, {
+      serialize: async () => {
+        // The exclusion must still be in effect while serialization runs.
+        expect(document.querySelector('.banner')).toBeNull();
+        return { html: '<html>serialized</html>', title: 'T' };
+      },
+    });
+
+    expect(document.querySelector('.banner')?.textContent).toBe(
+      'Cookie banner',
+    );
+    const outcome = globals[IR_KEY] as { status: string; ir: { html: string } };
+    expect(outcome.status).toBe('done');
+    expect(outcome.ir.html).not.toContain('banner');
+  });
+
   it('parks a failure rather than throwing when serialization fails', async () => {
     installPage('<html><body></body></html>');
     const { parkCollectorResult } = await loadEntry();

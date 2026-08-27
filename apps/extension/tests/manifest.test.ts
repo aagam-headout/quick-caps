@@ -9,12 +9,20 @@ describe('manifest', () => {
   it('requests exactly the permissions the spec allows at install time', () => {
     expect([...manifest.permissions].sort()).toEqual([
       'activeTab',
+      'contextMenus',
       'downloads',
       'downloads.open',
+      'notifications',
       'offscreen',
       'scripting',
       'storage',
     ]);
+  });
+
+  it('declares the keyboard shortcut for a popup-free capture', () => {
+    expect(manifest.commands['capture-page']?.suggested_key?.default).toBe(
+      'Ctrl+Shift+K',
+    );
   });
 
   it('keeps all_urls optional rather than install-time', () => {

@@ -43,6 +43,7 @@ export function captureFilename(
   url: string,
   capturedAt: string,
   extension: string,
+  template = '{host}-{timestamp}',
 ): string {
   let host = 'capture';
   try {
@@ -50,8 +51,22 @@ export function captureFilename(
   } catch {
     /* an unparseable url keeps the fallback name */
   }
-  const stamp = capturedAt.replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
-  const name = `${safeSegment(host, 'capture')}-${stamp}`;
+  // yyyyMMdd-HHmmss, split so {date} and {time} are usable independently.
+  const timestamp = capturedAt
+    .replace(/[-:]/g, '')
+    .replace('T', '-')
+    .slice(0, 15);
+  const [date = timestamp, time = ''] = timestamp.split('-');
+  const tokens: Record<string, string> = { host, date, time, timestamp };
+  // An unknown {token} degrades to its bare key name rather than throwing —
+  // a typo in a custom template should still produce a usable filename, not
+  // block the capture. (The braces themselves are illegal on some
+  // platforms and would just get stripped anyway.)
+  const rendered = template.replace(
+    /\{(\w+)\}/g,
+    (_whole, key: string) => tokens[key] ?? key,
+  );
+  const name = safeSegment(rendered, 'capture');
   return `${name.slice(0, 120 - extension.length - 1)}.${extension}`;
 }
 
@@ -119,6 +134,7 @@ export function buildSingleFile(input: BundleInput): BundleOutput {
       input.ir.metadata.url,
       input.ir.metadata.capturedAt,
       'html',
+      input.settings.filenameTemplate,
     ),
     bytes: strToU8(parts.join('')),
     mimeType: 'text/html',
@@ -162,6 +178,7 @@ export function buildZip(input: BundleInput): BundleOutput {
       input.ir.metadata.url,
       input.ir.metadata.capturedAt,
       'zip',
+      input.settings.filenameTemplate,
     ),
     bytes: zipSync(entries, { level: 6 }),
     mimeType: 'application/zip',

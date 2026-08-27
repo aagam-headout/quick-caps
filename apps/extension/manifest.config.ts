@@ -19,6 +19,17 @@ export const manifest = {
     default_popup: 'src/popup/index.html',
     default_title: 'Capture page',
   },
+  // Invoking either grants activeTab for that tab, same as the toolbar
+  // button — no popup needed to read the page. Cross-origin asset access
+  // still depends on the optional <all_urls> grant from a popup visit; a
+  // headless trigger degrades the same way the popup capture already does
+  // when that grant is missing.
+  commands: {
+    'capture-page': {
+      suggested_key: { default: 'Ctrl+Shift+K', mac: 'Command+Shift+K' },
+      description: 'Capture the current page with QuickCaps',
+    },
+  },
   permissions: [
     'activeTab',
     'scripting',
@@ -28,6 +39,10 @@ export const manifest = {
     // than only revealing it in its folder.
     'downloads.open',
     'offscreen',
+    // The right-click "Capture page with QuickCaps" menu entry.
+    'contextMenus',
+    // Feedback for captures triggered without a popup open (shortcut, menu).
+    'notifications',
   ],
   // <all_urls> is requested at capture time, not at install: a store reviewer
   // should not have to take a broad host grant on trust.

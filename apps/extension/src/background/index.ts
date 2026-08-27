@@ -182,11 +182,230 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, respond) => {
   return true; // keep the channel open for the async respond
 });
 
+/**
+ * The capture pipeline itself, shared by every trigger — the popup's port,
+ * the keyboard shortcut, and the context-menu entry. `post` is how each
+ * trigger surfaces progress and the outcome: a port message for the popup,
+ * a notification for the two that run with no UI open at all.
+ */
+async function runCapture(params: {
+  tabId: number;
+  hasHostPermission: boolean;
+  hasPageAccess: boolean;
+  post: (message: WorkerToPopup) => void;
+}): Promise<void> {
+  const { tabId, hasPageAccess, post } = params;
+  const offscreen = new OffscreenClient();
+  const session = new CaptureSession();
+  const startedAt = Date.now();
+  try {
+    // A missing or invalid tab id otherwise surfaces Chrome's own wording:
+    // "Error at parameter 'tabId': Value must be at least 0."
+    const tab =
+      typeof tabId === 'number' && tabId >= 0
+        ? await chrome.tabs.get(tabId).catch(() => null)
+        : null;
+    if (!tab) {
+      post({
+        type: 'capture:failed',
+        reason: 'That tab is no longer open. Try capturing again.',
+        recoverable: true,
+      });
+      return;
+    }
+    const restriction = tab.url
+      ? restrictionFor(tab.url)
+      : 'No page is open to capture.';
+    if (restriction) {
+      post({ type: 'capture:failed', reason: restriction, recoverable: false });
+      return;
+    }
+
+    const settings = await loadSettings();
+    // Published before any injection: the resource proxy will not serve a
+    // page that is not the one being captured.
+    activeCapture = { tabId, settings };
+    const driver = new ChromeDriver(tabId);
+
+    await session.save({ phase: 'collecting', tabId, startedAt });
+    // The caller already asked, during its own gesture. Re-checking here
+    // catches a grant revoked in between.
+    const hasHostPermission =
+      params.hasHostPermission && (await checkHostPermission());
+
+    if (!hasPageAccess) {
+      post({
+        type: 'capture:failed',
+        reason:
+          'QuickCaps needs permission to read this page. Click Capture again and choose Allow.',
+        recoverable: true,
+      });
+      return;
+    }
+
+    if (settings.scrollToLoadLazy) {
+      await scrollToLoadLazyContent(driver);
+    }
+
+    post({
+      type: 'capture:progress',
+      progress: { phase: 'collecting', done: 0, total: 0, warningCount: 0 },
+    });
+    const { ir, html } = await collect(tabId, settings);
+    if (!hasHostPermission) {
+      ir.warnings.push({
+        phase: 'permissions',
+        reason:
+          'host permission declined - cross-origin assets could not be fetched',
+      });
+    }
+
+    const frames = settings.include.screenshot
+      ? (await driver.captureFrames()).frames
+      : undefined;
+
+    await session.save({ phase: 'bundling', tabId, startedAt });
+    const result = await offscreen.capture({
+      ir,
+      html,
+      settings,
+      ...(frames ? { frames } : {}),
+    });
+
+    post({
+      type: 'capture:progress',
+      progress: {
+        phase: 'downloading',
+        done: 0,
+        total: 0,
+        warningCount: result.warnings.length,
+      },
+    });
+    const downloadId = await chrome.downloads.download({
+      url: result.objectUrl,
+      // A forward slash here is a subfolder under the platform's default
+      // Downloads directory on Mac, Windows, and Linux alike — Chrome
+      // normalizes the separator itself, so this needs no per-OS branch.
+      // The bare filename (shown in the UI and in history) is unchanged.
+      filename: `${DOWNLOAD_FOLDER}/${result.filename}`,
+    });
+    await offscreen.revoke(result.objectUrl);
+
+    await recordHistory({
+      url: tab.url ?? '',
+      filename: result.filename,
+      byteLength: result.byteLength,
+      warningCount: result.warnings.length,
+      at: Date.now(),
+      downloadId,
+    });
+
+    post({
+      type: 'capture:done',
+      filename: result.filename,
+      byteLength: result.byteLength,
+      warnings: result.warnings,
+    });
+  } catch (error) {
+    const raw = error instanceof Error ? error.message : String(error);
+    // Chrome's wording here names the manifest, which is useless to a user
+    // who just needs to accept the prompt.
+    const reason = raw.includes('Cannot access contents')
+      ? 'QuickCaps could not read this page. Click Capture again and choose Allow, or reload the page and retry.'
+      : raw;
+    post({ type: 'capture:failed', reason, recoverable: true });
+  } finally {
+    activeCapture = null;
+    await session.clear();
+    await offscreen.close();
+  }
+}
+
+/** The single-capture guard, shared by every trigger. */
+function startCapture(params: {
+  tabId: number;
+  hasHostPermission: boolean;
+  hasPageAccess: boolean;
+  post: (message: WorkerToPopup) => void;
+}): void {
+  if (activeCapture) {
+    params.post({
+      type: 'capture:failed',
+      reason: 'A capture is already running. Wait for it to finish.',
+      recoverable: true,
+    });
+    return;
+  }
+  void runCapture(params);
+}
+
+const CONTEXT_MENU_ID = 'quickcaps-capture';
+
+function notify(title: string, message: string): void {
+  void chrome.notifications.create({
+    type: 'basic',
+    iconUrl: chrome.runtime.getURL('icons/icon-128.png'),
+    title,
+    message,
+  });
+}
+
+/**
+ * Entry point for triggers with no popup open — the keyboard shortcut and the
+ * context-menu item. Both grant activeTab on the invoking tab the same way
+ * the toolbar button does, so the page itself is always readable; only the
+ * optional <all_urls> grant (cross-origin assets) can be missing, and that
+ * degrades the same way an unchecked popup capture already does.
+ */
+function triggerCapture(tabId: number | undefined): void {
+  if (typeof tabId !== 'number') return;
+  void (async () => {
+    const hasHostPermission = await checkHostPermission();
+    startCapture({
+      tabId,
+      hasHostPermission,
+      hasPageAccess: true,
+      post: (message) => {
+        if (message.type === 'capture:done') {
+          notify('Page captured', `${message.filename} saved to Downloads`);
+        } else if (message.type === 'capture:failed') {
+          notify('Capture failed', message.reason);
+        }
+        // Progress has nowhere to show without a popup open.
+      },
+    });
+  })();
+}
+
+chrome.commands.onCommand.addListener((command) => {
+  if (command !== 'capture-page') return;
+  void (async () => {
+    const [tab] = await chrome.tabs.query({
+      active: true,
+      currentWindow: true,
+    });
+    triggerCapture(tab?.id);
+  })();
+});
+
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.contextMenus.removeAll(() => {
+    chrome.contextMenus.create({
+      id: CONTEXT_MENU_ID,
+      title: 'Capture page with QuickCaps',
+      contexts: ['page'],
+    });
+  });
+});
+
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  if (info.menuItemId !== CONTEXT_MENU_ID) return;
+  triggerCapture(tab?.id);
+});
+
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== CAPTURE_PORT) return;
 
-  const offscreen = new OffscreenClient();
-  const session = new CaptureSession();
   const post = (message: WorkerToPopup): void => {
     try {
       port.postMessage(message);
@@ -224,157 +443,12 @@ chrome.runtime.onConnect.addListener((port) => {
 
   port.onMessage.addListener((message: PopupToWorker) => {
     if (message.type !== 'capture:start') return;
-
-    if (activeCapture) {
-      post({
-        type: 'capture:failed',
-        reason: 'A capture is already running. Wait for it to finish.',
-        recoverable: true,
-      });
-      return;
-    }
-
-    void (async () => {
-      const startedAt = Date.now();
-      try {
-        // A missing or invalid tab id otherwise surfaces Chrome's own wording:
-        // "Error at parameter 'tabId': Value must be at least 0."
-        const tab =
-          typeof message.tabId === 'number' && message.tabId >= 0
-            ? await chrome.tabs.get(message.tabId).catch(() => null)
-            : null;
-        if (!tab) {
-          post({
-            type: 'capture:failed',
-            reason: 'That tab is no longer open. Try capturing again.',
-            recoverable: true,
-          });
-          return;
-        }
-        const restriction = tab.url
-          ? restrictionFor(tab.url)
-          : 'No page is open to capture.';
-        if (restriction) {
-          post({
-            type: 'capture:failed',
-            reason: restriction,
-            recoverable: false,
-          });
-          return;
-        }
-
-        const settings = await loadSettings();
-        // Published before any injection: the resource proxy will not serve a
-        // page that is not the one being captured.
-        activeCapture = { tabId: message.tabId, settings };
-        const driver = new ChromeDriver(message.tabId);
-
-        await session.save({
-          phase: 'collecting',
-          tabId: message.tabId,
-          startedAt,
-        });
-        // The popup already asked, during its click. Re-checking here catches
-        // a grant revoked between the click and now.
-        const hasHostPermission =
-          message.hasHostPermission && (await checkHostPermission());
-
-        if (!message.hasPageAccess) {
-          post({
-            type: 'capture:failed',
-            reason:
-              'QuickCaps needs permission to read this page. Click Capture again and choose Allow.',
-            recoverable: true,
-          });
-          return;
-        }
-
-        if (settings.scrollToLoadLazy) {
-          await scrollToLoadLazyContent(driver);
-        }
-
-        post({
-          type: 'capture:progress',
-          progress: {
-            phase: 'collecting',
-            done: 0,
-            total: 0,
-            warningCount: 0,
-          },
-        });
-        const { ir, html } = await collect(message.tabId, settings);
-        if (!hasHostPermission) {
-          ir.warnings.push({
-            phase: 'permissions',
-            reason:
-              'host permission declined - cross-origin assets could not be fetched',
-          });
-        }
-
-        const frames = settings.include.screenshot
-          ? (await driver.captureFrames()).frames
-          : undefined;
-
-        await session.save({
-          phase: 'bundling',
-          tabId: message.tabId,
-          startedAt,
-        });
-        const result = await offscreen.capture({
-          ir,
-          html,
-          settings,
-          ...(frames ? { frames } : {}),
-        });
-
-        post({
-          type: 'capture:progress',
-          progress: {
-            phase: 'downloading',
-            done: 0,
-            total: 0,
-            warningCount: result.warnings.length,
-          },
-        });
-        const downloadId = await chrome.downloads.download({
-          url: result.objectUrl,
-          // A forward slash here is a subfolder under the platform's default
-          // Downloads directory on Mac, Windows, and Linux alike — Chrome
-          // normalizes the separator itself, so this needs no per-OS branch.
-          // The bare filename (shown in the UI and in history) is unchanged.
-          filename: `${DOWNLOAD_FOLDER}/${result.filename}`,
-        });
-        await offscreen.revoke(result.objectUrl);
-
-        await recordHistory({
-          url: tab.url ?? '',
-          filename: result.filename,
-          byteLength: result.byteLength,
-          warningCount: result.warnings.length,
-          at: Date.now(),
-          downloadId,
-        });
-
-        post({
-          type: 'capture:done',
-          filename: result.filename,
-          byteLength: result.byteLength,
-          warnings: result.warnings,
-        });
-      } catch (error) {
-        const raw = error instanceof Error ? error.message : String(error);
-        // Chrome's wording here names the manifest, which is useless to a user
-        // who just needs to accept the prompt.
-        const reason = raw.includes('Cannot access contents')
-          ? 'QuickCaps could not read this page. Click Capture again and choose Allow, or reload the page and retry.'
-          : raw;
-        post({ type: 'capture:failed', reason, recoverable: true });
-      } finally {
-        activeCapture = null;
-        await session.clear();
-        await offscreen.close();
-      }
-    })();
+    startCapture({
+      tabId: message.tabId,
+      hasHostPermission: message.hasHostPermission,
+      hasPageAccess: message.hasPageAccess,
+      post,
+    });
   });
 });
 

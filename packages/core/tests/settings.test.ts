@@ -11,6 +11,8 @@ describe('capture settings', () => {
     expect(defaultSettings.include.screenshot).toBe(false);
     expect(defaultSettings.inertSnapshot).toBe(true);
     expect(defaultSettings.output).toBe('single-file');
+    expect(defaultSettings.excludeSelector).toBe('');
+    expect(defaultSettings.filenameTemplate).toBe('{host}-{timestamp}');
     expect(defaultSettings.limits).toEqual({
       concurrency: 6,
       assetTimeoutMs: 10_000,

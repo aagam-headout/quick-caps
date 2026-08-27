@@ -18,6 +18,19 @@ export const captureSettingsSchema = z.object({
   scrollToLoadLazy: z.boolean().default(true),
   inertSnapshot: z.boolean().default(true),
   output: z.enum(['single-file', 'zip']).default('single-file'),
+  /**
+   * A CSS selector for elements to drop before capture — cookie banners,
+   * ads, in-page chat widgets. Empty string means no exclusion. Applied to
+   * the live DOM for the duration of the capture only, then restored.
+   */
+  excludeSelector: z.string().default(''),
+  /**
+   * Tokens: {host}, {date} (yyyyMMdd), {time} (HHmmss), {timestamp}
+   * (date-time combined, the v1 default). Unknown tokens pass through
+   * literally rather than erroring — a typo should degrade, not block a
+   * capture.
+   */
+  filenameTemplate: z.string().default('{host}-{timestamp}'),
   limits: z
     .object({
       concurrency: z.number().int().positive().max(32).default(6),

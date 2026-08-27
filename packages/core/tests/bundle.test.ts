@@ -71,6 +71,28 @@ describe('captureFilename', () => {
       captureFilename('not a url', '2026-08-27T10:00:00.000Z', 'html'),
     ).toBe('capture-20260827-100000.html');
   });
+
+  it('renders a custom template with independent date and time tokens', () => {
+    expect(
+      captureFilename(
+        'https://example.com/a',
+        '2026-08-27T10:00:00.000Z',
+        'html',
+        '{date}_{host}_{time}',
+      ),
+    ).toBe('20260827_example.com_100000.html');
+  });
+
+  it('passes an unknown token through literally rather than throwing', () => {
+    expect(
+      captureFilename(
+        'https://example.com/a',
+        '2026-08-27T10:00:00.000Z',
+        'html',
+        '{host}-{nope}',
+      ),
+    ).toBe('example.com-nope.html');
+  });
 });
 
 describe('assetPathFor', () => {

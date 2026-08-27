@@ -85,6 +85,44 @@ export function runCollector(settings: CaptureSettings): PageIR {
   });
 }
 
+/**
+ * Removes elements matching `selector` from the live document for the
+ * duration of a capture, returning a function that puts each one back where
+ * it came from.
+ *
+ * Real removal, not `display: none` — single-file-core is asked to keep
+ * hidden elements (`removeHiddenElements: false`, see serialize.ts) so a
+ * cookie banner merely hidden would still end up in the captured output. An
+ * invalid selector or an empty string is a no-op rather than a thrown error:
+ * one bad selector should degrade a capture, not fail it.
+ */
+export function applyExclusions(selector: string): () => void {
+  const trimmed = selector.trim();
+  if (!trimmed) return () => {};
+
+  let matches: Element[];
+  try {
+    matches = Array.from(document.querySelectorAll(trimmed));
+  } catch {
+    return () => {};
+  }
+
+  const removed: { node: Element; parent: ParentNode; next: Node | null }[] =
+    [];
+  for (const node of matches) {
+    const parent = node.parentNode;
+    if (!parent) continue;
+    removed.push({ node, parent, next: node.nextSibling });
+    node.remove();
+  }
+
+  return () => {
+    for (const { node, parent, next } of removed) {
+      parent.insertBefore(node, next);
+    }
+  };
+}
+
 export type CollectorOutcome =
   | { status: 'running' }
   | { status: 'done'; ir: PageIR; html: string }
@@ -113,6 +151,7 @@ export async function parkCollectorResult(
   if (!settings) return;
 
   globals[IR_KEY] = { status: 'running' } satisfies CollectorOutcome;
+  const restore = applyExclusions(settings.excludeSelector);
   try {
     const ir = runCollector(settings);
     const { html, title } = await deps.serialize(settings);
@@ -126,5 +165,7 @@ export async function parkCollectorResult(
       status: 'failed',
       error: error instanceof Error ? error.message : String(error),
     } satisfies CollectorOutcome;
+  } finally {
+    restore();
   }
 }

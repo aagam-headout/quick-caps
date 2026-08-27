@@ -2,12 +2,14 @@ import { useEffect } from 'react';
 import type { CaptureSettings } from '@page-capture/core';
 import { Checkbox } from './components/Checkbox.js';
 import { Section } from './components/Section.js';
+import { TextField } from './components/TextField.js';
 import { MultiSelectDropdown } from './components/MultiSelectDropdown.js';
 import { SingleSelectDropdown } from './components/SingleSelectDropdown.js';
 import { Progress } from './components/Progress.js';
 import { CaptureButton } from './components/CaptureButton.js';
 import { WarningList } from './components/WarningList.js';
 import { RecentList } from './components/RecentList.js';
+import { CompareCaptures } from './components/CompareCaptures.js';
 import { useSettings } from './use-settings.js';
 import { useCapture } from './use-capture.js';
 import { useHistory } from './use-history.js';
@@ -282,6 +284,27 @@ export function App() {
           }}
           onChange={setOption}
         />
+
+        <Section title="Advanced" collapsible>
+          <div className="-mx-[6px]">
+            <TextField
+              id="filename-template"
+              label="Filename template"
+              hint="Tokens: {host} {date} {time} {timestamp}"
+              placeholder="{host}-{timestamp}"
+              value={settings.filenameTemplate}
+              onChange={(value) => update({ filenameTemplate: value })}
+            />
+            <TextField
+              id="exclude-selector"
+              label="Exclude selector"
+              hint="CSS selector for elements to drop before capture"
+              placeholder=".cookie-banner, #chat-widget"
+              value={settings.excludeSelector}
+              onChange={(value) => update({ excludeSelector: value })}
+            />
+          </div>
+        </Section>
       </div>
 
       <SingleSelectDropdown
@@ -357,8 +380,11 @@ export function App() {
         ) : null}
       </div>
 
-      <div className="border-t border-[var(--border)] pt-[10px]">
+      <div className="flex flex-col gap-[10px] border-t border-[var(--border)] pt-[10px]">
         <RecentList entries={entries} />
+        <Section title="Compare captures" collapsible>
+          <CompareCaptures />
+        </Section>
       </div>
     </main>
   );
