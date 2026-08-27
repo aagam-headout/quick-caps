@@ -137,14 +137,23 @@ packages:
     "exactOptionalPropertyTypes": true,
     "verbatimModuleSyntax": true,
     "skipLibCheck": true,
-    "noEmit": true,
-    "types": []
+    "noEmit": true
   },
   "include": ["packages/*/src", "packages/*/tests"]
 }
 ```
 
-Note `"types": []` — it keeps Node and Chrome ambient types out of core by default. The extension's own tsconfig opts back in.
+**Implementation note (deviation from the first draft of this plan):** an earlier
+version set `"types": []` here to keep ambient Node and Chrome types out of core.
+That does not work, because this project also compiles `packages/core/tests`,
+and those tests legitimately import `node:fs` — the fake driver reads fixtures
+from disk. With `types: []` the test files fail to typecheck.
+
+The boundary is enforced by ESLint instead, which is the stronger mechanism
+anyway: it distinguishes `src/` from `tests/`, which a tsconfig-wide `types`
+setting cannot. Add `"@types/node": "^22.8.0"` to the root devDependencies and
+`"type": "module"` to the root `package.json` (the latter silences a Node
+warning when ESLint loads the flat config).
 
 - [ ] **Step 2: Create the core package skeleton**
 
@@ -228,31 +237,28 @@ export default tseslint.config(
 
 `packages/core/tests/boundary.test.ts`:
 
+ESLint 9 resolves the flat config from the working directory and applies the
+`files` patterns against the `filePath` you pass to `lintText`, so no temporary
+file on disk is needed — pass the code as text and claim a path inside
+`packages/core/src`.
+
 ```ts
 import { describe, expect, it } from 'vitest';
 import { ESLint } from 'eslint';
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 
-// This test file is exempt from the core boundary rule: it is a test, and it
-// exists precisely to verify the rule. Only files under src/ are constrained.
-async function lintCoreSource(code: string): Promise<ESLint.LintResult[]> {
-  const dir = await mkdtemp(join(tmpdir(), 'pc-boundary-'));
-  const file = join(dir, 'probe.ts');
-  await writeFile(file, code, 'utf8');
-  try {
-    const eslint = new ESLint({
-      overrideConfigFile: 'eslint.config.js',
-      overrideConfig: [{ files: ['**/*.ts'], rules: {} }],
-    });
-    // Lint the probe as if it lived in packages/core/src.
-    return await eslint.lintText(code, {
-      filePath: 'packages/core/src/probe.ts',
-    });
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
+/**
+ * Lints `code` as if it were a file under packages/core/src, so the boundary
+ * rules apply to it. This test file itself is exempt from those rules — only
+ * src/ is constrained — and it exists to prove the rules actually bite rather
+ * than sitting inert in the config.
+ */
+async function lintAsCoreSource(code: string): Promise<ESLint.LintResult> {
+  const eslint = new ESLint();
+  const [result] = await eslint.lintText(code, {
+    filePath: 'packages/core/src/probe.ts',
+  });
+  if (!result) throw new Error('eslint returned no result');
+  return result;
 }
 
 describe('core boundary rule', () => {
@@ -284,7 +290,12 @@ describe('core boundary rule', () => {
 - [ ] **Step 5: Run the test to verify it fails**
 
 Run: `pnpm install && pnpm vitest run packages/core/tests/boundary.test.ts`
-Expected: FAIL — before Step 3's config is in place the assertions find no `no-restricted-globals` message. If you wrote Step 3 first, run it anyway and confirm it PASSES for the right reason: inspect one result's `messages` and see the rule id present. A rule test that has never been seen failing is not evidence of anything.
+Expected: FAIL — before Step 3's config is in place the assertions find no `no-restricted-globals` message.
+
+If you wrote Step 3 first, do not skip this: comment out the
+`no-restricted-globals` line, run the suite, and confirm exactly the two
+rejection tests fail while the acceptance test still passes. Then restore it. A
+rule test that has never been seen failing is not evidence of anything.
 
 - [ ] **Step 6: Add `vitest.config.ts`**
 
