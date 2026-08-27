@@ -14,7 +14,17 @@ const forbiddenInCore = [
 
 export default tseslint.config(
   {
-    ignores: ['**/dist/**', '**/node_modules/**', '**/coverage/**'],
+    ignores: [
+      '**/dist/**',
+      '**/node_modules/**',
+      '**/coverage/**',
+      '**/test-results/**',
+      '**/playwright-report/**',
+      // Browser scripts served to e2e fixture pages. They are page content, not
+      // project source, and linting them as such only produces false positives
+      // about browser globals they legitimately use.
+      'apps/extension/e2e/fixtures/**',
+    ],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

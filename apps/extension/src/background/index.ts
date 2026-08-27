@@ -235,7 +235,20 @@ chrome.runtime.onConnect.addListener((port) => {
     void (async () => {
       const startedAt = Date.now();
       try {
-        const tab = await chrome.tabs.get(message.tabId);
+        // A missing or invalid tab id otherwise surfaces Chrome's own wording:
+        // "Error at parameter 'tabId': Value must be at least 0."
+        const tab =
+          typeof message.tabId === 'number' && message.tabId >= 0
+            ? await chrome.tabs.get(message.tabId).catch(() => null)
+            : null;
+        if (!tab) {
+          post({
+            type: 'capture:failed',
+            reason: 'That tab is no longer open. Try capturing again.',
+            recoverable: true,
+          });
+          return;
+        }
         const restriction = tab.url
           ? restrictionFor(tab.url)
           : 'No page is open to capture.';

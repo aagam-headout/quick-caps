@@ -1,0 +1,20 @@
+@font-face {
+  font-family: 'FixtureFace';
+  src: url('/fixture.woff2') format('woff2');
+}
+body {
+  font-family: 'FixtureFace', system-ui, sans-serif;
+  background: #f5f5f5 url('/bg.png') repeat;
+  color: #171717;
+  margin: 0;
+  padding: 24px;
+}
+h1 {
+  color: rgb(23, 23, 23);
+  font-size: 32px;
+}
+.card {
+  background: #ffffff;
+  border-radius: 8px;
+  padding: 16px;
+}

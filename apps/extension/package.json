@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "pnpm run theme && vite build && vite build --config vite.collector.config.ts",
     "theme": "tsx scripts/generate-theme-css.ts",
-    "icons": "tsx scripts/generate-icons.ts"
+    "icons": "tsx scripts/generate-icons.ts",
+    "e2e": "playwright test",
+    "build:e2e": "PC_E2E=1 pnpm run theme && PC_E2E=1 vite build && PC_E2E=1 vite build --config vite.collector.config.ts"
   },
   "dependencies": {
     "@page-capture/core": "workspace:*",
@@ -17,6 +19,7 @@
   },
   "devDependencies": {
     "@crxjs/vite-plugin": "^2.0.0-beta.28",
+    "@playwright/test": "^1.49.0",
     "@tailwindcss/vite": "^4.0.0",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/react": "^16.1.0",

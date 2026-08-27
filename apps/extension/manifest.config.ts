@@ -23,6 +23,13 @@ export const manifest = {
   // <all_urls> is requested at capture time, not at install: a store reviewer
   // should not have to take a broad host grant on trust.
   optional_host_permissions: ['<all_urls>'],
+  // The e2e build alone gets the grant up front. Chrome's permission dialog
+  // cannot be automated, and chrome.permissions.request needs a user gesture
+  // that page.evaluate does not provide. The request flow itself is covered by
+  // the popup unit tests; this only removes the dialog from the browser tests.
+  ...(process.env['PC_E2E'] === '1'
+    ? { host_permissions: ['<all_urls>' as const] }
+    : {}),
   background: { service_worker: 'src/background/index.ts', type: 'module' },
   content_scripts: [
     {

@@ -19,3 +19,22 @@ jobs:
       - run: pnpm -w lint
       - run: pnpm -w typecheck
       - run: pnpm -w test -- --coverage
+      - run: pnpm -w build
+      # Reads dist/, so it has to follow the build.
+      - run: pnpm exec vitest run apps/extension/tests/collector-bundle.test.ts apps/extension/tests/build-artifacts.test.ts
+
+  e2e:
+    runs-on: ubuntu-latest
+    needs: check
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      # Chrome refuses to load an extension headlessly, so the run needs a
+      # display even though nobody is watching it.
+      - run: xvfb-run --auto-servernum pnpm -w e2e

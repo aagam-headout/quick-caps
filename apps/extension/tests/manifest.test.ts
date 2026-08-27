@@ -21,6 +21,10 @@ describe('manifest', () => {
     // Asserted as key absence, not an undefined value: a manifest carrying
     // host_permissions: undefined would still be a broad-grant manifest to
     // review, and would satisfy a toBeUndefined check.
+    //
+    // The e2e build adds host_permissions behind PC_E2E; this asserts the
+    // shipped build never does.
+    expect(process.env['PC_E2E']).not.toBe('1');
     expect('host_permissions' in manifest).toBe(false);
   });
 
