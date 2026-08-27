@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { buildRegions } from '../src/regions.js';
-import { flattenRegions, scoreOf, renderRegions } from '../src/distill.js';
-import { fixtureDocument } from './fake-driver.js';
+import { flattenRegions, scoreOf, renderRegions, distill } from '../src/distill.js';
+import { fixtureDocument, type FixtureName } from './fake-driver.js';
+import { collectFromDocument } from '../src/collect.js';
+import { defaultSettings } from '../src/settings.js';
 
 const regionOptions = { maxDepth: 12 };
 
@@ -67,5 +69,75 @@ describe('renderRegions', () => {
     const flat = flattenRegions(buildRegions(fixtureDocument('static'), regionOptions));
     const text = renderRegions(flat, new Set());
     expect(text).toBe('');
+  });
+});
+
+const collectOptions = {
+  settings: defaultSettings,
+  pageUrl: 'https://example.com/page',
+  userAgent: 'test-agent',
+  viewport: { width: 1280, height: 800 },
+  documentSize: { width: 1280, height: 2400 },
+  devicePixelRatio: 2,
+  now: () => new Date('2026-08-27T10:00:00.000Z'),
+};
+
+describe('distill', () => {
+  it('stays within the token budget', () => {
+    const ir = collectFromDocument(fixtureDocument('static'), collectOptions);
+    const result = distill(ir, { tokenBudget: 500 });
+    expect(result.tokenCount).toBeLessThanOrEqual(500);
+  });
+
+  it('a tiny budget still selects the single highest-scored region', () => {
+    const ir = collectFromDocument(fixtureDocument('static'), collectOptions);
+    const result = distill(ir, { tokenBudget: 8 });
+    expect(result.text.length).toBeGreaterThan(0);
+    expect(result.tokenCount).toBeLessThanOrEqual(8);
+  });
+
+  it('pulls in a selected region\'s ancestors for free', () => {
+    const ir = collectFromDocument(fixtureDocument('static'), collectOptions);
+    const result = distill(ir, { tokenBudget: 500 });
+    const mainId = ir.regions.find((r) => r.tag === 'main')!.id;
+    expect(result.handles[mainId]).toBeTruthy();
+  });
+
+  it('handles map covers every id present in the rendered text', () => {
+    const ir = collectFromDocument(fixtureDocument('static'), collectOptions);
+    const result = distill(ir, { tokenBudget: 500 });
+    const idsInText = [...result.text.matchAll(/\[(\d+)\]/g)].map((m) =>
+      Number(m[1]),
+    );
+    for (const id of idsInText) expect(result.handles[id]).toBeTruthy();
+  });
+
+  // Skipped pending Task 6, which adds the `nav-heavy` fixture this test
+  // depends on (tests/fixtures/nav-heavy.html does not exist yet, so
+  // 'nav-heavy' isn't a member of FixtureName yet either — cast until then).
+  it.skip('paginates deterministically with no id repeated across pages', () => {
+    const ir = collectFromDocument(
+      fixtureDocument('nav-heavy' as FixtureName),
+      collectOptions,
+    );
+    const budget = 30;
+    const seenPerPage: number[][] = [];
+    let page = 0;
+    let hasMore = true;
+    while (hasMore && page < 20) {
+      const result = distill(ir, { tokenBudget: budget, page });
+      seenPerPage.push(Object.keys(result.handles).map(Number));
+      hasMore = result.hasMore;
+      page += 1;
+    }
+    const all = seenPerPage.flat();
+    expect(new Set(all).size).toBe(all.length);
+  });
+
+  it('defaults to a 500 token budget and page 0', () => {
+    const ir = collectFromDocument(fixtureDocument('static'), collectOptions);
+    const withDefaults = distill(ir, {});
+    const explicit = distill(ir, { tokenBudget: 500, page: 0 });
+    expect(withDefaults.text).toBe(explicit.text);
   });
 });
