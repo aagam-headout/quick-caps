@@ -28,6 +28,7 @@ function parseFixture(name: FixtureName) {
   for (const el of parsed.document.querySelectorAll('*')) {
     const position = index++;
     Object.defineProperty(el, 'getBoundingClientRect', {
+      configurable: true,
       value: () => ({
         x: 0,
         y: position * 40,

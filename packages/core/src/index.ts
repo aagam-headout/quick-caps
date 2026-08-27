@@ -11,3 +11,23 @@ export type {
   PageDriver,
   Viewport,
 } from './driver.js';
+export {
+  collectFromDocument,
+  emptyTally,
+  type CollectOptions,
+} from './collect.js';
+export { buildRegions, type RegionOptions } from './regions.js';
+export {
+  fetchAssets,
+  type FetchAssetsOptions,
+  type FetchAssetsResult,
+  type FetchedAsset,
+} from './assets.js';
+export {
+  inlineDocument,
+  resolveImports,
+  rewriteCssUrls,
+  toDataUri,
+  type InlineInput,
+  type InlineResult,
+} from './inline.js';
