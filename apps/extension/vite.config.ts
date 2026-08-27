@@ -9,6 +9,9 @@ export default defineConfig({
   build: {
     target: 'chrome116',
     emptyOutDir: true,
+    // We target Chrome 116+, which supports modulepreload natively. Shipping
+    // Vite's polyfill only produces an unused-preload warning in the popup.
+    modulePreload: { polyfill: false },
     rollupOptions: {
       // The offscreen document is opened by chrome.offscreen.createDocument,
       // not referenced from the manifest, so crxjs does not discover it. Left

@@ -58,7 +58,16 @@ export type CaptureWarningView = {
 };
 
 export type PopupToWorker =
-  { type: 'capture:start'; tabId: number } | { type: 'capture:cancel' };
+  | {
+      type: 'capture:start';
+      tabId: number;
+      /**
+       * Decided in the popup: chrome.permissions.request requires a user
+       * gesture, which a message-handling worker does not have.
+       */
+      hasHostPermission: boolean;
+    }
+  | { type: 'capture:cancel' };
 
 export type WorkerToPopup =
   | { type: 'capture:progress'; progress: CaptureProgress }

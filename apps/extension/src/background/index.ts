@@ -2,7 +2,7 @@ import { parseSettings, type CaptureSettings } from '@page-capture/core';
 import { ChromeDriver } from './chrome-driver.js';
 import { OffscreenClient } from './offscreen-client.js';
 import { CaptureSession } from './session.js';
-import { ensureHostPermission } from './permissions.js';
+import { hasHostPermission as checkHostPermission } from './permissions.js';
 import { restrictionFor } from './restricted.js';
 import { IR_KEY, SETTINGS_KEY } from '../content/protocol.js';
 import {
@@ -148,16 +148,10 @@ chrome.runtime.onConnect.addListener((port) => {
           tabId: message.tabId,
           startedAt,
         });
-        post({
-          type: 'capture:progress',
-          progress: {
-            phase: 'permissions',
-            done: 0,
-            total: 0,
-            warningCount: 0,
-          },
-        });
-        const hasHostPermission = await ensureHostPermission();
+        // The popup already asked, during its click. Re-checking here catches
+        // a grant revoked between the click and now.
+        const hasHostPermission =
+          message.hasHostPermission && (await checkHostPermission());
 
         if (settings.scrollToLoadLazy) {
           await scrollToLoadLazyContent(driver);

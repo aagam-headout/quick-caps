@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ensureHostPermission } from '../src/background/permissions.js';
+import { hasHostPermission } from '../src/background/permissions.js';
 
 let contains: ReturnType<typeof vi.fn>;
 let request: ReturnType<typeof vi.fn>;
@@ -12,29 +12,25 @@ beforeEach(() => {
   };
 });
 
-describe('ensureHostPermission', () => {
-  it('does not prompt when already granted', async () => {
+describe('hasHostPermission', () => {
+  it('is true when the grant is held', async () => {
     contains.mockResolvedValue(true);
-    await expect(ensureHostPermission()).resolves.toBe(true);
+    await expect(hasHostPermission()).resolves.toBe(true);
+  });
+
+  it('is false when the grant is absent', async () => {
+    contains.mockResolvedValue(false);
+    await expect(hasHostPermission()).resolves.toBe(false);
+  });
+
+  it('never requests from the worker, where there is no user gesture', async () => {
+    contains.mockResolvedValue(false);
+    await hasHostPermission();
     expect(request).not.toHaveBeenCalled();
   });
 
-  it('requests all_urls when not granted', async () => {
-    contains.mockResolvedValue(false);
-    request.mockResolvedValue(true);
-    await expect(ensureHostPermission()).resolves.toBe(true);
-    expect(request).toHaveBeenCalledWith({ origins: ['<all_urls>'] });
-  });
-
-  it('returns false when the user declines, without throwing', async () => {
-    contains.mockResolvedValue(false);
-    request.mockResolvedValue(false);
-    await expect(ensureHostPermission()).resolves.toBe(false);
-  });
-
-  it('returns false rather than propagating a request error', async () => {
-    contains.mockResolvedValue(false);
-    request.mockRejectedValue(new Error('no user gesture'));
-    await expect(ensureHostPermission()).resolves.toBe(false);
+  it('returns false rather than propagating an error', async () => {
+    contains.mockRejectedValue(new Error('no such permission'));
+    await expect(hasHostPermission()).resolves.toBe(false);
   });
 });
