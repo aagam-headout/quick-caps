@@ -20,6 +20,11 @@ export type ConformanceCapabilities = {
 export function runDriverConformance(
   name: string,
   factory: ConformanceFactory,
+  // A thunk, not a plain string: this is called at module-collection time,
+  // before the caller's `beforeAll` has resolved the server's actual port,
+  // so the value must be read lazily (from inside each `it`) rather than
+  // captured eagerly as an argument.
+  getBaseUrl: () => string,
   capabilities: ConformanceCapabilities = {},
 ): void {
   describe(`${name} (driver conformance)`, () => {
@@ -52,6 +57,29 @@ export function runDriverConformance(
         await driver.scrollTo(0, 40);
         const viewport = await driver.viewport();
         expect(viewport.scrollY).toBe(40);
+      } finally {
+        await teardown();
+      }
+    });
+
+    it('fetches an asset and rejects a missing one', async () => {
+      const { driver, teardown } = await factory();
+      try {
+        const baseUrl = getBaseUrl();
+        const asset = await driver.fetchAsset(`${baseUrl}/pixel.png`, {
+          timeoutMs: 5_000,
+          maxBytes: 1_000_000,
+        });
+        expect(asset.contentType).toBe('image/png');
+        // PNG magic number.
+        expect(Array.from(asset.bytes.slice(0, 4))).toEqual([137, 80, 78, 71]);
+
+        await expect(
+          driver.fetchAsset(`${baseUrl}/missing.png`, {
+            timeoutMs: 5_000,
+            maxBytes: 1_000_000,
+          }),
+        ).rejects.toThrow();
       } finally {
         await teardown();
       }

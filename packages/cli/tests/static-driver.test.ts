@@ -13,9 +13,26 @@ let server: Server;
 let baseUrl: string;
 
 beforeAll(async () => {
-  server = createServer((_req, res) => {
-    res.writeHead(200, { 'content-type': 'text/html' });
-    res.end(fixtureHtml);
+  server = createServer((req, res) => {
+    if (req.url === '/pixel.png') {
+      // A 1x1 transparent PNG, so screenshotFullPage and asset-fetch tests
+      // hit a real (tiny) binary response rather than a 404.
+      res.writeHead(200, { 'content-type': 'image/png' });
+      res.end(
+        Buffer.from(
+          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+          'base64',
+        ),
+      );
+      return;
+    }
+    if (req.url === '/') {
+      res.writeHead(200, { 'content-type': 'text/html' });
+      res.end(fixtureHtml);
+      return;
+    }
+    res.writeHead(404);
+    res.end();
   });
   await new Promise<void>((resolve) => server.listen(0, resolve));
   const address = server.address();
@@ -35,6 +52,7 @@ runDriverConformance(
     driver: await StaticDriver.fetch(baseUrl),
     teardown: async () => {},
   }),
+  () => baseUrl,
   { screenshot: false },
 );
 

@@ -20,33 +20,13 @@ export class PlaywrightDriver implements PageDriver {
   }
 
   async fetchAsset(url: string, options: FetchOptions): Promise<AssetBytes> {
-    // Playwright's browser-context request API shares the page's cookies and
-    // auth state but is not subject to the page's own CORS policy — the same
-    // "credentialed, cross-origin-capable" property ChromeDriver gets from
-    // the extension's host permissions.
-    //
-    // fetchAssetBytes enforces its timeout by aborting an AbortSignal, which
-    // this adapter has no way to forward into Playwright's request API — so
-    // `timeout` is passed straight through to Playwright itself instead,
-    // which enforces it independently. fetchAssetBytes's own timer still
-    // runs and still cleans up; whichever of the two fires first is the one
-    // that rejects, which is fine, since both are set to the same duration.
-    return fetchAssetBytes(
-      url,
-      options,
-      (async (input: RequestInfo | URL, init?: RequestInit) => {
-        const target = typeof input === 'string' ? input : input.toString();
-        const headers = init?.headers as Record<string, string> | undefined;
-        const response = await this.page.context().request.fetch(target, {
-          ...(headers ? { headers } : {}),
-          timeout: options.timeoutMs,
-        });
-        return new Response(new Uint8Array(await response.body()), {
-          status: response.status(),
-          headers: response.headers(),
-        });
-      }) as typeof fetch,
-    );
+    // Deliberately the default global fetch, not Playwright's context-bound
+    // request API: that API shares the page's cookies and auth state, which
+    // would make this the only driver whose asset fetches carry the user's
+    // session — fetchAssetBytes's cookieless policy ("A capture must not
+    // carry the user's session anywhere") applies the same way here as it
+    // does for ChromeDriver and StaticDriver.
+    return fetchAssetBytes(url, options);
   }
 
   async screenshotFullPage(): Promise<Uint8Array> {
@@ -54,10 +34,10 @@ export class PlaywrightDriver implements PageDriver {
   }
 
   async scrollTo(x: number, y: number): Promise<void> {
-    await this.page.evaluate(
-      ([px, py]) => window.scrollTo(px, py),
-      [x, y] as [number, number],
-    );
+    await this.page.evaluate(([px, py]) => window.scrollTo(px, py), [x, y] as [
+      number,
+      number,
+    ]);
   }
 
   async viewport(): Promise<Viewport> {

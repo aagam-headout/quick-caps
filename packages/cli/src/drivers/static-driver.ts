@@ -20,11 +20,13 @@ export class StaticDriver implements PageDriver {
   private readonly window: Window & typeof globalThis;
   private readonly document: Document;
   private scroll = { x: 0, y: 0 };
+  readonly url: string | undefined;
 
-  constructor(html: string) {
+  constructor(html: string, url?: string) {
     const parsed = parseHTML(html);
     this.window = parsed.window as unknown as Window & typeof globalThis;
     this.document = parsed.document as unknown as Document;
+    this.url = url;
   }
 
   static async fetch(url: string): Promise<StaticDriver> {
@@ -32,7 +34,7 @@ export class StaticDriver implements PageDriver {
       timeoutMs: 15_000,
       maxBytes: 20 * 1024 * 1024,
     });
-    return new StaticDriver(new TextDecoder().decode(asset.bytes));
+    return new StaticDriver(new TextDecoder().decode(asset.bytes), asset.url);
   }
 
   async evaluate<T>(fn: () => T): Promise<T> {

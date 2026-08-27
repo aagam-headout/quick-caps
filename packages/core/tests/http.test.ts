@@ -37,21 +37,33 @@ describe('fetchAssetBytes', () => {
   it('rejects a non-ok response', async () => {
     const impl = fakeFetch({ ok: false, status: 404, statusText: 'Not Found' });
     await expect(
-      fetchAssetBytes('https://x.test/a.png', { timeoutMs: 100, maxBytes: 1000 }, impl),
+      fetchAssetBytes(
+        'https://x.test/a.png',
+        { timeoutMs: 100, maxBytes: 1000 },
+        impl,
+      ),
     ).rejects.toThrow('404 Not Found');
   });
 
   it('rejects on a declared content-length over the cap, before downloading', async () => {
     const impl = fakeFetch({ headers: { 'content-length': '99999' } });
     await expect(
-      fetchAssetBytes('https://x.test/a.png', { timeoutMs: 100, maxBytes: 10 }, impl),
+      fetchAssetBytes(
+        'https://x.test/a.png',
+        { timeoutMs: 100, maxBytes: 10 },
+        impl,
+      ),
     ).rejects.toThrow('exceeds per-asset cap');
   });
 
   it('rejects when the actual body exceeds the cap despite no declared length', async () => {
     const impl = fakeFetch({ body: new Uint8Array(20) });
     await expect(
-      fetchAssetBytes('https://x.test/a.png', { timeoutMs: 100, maxBytes: 10 }, impl),
+      fetchAssetBytes(
+        'https://x.test/a.png',
+        { timeoutMs: 100, maxBytes: 10 },
+        impl,
+      ),
     ).rejects.toThrow('exceeds per-asset cap');
   });
 
@@ -65,7 +77,11 @@ describe('fetchAssetBytes', () => {
         }
       });
     await expect(
-      fetchAssetBytes('https://x.test/a.png', { timeoutMs: 20, maxBytes: 1000 }, hanging),
+      fetchAssetBytes(
+        'https://x.test/a.png',
+        { timeoutMs: 20, maxBytes: 1000 },
+        hanging,
+      ),
     ).rejects.toThrow();
   });
 });

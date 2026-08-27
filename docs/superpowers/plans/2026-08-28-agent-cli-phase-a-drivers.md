@@ -20,6 +20,7 @@
 - Root `vitest.config.ts` already includes `packages/*/tests/**/*.test.ts` by glob — a new package's tests run under the existing `pnpm test` with no config change, and default to the `node` environment (correct for this phase — nothing here needs jsdom).
 - `pnpm-workspace.yaml` already globs `packages/*` — no change needed to register the new package, only `pnpm install` to link it.
 - Never commit without running `pnpm typecheck`, `pnpm lint`, and `pnpm test` clean first (matches this repo's existing pattern; see recent commits `76404f3`, `e112679`).
+- Every commit must also pass `pnpm -w format:check` (Prettier) — CI enforces it (`.github/workflows/ci.yml`'s `check` job) even though it wasn't listed here originally.
 
 ---
 

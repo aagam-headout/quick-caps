@@ -28,8 +28,13 @@ beforeAll(async () => {
       );
       return;
     }
-    res.writeHead(200, { 'content-type': 'text/html' });
-    res.end(fixtureHtml);
+    if (req.url === '/') {
+      res.writeHead(200, { 'content-type': 'text/html' });
+      res.end(fixtureHtml);
+      return;
+    }
+    res.writeHead(404);
+    res.end();
   });
   await new Promise<void>((resolve) => server.listen(0, resolve));
   const address = server.address();
@@ -41,15 +46,22 @@ beforeAll(async () => {
 }, 30_000);
 
 afterAll(async () => {
-  await browser.close();
-  await new Promise((resolve) => server.close(resolve));
+  try {
+    await browser?.close();
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
 });
 
-runDriverConformance('PlaywrightDriver', async () => {
-  const page = await browser.newPage();
-  await page.goto(baseUrl);
-  return {
-    driver: new PlaywrightDriver(page),
-    teardown: () => page.close(),
-  };
-});
+runDriverConformance(
+  'PlaywrightDriver',
+  async () => {
+    const page = await browser.newPage();
+    await page.goto(baseUrl);
+    return {
+      driver: new PlaywrightDriver(page),
+      teardown: () => page.close(),
+    };
+  },
+  () => baseUrl,
+);
