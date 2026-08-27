@@ -63,3 +63,38 @@ export function flattenRegions(regions: Region[]): FlatRegion[] {
   walk(regions, 1, []);
   return out;
 }
+
+function renderLine(region: Region): string {
+  const actionsText = region.actions
+    .map((action) => {
+      if (action.type === 'button') return `[${action.id}]${action.label} (button)`;
+      if (action.type === 'input') return `[${action.id}]${action.label} (input)`;
+      return `[${action.id}]${action.label}`;
+    })
+    .join(' ');
+
+  const head = `[${region.id}] ${region.role}`;
+  const hasSnippet = region.snippet.length > 0;
+
+  if (!hasSnippet && !actionsText) return head;
+  if (!hasSnippet) return `${head}: ${actionsText}`;
+  if (!actionsText) return `${head}: "${region.snippet}"`;
+  return `${head}: "${region.snippet}" ${actionsText}`;
+}
+
+/**
+ * Renders every region in `ids`, in document order, indented two spaces
+ * per tree depth. A region whose parent isn't in `ids` — because an
+ * earlier paged call already consumed it, see distill() — still renders
+ * at its true depth: the indentation reflects the region's real position
+ * in the page, not the shown subset's shape.
+ */
+export function renderRegions(
+  flat: FlatRegion[],
+  ids: ReadonlySet<number>,
+): string {
+  return flat
+    .filter((entry) => ids.has(entry.region.id))
+    .map((entry) => '  '.repeat(entry.depth - 1) + renderLine(entry.region))
+    .join('\n');
+}

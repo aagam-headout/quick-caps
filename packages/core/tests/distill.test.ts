@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildRegions } from '../src/regions.js';
-import { flattenRegions, scoreOf } from '../src/distill.js';
+import { flattenRegions, scoreOf, renderRegions } from '../src/distill.js';
 import { fixtureDocument } from './fake-driver.js';
 
 const regionOptions = { maxDepth: 12 };
@@ -37,5 +37,35 @@ describe('flattenRegions', () => {
     const main = flat.find((e) => e.region.tag === 'main')!;
     const article = flat.find((e) => e.region.tag === 'article')!;
     expect(article.parentIds).toContain(main.region.id);
+  });
+});
+
+describe('renderRegions', () => {
+  it('renders a selected region with its snippet and indented by depth', () => {
+    const flat = flattenRegions(buildRegions(fixtureDocument('static'), regionOptions));
+    const article = flat.find((e) => e.region.tag === 'article')!;
+    const text = renderRegions(flat, new Set([article.region.id]));
+    expect(text).toContain(`[${article.region.id}] ${article.region.role}`);
+  });
+
+  it('renders an action inline on its owning region\'s line', () => {
+    const flat = flattenRegions(buildRegions(fixtureDocument('static'), regionOptions));
+    const article = flat.find((e) => e.region.tag === 'article')!;
+    const link = article.region.actions.find((a) => a.type === 'link')!;
+    const text = renderRegions(flat, new Set([article.region.id]));
+    expect(text).toContain(`[${link.id}]${link.label}`);
+  });
+
+  it('omits the quoted snippet clause for a region with no own text', () => {
+    const flat = flattenRegions(buildRegions(fixtureDocument('static'), regionOptions));
+    const main = flat.find((e) => e.region.tag === 'main')!;
+    const text = renderRegions(flat, new Set([main.region.id]));
+    expect(text).not.toContain('"');
+  });
+
+  it('only renders ids present in the given set', () => {
+    const flat = flattenRegions(buildRegions(fixtureDocument('static'), regionOptions));
+    const text = renderRegions(flat, new Set());
+    expect(text).toBe('');
   });
 });
