@@ -4,6 +4,7 @@ import type {
   PageDriver,
   Viewport,
 } from '@page-capture/core';
+import { fetchAssetBytes } from '../lib/http.js';
 
 export type StitchRequest = {
   frames: { dataUrl: string; offsetY: number }[];
@@ -46,37 +47,7 @@ export class ChromeDriver implements PageDriver {
   }
 
   async fetchAsset(url: string, options: FetchOptions): Promise<AssetBytes> {
-    const fetchImpl = this.deps.fetchImpl ?? fetch;
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), options.timeoutMs);
-    try {
-      const response = await fetchImpl(url, {
-        signal: controller.signal,
-        // A capture must not carry the user's session anywhere.
-        credentials: 'omit',
-        redirect: 'follow',
-      });
-      if (!response.ok) {
-        throw new Error(`${response.status} ${response.statusText}`.trim());
-      }
-      // Refuse on the declared length before downloading: reading the body
-      // first would defeat the purpose of a cap.
-      const declared = response.headers.get('content-length');
-      if (declared && Number(declared) > options.maxBytes) {
-        throw new Error(`exceeds per-asset cap: declared ${declared} bytes`);
-      }
-      const buffer = await response.arrayBuffer();
-      if (buffer.byteLength > options.maxBytes) {
-        throw new Error(`exceeds per-asset cap: ${buffer.byteLength} bytes`);
-      }
-      return {
-        url,
-        bytes: new Uint8Array(buffer),
-        contentType: response.headers.get('content-type'),
-      };
-    } finally {
-      clearTimeout(timer);
-    }
+    return fetchAssetBytes(url, options, this.deps.fetchImpl);
   }
 
   async viewport(): Promise<Viewport> {
@@ -102,9 +73,14 @@ export class ChromeDriver implements PageDriver {
     });
   }
 
-  async screenshotFullPage(): Promise<Uint8Array> {
-    const stitch = this.deps.stitch;
-    if (!stitch) throw new Error('no stitch implementation supplied');
+  /**
+   * Scrolls the page and captures one frame per viewport height.
+   *
+   * Separate from stitching because only this half needs chrome.tabs. The
+   * frames are data-url strings, so they cross a message boundary to the
+   * offscreen document without any binary transfer.
+   */
+  async captureFrames(): Promise<StitchRequest> {
     const delay = this.deps.frameDelayMs ?? 550;
     const view = await this.viewport();
     const origin = { x: view.scrollX, y: view.scrollY };
@@ -128,11 +104,17 @@ export class ChromeDriver implements PageDriver {
       await this.scrollTo(origin.x, origin.y);
     }
 
-    return stitch({
+    return {
       frames,
       width: view.documentWidth,
       height: view.documentHeight,
       devicePixelRatio: view.devicePixelRatio,
-    });
+    };
+  }
+
+  async screenshotFullPage(): Promise<Uint8Array> {
+    const stitch = this.deps.stitch;
+    if (!stitch) throw new Error('no stitch implementation supplied');
+    return stitch(await this.captureFrames());
   }
 }

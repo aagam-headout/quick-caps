@@ -39,12 +39,17 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 }
 
 /**
- * Fetches every reference through the driver under the configured policy.
+ * Fetches every reference under the configured policy.
+ *
+ * Takes only the driver's fetch function rather than a whole PageDriver: this
+ * step needs nothing else, and a narrower dependency means any host with a
+ * credentialed fetch can run it — including the offscreen document, which is
+ * not a driver at all.
  * Never rejects: a failure becomes a Warning so the capture can continue with
  * whatever it did manage to collect.
  */
 export async function fetchAssets(
-  driver: PageDriver,
+  fetchAsset: PageDriver['fetchAsset'],
   refs: AssetRef[],
   options: FetchAssetsOptions,
 ): Promise<FetchAssetsResult> {
@@ -60,7 +65,7 @@ export async function fetchAssets(
     for (let tries = 0; tries <= limits.retries; tries++) {
       try {
         const asset = await withTimeout(
-          driver.fetchAsset(ref.url, {
+          fetchAsset(ref.url, {
             timeoutMs: limits.assetTimeoutMs,
             maxBytes: limits.maxAssetBytes,
           }),

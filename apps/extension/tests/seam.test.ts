@@ -41,9 +41,13 @@ describe('core pipeline over ChromeDriver', () => {
       .mockResolvedValue(okResponse(new Uint8Array([1, 2])));
     const driver = new ChromeDriver(1, { fetchImpl });
 
-    const result = await fetchAssets(driver, [ref('https://x.test/a.png')], {
-      limits: defaultSettings.limits,
-    });
+    const result = await fetchAssets(
+      (url, opts) => driver.fetchAsset(url, opts),
+      [ref('https://x.test/a.png')],
+      {
+        limits: defaultSettings.limits,
+      },
+    );
 
     expect(result.assets.size).toBe(1);
     expect(result.totalBytes).toBe(2);
@@ -56,9 +60,13 @@ describe('core pipeline over ChromeDriver', () => {
       .mockResolvedValue(okResponse(new Uint8Array(100)));
     const driver = new ChromeDriver(1, { fetchImpl });
 
-    const result = await fetchAssets(driver, [ref('https://x.test/big.png')], {
-      limits: { ...defaultSettings.limits, maxAssetBytes: 10, retries: 0 },
-    });
+    const result = await fetchAssets(
+      (url, opts) => driver.fetchAsset(url, opts),
+      [ref('https://x.test/big.png')],
+      {
+        limits: { ...defaultSettings.limits, maxAssetBytes: 10, retries: 0 },
+      },
+    );
 
     expect(result.assets.size).toBe(0);
     expect(result.warnings[0]!.reason).toContain('exceeds');
@@ -68,9 +76,13 @@ describe('core pipeline over ChromeDriver', () => {
     const fetchImpl = vi.fn().mockRejectedValue(new Error('offline'));
     const driver = new ChromeDriver(1, { fetchImpl });
 
-    await fetchAssets(driver, [ref('https://x.test/a.png')], {
-      limits: { ...defaultSettings.limits, retries: 2 },
-    });
+    await fetchAssets(
+      (url, opts) => driver.fetchAsset(url, opts),
+      [ref('https://x.test/a.png')],
+      {
+        limits: { ...defaultSettings.limits, retries: 2 },
+      },
+    );
 
     expect(fetchImpl).toHaveBeenCalledTimes(3);
   });
