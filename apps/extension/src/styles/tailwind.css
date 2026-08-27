@@ -1,0 +1,39 @@
+@import 'tailwindcss';
+@import './tokens.css';
+
+/*
+ * Geist is vendored into public/fonts rather than pulled from the `geist` npm
+ * package. That package is a Next.js font wrapper: it exports JS modules, not
+ * CSS, and installing it drags in the whole of Next (198 MB) for two font
+ * files. The woff2 files here are redistributed under the SIL Open Font
+ * License, whose text sits beside them in public/fonts/OFL-Geist.txt.
+ *
+ * The extension CSP forbids remote font loading, so self-hosting is required
+ * regardless of how the files arrive.
+ */
+@font-face {
+  font-family: 'Geist';
+  src: url('/fonts/Geist-Variable.woff2') format('woff2-variations');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Geist Mono';
+  src: url('/fonts/GeistMono-Variable.woff2') format('woff2-variations');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@theme {
+  --font-sans: 'Geist', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, monospace;
+}
+
+body {
+  background: var(--surface);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+}

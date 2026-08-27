@@ -52,7 +52,7 @@ a privacy policy, semver releases, and CI-enforced quality gates.
 | Zip | `fflate` | Streaming zip in ~8 kB, runs in both Node and the browser |
 | Schemas | `zod` | One schema drives the popup form, CLI flags, and later MCP tool schemas (§12) |
 | DOM in Node | `linkedom` (core tests only) | Lets the core be tested without a browser; not shipped in the extension |
-| Fonts | `geist` (npm) | Self-hosted Geist Sans/Mono woff2; extension CSP forbids remote fonts |
+| Fonts | Geist woff2 vendored into `public/fonts` | The `geist` npm package exports JS, not CSS, and installs Next (198 MB) for two files. Redistributed under the SIL OFL, whose text ships beside them |
 | Unit tests | Vitest + jsdom | The interesting logic is pure and DOM-shaped |
 | E2E | Playwright | Loads the unpacked build, drives a real capture |
 | Lint/format | ESLint + Prettier | CI gate |
@@ -399,8 +399,16 @@ structure, a single blue for the primary action, semantic colors used only for
 state.
 
 **Typography** — Geist Sans for UI, Geist Mono for URLs, file names, sizes, and
-log output. Both self-hosted as woff2 from the `geist` npm package and bundled;
-the extension CSP forbids remote font loading, and a store reviewer will check.
+log output. Both self-hosted as woff2 and bundled; the extension CSP forbids
+remote font loading, and a store reviewer will check.
+
+The two variable woff2 files are vendored into `apps/extension/public/fonts`
+rather than pulled from the `geist` npm package. That package is a Next.js font
+wrapper: it exports JS modules rather than stylesheets, so there is no
+`geist/font/sans.css` to import, and installing it pulls in the whole of Next —
+198 MB — to deliver two font files. Geist is licensed under the SIL Open Font
+License, so redistribution is permitted with the license text, which ships
+alongside the fonts as `public/fonts/OFL-Geist.txt`.
 
 **Shape** — 6 px radius on controls, 8 px on cards. 1 px borders in the
 appropriate gray-alpha. Elevation is a border plus a low-opacity shadow, never a
@@ -431,18 +439,25 @@ Token set, mirroring Geist's published scales:
 | `--gray-1000` | `#171717` | `#ededed` |
 | `--blue-600` (primary) | `#0072f5` | `#0072f5` |
 | `--blue-700` (hover) | `#0761d1` | `#3291ff` |
-| `--red-600` (error) | `#e5484d` | `#ff6166` |
-| `--amber-600` (warning) | `#f5a623` | `#f5b849` |
-| `--green-600` (success) | `#45a557` | `#62c073` |
+| `--red-600` (error) | `#cd2b31` | `#ff6166` |
+| `--amber-600` (warning) | `#ab5600` | `#f5b849` |
+| `--green-600` (success) | `#357a45` | `#62c073` |
+
+The light-theme state colors step darker than their dark-theme counterparts
+because the brighter values fail the AA gate on white: `#e5484d` measures
+3.91:1 against a 4.5:1 body-text floor, and `#f5a623` measures 1.98:1.
 
 Semantic aliases sit on top — `--surface`, `--surface-raised`, `--border`,
 `--text-primary`, `--text-secondary`, `--accent`, `--accent-hover`, and one per
 state — and components consume only those. Swapping the palette then means
 editing one file.
 
-These hexes are checked against the current Geist documentation as the first
-implementation task; where they diverge, the documented value wins and this table
-is updated.
+These hexes **approximate** the Geist scales rather than reproducing them. The
+Geist documentation does not publish machine-readable hex values and the `geist`
+npm package ships fonts only, so no authoritative source was available to check
+against — this was verified, not assumed. Treat the exact numbers as
+replaceable; the contrast gate below is the real guarantee, and it will
+immediately report whether a substituted palette holds.
 
 **Contrast is a gate.** Every text/background pair in both themes must meet WCAG
 AA (4.5:1 body, 3:1 large text and UI boundaries). Verified by a unit test over

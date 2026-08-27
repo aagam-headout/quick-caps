@@ -1,0 +1,28 @@
+{
+  "name": "@page-capture/extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "pnpm run theme && vite build",
+    "theme": "tsx scripts/generate-theme-css.ts",
+    "icons": "tsx scripts/generate-icons.ts"
+  },
+  "dependencies": {
+    "@page-capture/core": "workspace:*",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@crxjs/vite-plugin": "^2.0.0-beta.28",
+    "@tailwindcss/vite": "^4.0.0",
+    "@types/chrome": "^0.0.280",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.3",
+    "tailwindcss": "^4.0.0",
+    "tsx": "^4.19.2",
+    "vite": "^5.4.10"
+  }
+}
