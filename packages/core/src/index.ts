@@ -49,3 +49,4 @@ export {
   type SemanticPair,
   type ThemeTokens,
 } from './theme.js';
+export { fetchAssetBytes, fetchAssetText } from './http.js';

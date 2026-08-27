@@ -1,5 +1,5 @@
 import { runCapture, type CaptureDeps } from '../lib/capture.js';
-import { fetchAssetText } from '../lib/http.js';
+import { fetchAssetText } from '@page-capture/core';
 import { stitchFrames } from './stitch.js';
 import { handleOffscreenRequest, isOffscreenRequest } from './handler.js';
 import type { OffscreenProgress, OffscreenResponse } from '../lib/messages.js';

@@ -1,5 +1,5 @@
 import type { FetchOptions } from '@page-capture/core';
-import { fetchAssetBytes } from '../lib/http.js';
+import { fetchAssetBytes } from '@page-capture/core';
 import type { ResourceFetchResponse } from '../content/serialize.js';
 
 /** base64 without Buffer: service workers have btoa, not Node. */

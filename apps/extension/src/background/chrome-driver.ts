@@ -4,7 +4,7 @@ import type {
   PageDriver,
   Viewport,
 } from '@page-capture/core';
-import { fetchAssetBytes } from '../lib/http.js';
+import { fetchAssetBytes } from '@page-capture/core';
 
 export type StitchRequest = {
   frames: { dataUrl: string; offsetY: number }[];

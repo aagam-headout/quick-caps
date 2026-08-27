@@ -1,10 +1,13 @@
-import type { AssetBytes, FetchOptions } from '@page-capture/core';
+import type { AssetBytes, FetchOptions } from './driver.js';
 
 /**
  * A credentialed-but-cookieless asset fetch with a hard size cap.
  *
- * Shared by the worker's ChromeDriver and the offscreen document so the cap and
- * credential policy live in exactly one place.
+ * Shared by every PageDriver implementation — the extension's ChromeDriver
+ * and offscreen document, the CLI's PlaywrightDriver and StaticDriver — so
+ * the cap and credential policy live in exactly one place. `fetch`,
+ * `AbortController`, and `setTimeout` are web-standard globals available in
+ * both a browser and Node 18+, so this needs no host-specific branch.
  */
 export async function fetchAssetBytes(
   url: string,
@@ -23,8 +26,8 @@ export async function fetchAssetBytes(
     if (!response.ok) {
       throw new Error(`${response.status} ${response.statusText}`.trim());
     }
-    // Refuse on the declared length before downloading: reading the body first
-    // would defeat the purpose of a cap.
+    // Refuse on the declared length before downloading: reading the body
+    // first would defeat the purpose of a cap.
     const declared = response.headers.get('content-length');
     if (declared && Number(declared) > options.maxBytes) {
       throw new Error(`exceeds per-asset cap: declared ${declared} bytes`);
