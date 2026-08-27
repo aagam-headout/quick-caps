@@ -78,7 +78,11 @@ function diffSettings(
       });
     }
   }
-  for (const key of ['output', 'excludeSelector', 'filenameTemplate'] as const) {
+  for (const key of [
+    'output',
+    'excludeSelector',
+    'filenameTemplate',
+  ] as const) {
     if (a[key] !== b[key]) changes.push({ key, a: a[key], b: b[key] });
   }
   return changes;
@@ -88,7 +92,8 @@ export function diffCaptures(a: CaptureSide, b: CaptureSide): CaptureDiff {
   return {
     sameUrl: a.doc.url === b.doc.url,
     byteLengthDelta: b.byteLength - a.byteLength,
-    warningCountDelta: (b.doc.warnings?.length ?? 0) - (a.doc.warnings?.length ?? 0),
+    warningCountDelta:
+      (b.doc.warnings?.length ?? 0) - (a.doc.warnings?.length ?? 0),
     regionCountDelta:
       typeof a.doc.regionCount === 'number' &&
       typeof b.doc.regionCount === 'number'

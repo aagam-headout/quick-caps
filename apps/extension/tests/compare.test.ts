@@ -97,14 +97,20 @@ describe('diffCaptures', () => {
       filename: 'a.html',
       byteLength: 100,
       doc: metadataDoc({
-        settings: { ...defaultSettings, include: { ...defaultSettings.include, screenshot: false } },
+        settings: {
+          ...defaultSettings,
+          include: { ...defaultSettings.include, screenshot: false },
+        },
       }),
     };
     const b = {
       filename: 'b.html',
       byteLength: 100,
       doc: metadataDoc({
-        settings: { ...defaultSettings, include: { ...defaultSettings.include, screenshot: true } },
+        settings: {
+          ...defaultSettings,
+          include: { ...defaultSettings.include, screenshot: true },
+        },
       }),
     };
     const diff = diffCaptures(a, b);

@@ -164,7 +164,9 @@ describe('runCollector', () => {
   });
 
   it('treats an empty or invalid exclude selector as a no-op', async () => {
-    installPage('<html><body><div class="banner">Cookie banner</div></body></html>');
+    installPage(
+      '<html><body><div class="banner">Cookie banner</div></body></html>',
+    );
     const { applyExclusions } = await loadEntry();
     expect(applyExclusions('')).toBeInstanceOf(Function);
     expect(document.querySelector('.banner')).not.toBeNull();

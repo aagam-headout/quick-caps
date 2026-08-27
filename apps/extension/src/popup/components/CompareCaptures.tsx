@@ -55,7 +55,10 @@ function Picker({
         </span>
       ) : null}
       {slot && !isReady(slot) ? (
-        <span role="alert" className="mt-[2px] block text-[10.5px] text-[var(--error)]">
+        <span
+          role="alert"
+          className="mt-[2px] block text-[10.5px] text-[var(--error)]"
+        >
           {slot.error}
         </span>
       ) : null}
