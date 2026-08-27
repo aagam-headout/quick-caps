@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  extractCssUrls,
   inlineDocument,
   resolveImports,
   rewriteCssUrls,
@@ -230,5 +231,47 @@ describe('inlineDocument', () => {
       },
     });
     expect(doc.querySelectorAll('script')).toHaveLength(0);
+  });
+});
+
+describe('extractCssUrls', () => {
+  it('finds quoted and unquoted references and absolutizes them', () => {
+    const urls = extractCssUrls(
+      "@font-face{src:url('/f/a.woff2')}body{background:url(../img/b.png)}",
+      'https://example.com/css/site.css',
+    );
+    expect(urls).toContain('https://example.com/f/a.woff2');
+    expect(urls).toContain('https://example.com/img/b.png');
+  });
+
+  it('skips data uris and deduplicates', () => {
+    const urls = extractCssUrls(
+      'a{background:url(data:image/png;base64,AA)}b{background:url(/x.png)}c{background:url(/x.png)}',
+      'https://example.com/s.css',
+    );
+    expect(urls).toEqual(['https://example.com/x.png']);
+  });
+
+  it('returns nothing for css with no references', () => {
+    expect(extractCssUrls('a{color:red}', 'https://example.com/s.css')).toEqual(
+      [],
+    );
+  });
+});
+
+describe('inlineDocument missing assets in zip mode', () => {
+  it('warns and leaves the original url rather than pointing at a file it never wrote', () => {
+    const doc = fixtureDocument('static');
+    const result = inlineDocument(doc, {
+      ...baseInput,
+      assets: new Map(),
+      assetPath: () => 'images/hero.png',
+    });
+    expect(doc.querySelector('img')!.getAttribute('src')).toBe(
+      'https://example.com/img/hero.png',
+    );
+    expect(
+      result.warnings.some((w) => w.reason === 'asset not available'),
+    ).toBe(true);
   });
 });

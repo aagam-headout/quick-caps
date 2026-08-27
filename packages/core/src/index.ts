@@ -24,6 +24,7 @@ export {
   type FetchedAsset,
 } from './assets.js';
 export {
+  extractCssUrls,
   inlineDocument,
   resolveImports,
   rewriteCssUrls,

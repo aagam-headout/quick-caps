@@ -3,9 +3,12 @@ import {
   buildSingleFile,
   buildTokens,
   buildZip,
+  extractCssUrls,
   fetchAssets,
   inlineDocument,
   type AssetBytes,
+  type AssetKind,
+  type AssetRef,
   type CaptureSettings,
   type FetchOptions,
   type FetchedAsset,
@@ -128,6 +131,59 @@ export async function runCapture(
     if (asset.ref.kind === 'stylesheet') {
       styleTexts.set(url, new TextDecoder().decode(asset.bytes));
     }
+  }
+
+  // Second pass: webfonts and CSS background images are referenced only from
+  // inside stylesheets, so nothing in the DOM points at them and the first pass
+  // never saw them. Without this, every capture silently loses its fonts.
+  const cssReferenced = new Map<string, AssetRef>();
+  const noteCssReference = (url: string, from: string): void => {
+    const kind: AssetKind = /\.(?:woff2?|ttf|otf|eot)(?:[?#]|$)/i.test(url)
+      ? 'font'
+      : 'image';
+    if (kind === 'font' && !settings.include.fonts) return;
+    if (kind === 'image' && !settings.include.images) return;
+    if (fetched.assets.has(url) || cssReferenced.has(url)) return;
+    if (
+      !input.hasHostPermission &&
+      new URL(url).origin !== new URL(ir.metadata.url).origin
+    ) {
+      return;
+    }
+    cssReferenced.set(url, { url, kind, referencedBy: from });
+  };
+
+  for (const [href, css] of styleTexts) {
+    for (const url of extractCssUrls(css, href)) {
+      noteCssReference(url, `css url() in ${href}`);
+    }
+  }
+  for (const style of ir.styles) {
+    if (style.kind !== 'inline') continue;
+    for (const url of extractCssUrls(style.text, ir.metadata.url)) {
+      noteCssReference(url, 'css url() in inline style');
+    }
+  }
+
+  if (cssReferenced.size > 0) {
+    report('fetching-assets', 0, cssReferenced.size);
+    const extra = await fetchAssets(
+      deps.fetchAsset,
+      [...cssReferenced.values()],
+      {
+        limits: {
+          ...settings.limits,
+          // Both passes share one budget.
+          maxTotalBytes: Math.max(
+            0,
+            settings.limits.maxTotalBytes - fetched.totalBytes,
+          ),
+        },
+        onProgress: ({ done, total }) => report('fetching-assets', done, total),
+      },
+    );
+    for (const [url, asset] of extra.assets) fetched.assets.set(url, asset);
+    warnings.push(...extra.warnings);
   }
 
   // Raw network sources: what the server sent, before any JavaScript ran.

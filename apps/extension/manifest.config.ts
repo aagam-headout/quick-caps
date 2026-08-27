@@ -40,8 +40,16 @@ export const manifest = {
     '128': 'icons/icon-128.png',
   },
   content_security_policy: {
+    // No remote code: script-src and style-src stay local, which is what a
+    // store reviewer checks and what keeps the extension safe.
+    //
+    // connect-src must allow arbitrary hosts. Fetching the assets of the page
+    // being captured is the entire product, it happens from the offscreen
+    // document, which is an extension page, and it is already gated by the
+    // optional host permission the user grants. 'self' here silently blocked
+    // every asset fetch.
     extension_pages:
-      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'",
+      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src * data: blob:",
   },
 };
 

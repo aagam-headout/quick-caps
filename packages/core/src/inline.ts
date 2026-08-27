@@ -75,6 +75,26 @@ export function resolveImports(
   );
 }
 
+/**
+ * Absolute urls referenced by url() inside a stylesheet.
+ *
+ * Webfonts and CSS background images exist only here — nothing in the DOM
+ * points at them — so without this pass every capture silently loses them.
+ */
+export function extractCssUrls(css: string, baseUrl: string): string[] {
+  const found = new Set<string>();
+  for (const match of css.matchAll(URL_PATTERN)) {
+    const raw = match[2];
+    if (!raw || raw.startsWith('data:') || raw.startsWith('#')) continue;
+    try {
+      found.add(new URL(raw, baseUrl).href);
+    } catch {
+      /* an unparseable reference is skipped, not fatal */
+    }
+  }
+  return [...found];
+}
+
 function absolutize(raw: string | null, base: string): string | null {
   if (!raw) return null;
   const trimmed = raw.trim();
@@ -102,7 +122,9 @@ export function inlineDocument(
   const baseHref = doc.querySelector('base')?.getAttribute('href') ?? pageUrl;
 
   const referenceFor = (url: string, referencedBy: string): string | null => {
-    if (assetPath) return assetPath(url);
+    // Availability is checked before the mode is considered. Zip mode used to
+    // return a path unconditionally, which wrote references to files that were
+    // never written — a broken archive with no warning to say so.
     const fetched = assets.get(url);
     if (!fetched) {
       warnings.push({
@@ -113,7 +135,9 @@ export function inlineDocument(
       });
       return null;
     }
-    return toDataUri(fetched.bytes, fetched.contentType);
+    return assetPath
+      ? assetPath(url)
+      : toDataUri(fetched.bytes, fetched.contentType);
   };
 
   const rewriteSrcset = (value: string, referencedBy: string): string =>
@@ -123,8 +147,10 @@ export function inlineDocument(
         const parts = candidate.trim().split(/\s+/);
         const url = absolutize(parts[0] ?? '', baseHref);
         if (!url) return candidate.trim();
-        const replacement = referenceFor(url, referencedBy);
-        if (!replacement) return candidate.trim();
+        // Fall back to the absolute url, never the original relative one: a
+        // relative path in a saved file resolves against file:// and is dead,
+        // while an absolute one still loads when the reader is online.
+        const replacement = referenceFor(url, referencedBy) ?? url;
         return [replacement, ...parts.slice(1)].join(' ');
       })
       .join(', ');
@@ -138,8 +164,7 @@ export function inlineDocument(
   for (const img of doc.querySelectorAll('img')) {
     const absolute = absolutize(img.getAttribute('src'), baseHref);
     if (absolute) {
-      const replacement = referenceFor(absolute, 'img[src]');
-      if (replacement) img.setAttribute('src', replacement);
+      img.setAttribute('src', referenceFor(absolute, 'img[src]') ?? absolute);
     }
     const srcset = img.getAttribute('srcset');
     if (srcset)
@@ -215,8 +240,7 @@ export function inlineDocument(
     }
     const src = absolutize(script.getAttribute('src'), baseHref);
     if (src) {
-      const replacement = referenceFor(src, 'script[src]');
-      if (replacement) script.setAttribute('src', replacement);
+      script.setAttribute('src', referenceFor(src, 'script[src]') ?? src);
     }
     if (settings.inertSnapshot) {
       // Archived scripts stay readable but must not execute when the snapshot

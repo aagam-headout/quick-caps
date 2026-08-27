@@ -45,10 +45,23 @@ describe('manifest', () => {
     ]);
   });
 
-  it('sets a CSP with no remote sources', () => {
+  it('forbids remote code but permits asset fetching', () => {
     const csp = manifest.content_security_policy.extension_pages;
     expect(csp).toContain("default-src 'self'");
-    expect(csp).not.toContain('http');
+    // No remote executable code. This is the security-relevant invariant.
+    expect(csp).toContain("script-src 'self'");
+    expect(csp).not.toMatch(/script-src[^;]*https?:/);
+    expect(csp).not.toMatch(/style-src[^;]*https?:/);
+    // Asset fetching must be possible. An earlier version asserted the CSP
+    // contained no 'http' at all, which forced connect-src 'self' and blocked
+    // every asset fetch the product exists to make.
+    expect(csp).toMatch(/connect-src[^;]*\*/);
+  });
+
+  it('does not load remote fonts, which the CSP could not permit anyway', () => {
+    expect(manifest.content_security_policy.extension_pages).toContain(
+      "font-src 'self'",
+    );
   });
 
   it('takes its version from package.json so releases cannot drift', async () => {

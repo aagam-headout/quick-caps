@@ -254,3 +254,103 @@ describe('runCapture', () => {
     expect(serialized).not.toContain('src="https://example.com/a.png"');
   });
 });
+
+describe('runCapture second asset pass', () => {
+  const withFontCss = {
+    ...input,
+    ir: {
+      ...ir,
+      styles: [
+        {
+          kind: 'same-origin' as const,
+          href: 'https://example.com/s/site.css',
+          text: "@font-face{src:url('/f/geist.woff2')}body{background:url(/img/bg.png)}",
+        },
+      ],
+    },
+  };
+
+  it('fetches fonts and background images referenced only from css', async () => {
+    const d = deps();
+    await runCapture(withFontCss, d);
+    const requested = (d.fetchAsset as ReturnType<typeof vi.fn>).mock.calls.map(
+      (call) => call[0] as string,
+    );
+    expect(requested).toContain('https://example.com/f/geist.woff2');
+    expect(requested).toContain('https://example.com/img/bg.png');
+  });
+
+  it('skips css-referenced fonts when fonts are excluded', async () => {
+    const d = deps();
+    await runCapture(
+      {
+        ...withFontCss,
+        settings: {
+          ...defaultSettings,
+          include: { ...defaultSettings.include, fonts: false },
+        },
+      },
+      d,
+    );
+    const requested = (d.fetchAsset as ReturnType<typeof vi.fn>).mock.calls.map(
+      (call) => call[0] as string,
+    );
+    expect(requested).not.toContain('https://example.com/f/geist.woff2');
+  });
+
+  it('does not re-fetch something the first pass already got', async () => {
+    const d = deps();
+    await runCapture(
+      {
+        ...withFontCss,
+        ir: {
+          ...withFontCss.ir,
+          styles: [
+            {
+              kind: 'same-origin' as const,
+              href: 'https://example.com/s/site.css',
+              text: 'body{background:url(/a.png)}',
+            },
+          ],
+          assets: [
+            {
+              url: 'https://example.com/a.png',
+              kind: 'image' as const,
+              referencedBy: 'img[src]',
+            },
+          ],
+        },
+      },
+      d,
+    );
+    const requested = (d.fetchAsset as ReturnType<typeof vi.fn>).mock.calls.map(
+      (call) => call[0] as string,
+    );
+    expect(requested.filter((url) => url.endsWith('/a.png'))).toHaveLength(1);
+  });
+
+  it('skips cross-origin css references without the host grant', async () => {
+    const d = deps();
+    await runCapture(
+      {
+        ...withFontCss,
+        hasHostPermission: false,
+        ir: {
+          ...withFontCss.ir,
+          styles: [
+            {
+              kind: 'same-origin' as const,
+              href: 'https://example.com/s/site.css',
+              text: "@font-face{src:url('https://cdn.other.test/f.woff2')}",
+            },
+          ],
+        },
+      },
+      d,
+    );
+    const requested = (d.fetchAsset as ReturnType<typeof vi.fn>).mock.calls.map(
+      (call) => call[0] as string,
+    );
+    expect(requested).not.toContain('https://cdn.other.test/f.woff2');
+  });
+});
