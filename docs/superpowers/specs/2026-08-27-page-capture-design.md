@@ -49,6 +49,7 @@ a privacy policy, semver releases, and CI-enforced quality gates.
 | Language | TypeScript, `strict` | Extension message passing is error-prone untyped |
 | Popup UI | React 19 | Small, stateful form with async progress |
 | Styling | Tailwind CSS v4 | Design tokens live in one place (see §7) |
+| Serialization | `single-file-core` | The engine behind the SingleFile extension. Replaced a hand-rolled inliner — see §5.1 |
 | Zip | `fflate` | Streaming zip in ~8 kB, runs in both Node and the browser |
 | Schemas | `zod` | One schema drives the popup form, CLI flags, and later MCP tool schemas (§12) |
 | DOM in Node | `linkedom` (core tests only) | Lets the core be tested without a browser; not shipped in the extension |
@@ -291,30 +292,50 @@ page has no cross-origin assets.
 
 ## 5. Capture pipeline
 
-### 5.1 `core/inline.ts`
+### 5.1 Serialization: `single-file-core`
 
-Pure functions over a parsed document plus a fetched-asset map:
+**This section replaced a hand-rolled inliner.** The original design had core
+rewriting the document itself: absolutizing urls, inlining stylesheets and
+assets, resolving `@import`, neutralizing scripts. It was written, tested to 24
+cases, and shipped — and then a capture of one real site produced three separate
+defects at once. It serialized through `XMLSerializer`, so the output was XHTML
+rather than HTML. The document's head came out empty with every `meta` and
+`link` relocated into the body, because another installed extension injects a
+custom element into the live page's head and re-parsing `outerHTML` makes the
+HTML parser close head at that point. And webfonts were absent from every
+capture ever made, because fonts are referenced only from inside stylesheets and
+nothing in the DOM points at them.
 
-- Absolutize every relative URL against the document base, then strip `<base>`
-  so the archive doesn't resolve against a dead origin.
-- Same-origin stylesheet text → `<style>`; fetched cross-origin sheet text →
-  `<style>` with a `data-capture-src` attribute recording its origin.
-- Recursively resolve `@import` (depth-capped at 5 to stop import cycles).
-- Rewrite `url()` references inside CSS to data URIs or, in zip mode, to
-  relative asset paths.
-- Images, fonts, and media → data URI (single-file) or asset file (zip).
-  `srcset` and `<picture>` are rewritten in full, not collapsed to one source.
-- **Inert mode** (default on): every `<script>` gets `type="text/plain"` with a
-  `data-capture-type` attribute preserving the original type, so the code is
-  archived and readable but does not execute when the snapshot is reopened.
-  Inline event handler attributes are moved to `data-capture-on*`. Reopening an
-  archived page should not re-run its analytics or phone home. Users can turn
-  this off.
-- Sanitize the injected wrapper: no capture metadata is written anywhere that
-  page CSS or scripts could style or read as live content.
+Whole-page capture has a long tail — shadow DOM, canvas, `srcset`, `@import`
+chains, deferred images, duplicate images, cross-frame content — and
+`single-file-core` has absorbed years of it. Reinventing that one bug at a time
+was the wrong trade, so the inliner was deleted.
 
-Every transform is a pure function from (document, assets, options) to
-(document, warnings). That is what makes the pipeline testable without a browser.
+**Where it runs.** In the page, because it needs the live DOM. That has one
+consequence worth stating plainly: its own fetches are subject to the page's
+CORS policy and would fail for most cross-origin assets, so every resource
+request is proxied through the service worker, which fetches under the
+extension's host permissions instead. Bytes cross that boundary base64-encoded,
+because a Chrome message is JSON. The proxy serves only the tab currently being
+captured, and honours the configured timeout and size caps.
+
+**Options that matter**, all mirrored from Proto's working configuration:
+
+- `loadDeferredImages: false` — pages built on IntersectionObserver frequently
+  never trigger inside SingleFile's timing window and the serialization hangs.
+  This is what made a real capture time out. The worker performs its own scroll
+  pass before injecting, so lazy content is already materialized.
+- `groupDuplicateImages: true` — a capture of a busy page came to 42 MB without
+  it.
+- `removeScripts` / `blockScripts` follow the inert-snapshot setting: an
+  archived page should not re-run analytics when reopened.
+- `removeFrames: true` — cross-frame walking needs SingleFile's hooks-frames
+  bootstrap, which the npm build does not carry.
+
+**Progress.** SingleFile emits `RESOURCES_INITIALIZED` with a resource count and
+`RESOURCE_LOADED` per asset. Both are relayed from the page through the worker
+to the popup, so a heavy page reports real counts instead of appearing frozen,
+and a timeout can say how far it got rather than only that it gave up.
 
 ### 5.2 `core/bundle.ts`
 
@@ -323,17 +344,20 @@ Two output modes, chosen per capture by a radio in the popup.
 **Zip** — `<host>-<YYYYMMDD-HHmmss>.zip`:
 
 ```text
-page.html          rewritten, assets by relative path
-styles/            one file per stylesheet
-scripts/           one file per script
-images/            deduped by content hash
-fonts/
+page.html          self-contained; assets already inlined by §5.1
 raw/               original network sources (§5.3)
 screenshot.png
 tokens.json
 metadata.json      includes the full warnings list
 logs.json
 ```
+
+There are no asset directories. An earlier design split assets into `styles/`,
+`scripts/`, `images/`, and `fonts/`, which is what a zip is for — but with
+serialization delegated to `single-file-core`, splitting them back out of a
+finished document would mean re-implementing the rewriting that was just removed
+for being unreliable. Zip now means "the page, plus the artifacts a single file
+cannot carry naturally".
 
 **Single file** — `<host>-<YYYYMMDD-HHmmss>.html`: everything inlined. Tokens,
 metadata, logs, and raw sources ride along as inert
@@ -542,7 +566,6 @@ page-capture/
 │       │   ├── driver.ts      PageDriver interface
 │       │   ├── collect.ts     the standalone injectable collector fn
 │       │   ├── regions.ts     region tree, roles, text density
-│       │   ├── inline.ts      URL absolutization, sheet/asset inlining
 │       │   ├── bundle.ts      single-file and zip assembly
 │       │   ├── tokens.ts      styleTally → tokens.json
 │       │   ├── assets.ts      concurrency, timeout, retry, caps
@@ -552,10 +575,10 @@ page-capture/
 │   └── extension/
 │       ├── src/
 │       │   ├── popup/         React UI, Geist-themed
-│       │   ├── background/    ChromeDriver impl + orchestration
-│       │   ├── content/       recorder.ts (document_start)
-│       │   ├── offscreen/     stitch, zip, blob URL
-│       │   ├── lib/           messages.ts — typed port contracts
+│       │   ├── background/    ChromeDriver, orchestration, resource proxy
+│       │   ├── content/       recorder, collector, single-file serializer
+│       │   ├── offscreen/     stitch, bundle, blob URL
+│       │   ├── lib/           messages, capture pipeline, http
 │       │   └── styles/        tokens.css, tailwind entry
 │       ├── e2e/               Playwright specs + fixture pages
 │       ├── public/icons/
