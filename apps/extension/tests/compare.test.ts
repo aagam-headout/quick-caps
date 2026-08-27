@@ -114,7 +114,8 @@ describe('diffCaptures', () => {
   });
 
   it('returns no settings changes when metadata carries no settings (older capture)', () => {
-    const { settings: _settings, ...withoutSettings } = metadataDoc();
+    const { settings, ...withoutSettings } = metadataDoc();
+    void settings;
     const a = { filename: 'a.html', byteLength: 100, doc: withoutSettings };
     const b = { filename: 'b.html', byteLength: 100, doc: metadataDoc() };
     expect(diffCaptures(a, b).settingsChanges).toEqual([]);
