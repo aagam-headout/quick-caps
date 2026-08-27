@@ -61,6 +61,20 @@ function absolutize(
   }
 }
 
+function emptyMetadata(options: CollectOptions): PageMetadata {
+  return {
+    url: options.pageUrl,
+    title: '',
+    capturedAt: (options.now?.() ?? new Date()).toISOString(),
+    viewport: options.viewport,
+    documentSize: options.documentSize,
+    devicePixelRatio: options.devicePixelRatio,
+    userAgent: options.userAgent,
+    charset: 'utf-8',
+    meta: {},
+  };
+}
+
 function srcsetUrls(value: string): string[] {
   return value
     .split(',')
@@ -78,6 +92,27 @@ export function collectFromDocument(
 ): PageIR {
   const warnings: Warning[] = [];
   const { settings, pageUrl } = options;
+
+  // Checked before anything walks the tree: a document with no root element
+  // cannot be queried at all, so this has to fail fast rather than defensively.
+  if (!doc.documentElement) {
+    return {
+      metadata: emptyMetadata(options),
+      html: '',
+      regions: [],
+      styles: [],
+      assets: [],
+      styleTally: emptyTally(),
+      warnings: [
+        {
+          phase: 'collect',
+          reason: 'the document has no root element',
+          detail: 'nothing to capture',
+        },
+      ],
+    };
+  }
+
   const base = doc.querySelector('base')?.getAttribute('href') ?? pageUrl;
 
   const assets = new Map<string, AssetRef>();
@@ -103,7 +138,20 @@ export function collectFromDocument(
   }
 
   if (settings.include.styles) {
-    const pageOrigin = new URL(pageUrl).origin;
+    // A page url that will not parse is not a reason to abandon the capture;
+    // it only means cross-origin cannot be judged, so nothing is treated as
+    // same-origin.
+    let pageOrigin: string | null = null;
+    try {
+      pageOrigin = new URL(pageUrl).origin;
+    } catch {
+      warnings.push({
+        phase: 'collect',
+        url: pageUrl,
+        reason: 'page url could not be parsed',
+        detail: 'stylesheets were treated as cross-origin',
+      });
+    }
     for (const link of doc.querySelectorAll('link[rel~="stylesheet"][href]')) {
       const url = absolutize(
         link.getAttribute('href') ?? '',
@@ -112,7 +160,7 @@ export function collectFromDocument(
         'link[rel=stylesheet]',
       );
       if (!url) continue;
-      if (new URL(url).origin === pageOrigin) {
+      if (pageOrigin !== null && new URL(url).origin === pageOrigin) {
         addAsset(url, 'stylesheet', 'link[rel=stylesheet]');
       } else {
         styles.push({ kind: 'cross-origin', href: url });

@@ -6,6 +6,7 @@ import { App } from '../src/popup/App.js';
 type Listener = (message: unknown) => void;
 
 let listeners: Listener[];
+let disconnectListeners: (() => void)[];
 let posted: unknown[];
 let sync: Record<string, unknown>;
 let local: Record<string, unknown>;
@@ -14,6 +15,7 @@ let request: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   listeners = [];
+  disconnectListeners = [];
   posted = [];
   sync = {};
   local = { history: [] };
@@ -26,6 +28,11 @@ beforeEach(() => {
         postMessage: (message: unknown) => posted.push(message),
         disconnect: vi.fn(),
         onMessage: { addListener: (fn: Listener) => listeners.push(fn) },
+        // Part of the real Port API: the popup listens for the worker going
+        // away so it cannot sit on "Capturing…" forever.
+        onDisconnect: {
+          addListener: (fn: () => void) => disconnectListeners.push(fn),
+        },
       }),
     },
     tabs: {
@@ -214,6 +221,29 @@ describe('popup', () => {
     await waitFor(() => {
       expect(button.hasAttribute('disabled')).toBe(false);
     });
+  });
+
+  it('surfaces an interruption when the worker disconnects mid-capture', async () => {
+    render(<App />);
+    await clickCapture();
+    for (const listener of disconnectListeners) listener();
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      'interrupted',
+    );
+    await waitFor(() => {
+      expect(
+        screen
+          .getByRole('button', { name: /capture page/i })
+          .hasAttribute('disabled'),
+      ).toBe(false);
+    });
+  });
+
+  it('stays quiet when the port disconnects with no capture running', async () => {
+    render(<App />);
+    await screen.findByRole('button', { name: /capture page/i });
+    for (const listener of disconnectListeners) listener();
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 
   it('says so when there are no recent captures', async () => {

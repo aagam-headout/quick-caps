@@ -213,3 +213,36 @@ describe('runCapture', () => {
     );
   });
 });
+
+describe('runCapture empty input', () => {
+  it('refuses an empty serialized page rather than writing a zero-byte file', async () => {
+    await expect(runCapture({ ...input, html: '' }, deps())).rejects.toThrow(
+      'nothing was captured',
+    );
+  });
+
+  it('refuses whitespace-only html', async () => {
+    await expect(
+      runCapture({ ...input, html: '   \n  ' }, deps()),
+    ).rejects.toThrow('nothing was captured');
+  });
+
+  it('does not mint an object url for an empty page', async () => {
+    const d = deps();
+    await runCapture({ ...input, html: '' }, d).catch(() => undefined);
+    expect(d.createObjectUrl).not.toHaveBeenCalled();
+  });
+
+  it('still captures a page with no assets at all', async () => {
+    const result = await runCapture(
+      {
+        ...input,
+        ir: { ...ir, assets: [], styles: [], regions: [] },
+        html: '<!doctype html><html><body>bare</body></html>',
+      },
+      deps(),
+    );
+    expect(result.byteLength).toBeGreaterThan(0);
+    expect(result.warnings).toEqual([]);
+  });
+});

@@ -19,7 +19,16 @@ export type ChromeDriverDeps = {
   stitch?: (request: StitchRequest) => Promise<Uint8Array>;
   /** Chrome throttles captureVisibleTab to 2/second; 550ms stays under it. */
   frameDelayMs?: number;
+  /**
+   * Ceiling on stitched frames. A tall page would otherwise spend minutes
+   * scrolling and hold every frame as a data url: 125 frames of a long article
+   * is roughly 60 MB before the canvas even sees them.
+   */
+  maxFrames?: number;
 };
+
+/** Fallback step when the page reports a zero-height viewport. */
+const MIN_STEP_PX = 200;
 
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
@@ -82,15 +91,22 @@ export class ChromeDriver implements PageDriver {
    */
   async captureFrames(): Promise<StitchRequest> {
     const delay = this.deps.frameDelayMs ?? 550;
+    const maxFrames = this.deps.maxFrames ?? 40;
     const view = await this.viewport();
     const origin = { x: view.scrollX, y: view.scrollY };
     const frames: StitchRequest['frames'] = [];
 
+    // A zero viewport height would make the loop below never advance, pinning
+    // the worker forever. Guaranteeing forward progress matters more than the
+    // step being exactly right.
+    const step = view.height > 0 ? view.height : MIN_STEP_PX;
+    const height = Math.max(view.documentHeight, step);
+
     try {
       for (
         let offsetY = 0;
-        offsetY < view.documentHeight;
-        offsetY += view.height
+        offsetY < height && frames.length < maxFrames;
+        offsetY += step
       ) {
         await this.scrollTo(0, offsetY);
         if (delay > 0) await sleep(delay);
@@ -107,7 +123,9 @@ export class ChromeDriver implements PageDriver {
     return {
       frames,
       width: view.documentWidth,
-      height: view.documentHeight,
+      // Report the height actually covered, so the canvas is not sized for
+      // content that was never captured once the frame cap applied.
+      height: Math.min(height, frames.length * step),
       devicePixelRatio: view.devicePixelRatio,
     };
   }

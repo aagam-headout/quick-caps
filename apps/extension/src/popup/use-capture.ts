@@ -67,35 +67,76 @@ async function requestHostAccess(pageUrl: string): Promise<HostAccess> {
   }
 }
 
+/**
+ * How long the popup waits with no word at all from the worker before giving
+ * up. Generous, because serializing a heavy page legitimately takes a while —
+ * every progress message resets it.
+ */
+const SILENCE_TIMEOUT_MS = 180_000;
+
 export function useCapture() {
   const port = useRef<chrome.runtime.Port | null>(null);
+  const watchdog = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [progress, setProgress] = useState<CaptureProgress | null>(null);
   const [result, setResult] = useState<CaptureResultView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
 
+  const stop = useCallback((reason?: string) => {
+    if (watchdog.current) clearTimeout(watchdog.current);
+    watchdog.current = null;
+    setRunning(false);
+    if (reason) setError(reason);
+  }, []);
+
+  const armWatchdog = useCallback(() => {
+    if (watchdog.current) clearTimeout(watchdog.current);
+    watchdog.current = setTimeout(() => {
+      // Without this the button reads "Capturing…" forever if the worker dies
+      // between messages.
+      stop('The capture stopped responding. Reload the page and try again.');
+    }, SILENCE_TIMEOUT_MS);
+  }, [stop]);
+
   useEffect(() => {
     const connection = chrome.runtime.connect({ name: CAPTURE_PORT });
     port.current = connection;
     connection.onMessage.addListener((message: WorkerToPopup) => {
-      if (message.type === 'capture:progress') setProgress(message.progress);
+      if (message.type === 'capture:progress') {
+        setProgress(message.progress);
+        armWatchdog();
+      }
       if (message.type === 'capture:done') {
         setResult(message);
-        setRunning(false);
+        stop();
       }
       if (message.type === 'capture:failed') {
-        setError(message.reason);
-        setRunning(false);
+        stop(message.reason);
       }
     });
-    return () => connection.disconnect();
-  }, []);
+    connection.onDisconnect.addListener(() => {
+      port.current = null;
+      // A disconnect mid-capture means the worker was torn down.
+      setRunning((wasRunning) => {
+        if (wasRunning) {
+          setError('The capture was interrupted. Try again.');
+        }
+        return false;
+      });
+      if (watchdog.current) clearTimeout(watchdog.current);
+    });
+    return () => {
+      if (watchdog.current) clearTimeout(watchdog.current);
+      connection.disconnect();
+    };
+  }, [armWatchdog, stop]);
 
   const start = useCallback(async () => {
     setError(null);
     setResult(null);
     setProgress(null);
     setRunning(true);
+    armWatchdog();
 
     const [tab] = await chrome.tabs.query({
       active: true,
@@ -108,13 +149,23 @@ export function useCapture() {
     }
 
     const access = await requestHostAccess(tab.url ?? '');
-    port.current?.postMessage({
-      type: 'capture:start',
-      tabId: tab.id,
-      hasHostPermission: access.all,
-      hasPageAccess: access.page,
-    });
-  }, []);
+    const connection = port.current;
+    if (!connection) {
+      stop('Lost the connection to the extension. Reopen the popup.');
+      return;
+    }
+    try {
+      connection.postMessage({
+        type: 'capture:start',
+        tabId: tab.id,
+        hasHostPermission: access.all,
+        hasPageAccess: access.page,
+      });
+      armWatchdog();
+    } catch {
+      stop('Could not reach the extension worker. Try again.');
+    }
+  }, [armWatchdog, stop]);
 
   return { start, progress, result, error, running };
 }

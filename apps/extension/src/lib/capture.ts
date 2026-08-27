@@ -54,6 +54,12 @@ export async function runCapture(
 ): Promise<CaptureResult> {
   const { ir, settings } = input;
   const warnings: Warning[] = [...ir.warnings];
+
+  // An empty document would bundle happily into a zero-byte page that looks
+  // like a successful capture. Refusing is the honest outcome.
+  if (input.html.trim().length === 0) {
+    throw new Error('the serialized page was empty - nothing was captured');
+  }
   const report = (
     phase: CaptureProgress['phase'],
     done = 0,

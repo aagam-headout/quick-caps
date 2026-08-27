@@ -24,6 +24,16 @@ const SETTINGS_KEY_STORAGE = 'settings';
 const HISTORY_KEY = 'history';
 const HISTORY_LIMIT = 50;
 
+/**
+ * The capture in flight, if any.
+ *
+ * Two captures cannot overlap: they share one offscreen document, so whichever
+ * finished first would tear it down underneath the other. It also scopes the
+ * resource proxy — without it the worker would fetch any url any content script
+ * asked for, for as long as the extension was installed.
+ */
+let activeCapture: { tabId: number; settings: CaptureSettings } | null = null;
+
 async function loadSettings(): Promise<CaptureSettings> {
   const stored = await chrome.storage.sync.get(SETTINGS_KEY_STORAGE);
   try {
@@ -42,11 +52,13 @@ async function recordHistory(entry: {
   at: number;
 }): Promise<void> {
   const stored = await chrome.storage.local.get(HISTORY_KEY);
-  const history = [
-    entry,
-    ...((stored[HISTORY_KEY] as unknown[] | undefined) ?? []),
-  ].slice(0, HISTORY_LIMIT);
-  await chrome.storage.local.set({ [HISTORY_KEY]: history });
+  const existing = stored[HISTORY_KEY];
+  // Anything but an array is corrupt; spreading it would throw and lose the
+  // capture the user just made over a bookkeeping detail.
+  const previous = Array.isArray(existing) ? (existing as unknown[]) : [];
+  await chrome.storage.local.set({
+    [HISTORY_KEY]: [entry, ...previous].slice(0, HISTORY_LIMIT),
+  });
 }
 
 /**
@@ -89,13 +101,24 @@ async function collect(
   });
 
   const deadline = Date.now() + timeoutMs;
+  // The injected script parks its status synchronously, but a navigation or a
+  // slow frame can mean the first read lands before it ran. Missing once is not
+  // a failure; missing repeatedly is.
+  let missedReads = 0;
   for (;;) {
     const outcome = await readGlobal<CollectorOutcome>(IR_KEY);
     if (outcome?.status === 'done') {
+      if (!outcome.html) {
+        throw new Error('the page produced an empty capture');
+      }
       return { ir: outcome.ir, html: outcome.html };
     }
     if (outcome?.status === 'failed') throw new Error(outcome.error);
-    if (!outcome) throw new Error('the page did not start a capture');
+    if (!outcome && ++missedReads > 8) {
+      throw new Error(
+        'the page did not start a capture - it may have navigated away',
+      );
+    }
     if (Date.now() > deadline) {
       throw new Error('the page did not finish capturing in time');
     }
@@ -104,15 +127,19 @@ async function collect(
 }
 
 /** Materializes lazy content, then restores the user's scroll position. */
-async function scrollToLoadLazyContent(driver: ChromeDriver): Promise<void> {
+async function scrollToLoadLazyContent(
+  driver: ChromeDriver,
+  maxSteps = 40,
+): Promise<void> {
   const view = await driver.viewport();
   const origin = { x: view.scrollX, y: view.scrollY };
+  // A zero viewport height would make this loop never advance; a very tall or
+  // infinite-scrolling page would make it run for minutes. Both are bounded.
+  const step = view.height > 0 ? view.height : 200;
   try {
-    for (
-      let offsetY = 0;
-      offsetY < view.documentHeight;
-      offsetY += view.height
-    ) {
+    for (let index = 0; index < maxSteps; index++) {
+      const offsetY = index * step;
+      if (offsetY >= view.documentHeight) break;
       await driver.scrollTo(0, offsetY);
       await new Promise((resolve) => setTimeout(resolve, 120));
     }
@@ -126,13 +153,30 @@ async function scrollToLoadLazyContent(driver: ChromeDriver): Promise<void> {
  * in the page and is bound by its CORS policy; the worker fetches under the
  * extension's host permissions instead.
  */
-chrome.runtime.onMessage.addListener((message: unknown, _sender, respond) => {
-  const request = message as { type?: string; url?: string };
+chrome.runtime.onMessage.addListener((message: unknown, sender, respond) => {
+  const request = message as { type?: string; url?: string } | null;
   if (request?.type !== FETCH_RESOURCE || !request.url) return undefined;
+
+  const capture = activeCapture;
+  if (!capture || sender.tab?.id !== capture.tabId) {
+    respond({ ok: false, error: 'no capture is running for this tab' });
+    return true;
+  }
+
   void fetchResourceForPage(request.url, {
-    timeoutMs: 20_000,
-    maxBytes: 25 * 1024 * 1024,
-  }).then(respond);
+    timeoutMs: capture.settings.limits.assetTimeoutMs,
+    maxBytes: capture.settings.limits.maxAssetBytes,
+  }).then(respond, (error: unknown) => {
+    // respond throws if the page navigated away and closed the channel.
+    try {
+      respond({
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    } catch {
+      /* nothing left to answer */
+    }
+  });
   return true; // keep the channel open for the async respond
 });
 
@@ -179,6 +223,15 @@ chrome.runtime.onConnect.addListener((port) => {
   port.onMessage.addListener((message: PopupToWorker) => {
     if (message.type !== 'capture:start') return;
 
+    if (activeCapture) {
+      post({
+        type: 'capture:failed',
+        reason: 'A capture is already running. Wait for it to finish.',
+        recoverable: true,
+      });
+      return;
+    }
+
     void (async () => {
       const startedAt = Date.now();
       try {
@@ -196,6 +249,9 @@ chrome.runtime.onConnect.addListener((port) => {
         }
 
         const settings = await loadSettings();
+        // Published before any injection: the resource proxy will not serve a
+        // page that is not the one being captured.
+        activeCapture = { tabId: message.tabId, settings };
         const driver = new ChromeDriver(message.tabId);
 
         await session.save({
@@ -294,6 +350,7 @@ chrome.runtime.onConnect.addListener((port) => {
           : raw;
         post({ type: 'capture:failed', reason, recoverable: true });
       } finally {
+        activeCapture = null;
         await session.clear();
         await offscreen.close();
       }

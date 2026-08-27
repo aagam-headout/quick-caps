@@ -233,3 +233,47 @@ describe('ChromeDriver.screenshotFullPage', () => {
     );
   });
 });
+
+describe('ChromeDriver.captureFrames guards', () => {
+  it('terminates when the page reports a zero-height viewport', async () => {
+    // Without a minimum step this loop never advances and pins the worker.
+    stubViewport(chromeMock, { height: 0, documentHeight: 1000 });
+    chromeMock.tabs.captureVisibleTab.mockResolvedValue(
+      'data:image/png;base64,A',
+    );
+
+    const request = await new ChromeDriver(7, {
+      frameDelayMs: 0,
+    }).captureFrames();
+
+    expect(request.frames.length).toBeGreaterThan(0);
+    expect(request.frames.length).toBeLessThanOrEqual(40);
+  });
+
+  it('captures at least one frame when the document is shorter than the viewport', async () => {
+    stubViewport(chromeMock, { height: 800, documentHeight: 200 });
+    chromeMock.tabs.captureVisibleTab.mockResolvedValue(
+      'data:image/png;base64,A',
+    );
+    const request = await new ChromeDriver(7, {
+      frameDelayMs: 0,
+    }).captureFrames();
+    expect(request.frames).toHaveLength(1);
+  });
+
+  it('stops at the frame cap on a very tall page', async () => {
+    stubViewport(chromeMock, { height: 800, documentHeight: 400_000 });
+    chromeMock.tabs.captureVisibleTab.mockResolvedValue(
+      'data:image/png;base64,A',
+    );
+
+    const request = await new ChromeDriver(7, {
+      frameDelayMs: 0,
+      maxFrames: 5,
+    }).captureFrames();
+
+    expect(request.frames).toHaveLength(5);
+    // The canvas must be sized to what was captured, not to the whole page.
+    expect(request.height).toBe(4000);
+  });
+});

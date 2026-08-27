@@ -133,3 +133,40 @@ describe('collectFromDocument style tally', () => {
     expect(ir.styleTally.fontSize['16px']).toBeGreaterThan(0);
   });
 });
+
+describe('collectFromDocument defensive paths', () => {
+  it('warns rather than throwing when the page url will not parse', () => {
+    const ir = collectFromDocument(fixtureDocument('static'), {
+      ...options,
+      pageUrl: 'not a url',
+    });
+    expect(
+      ir.warnings.some((w) => w.reason === 'page url could not be parsed'),
+    ).toBe(true);
+    // Nothing can be judged same-origin, so no stylesheet is queued for fetch.
+    expect(ir.assets.some((a) => a.kind === 'stylesheet')).toBe(false);
+  });
+
+  it('still returns metadata when the page url will not parse', () => {
+    const ir = collectFromDocument(fixtureDocument('static'), {
+      ...options,
+      pageUrl: 'not a url',
+    });
+    expect(ir.metadata.title).toBe('Static Fixture');
+  });
+
+  it('warns rather than throwing on a document with no root element', () => {
+    const doc = fixtureDocument('static');
+    Object.defineProperty(doc, 'documentElement', {
+      configurable: true,
+      value: null,
+    });
+    const ir = collectFromDocument(doc, options);
+    expect(ir.html).toBe('');
+    expect(ir.assets).toEqual([]);
+    expect(ir.regions).toEqual([]);
+    expect(
+      ir.warnings.some((w) => w.reason === 'the document has no root element'),
+    ).toBe(true);
+  });
+});

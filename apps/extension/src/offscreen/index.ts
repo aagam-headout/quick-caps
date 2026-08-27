@@ -92,6 +92,15 @@ async function handle(message: OffscreenRequest): Promise<OffscreenResponse> {
       URL.revokeObjectURL(message.url);
       objectUrls.delete(message.url);
       return { ok: true, type: 'revoked' };
+    default:
+      // Unreachable while the union is exhaustive, but a future message type
+      // must not resolve to undefined and be dereferenced by the client.
+      return {
+        ok: false,
+        error: `unknown offscreen request: ${String(
+          (message as { type?: unknown }).type,
+        )}`,
+      };
   }
 }
 
@@ -101,12 +110,25 @@ chrome.runtime.onMessage.addListener(
     _sender,
     respond: (response: OffscreenResponse) => void,
   ) => {
-    if (!message.type?.startsWith('offscreen:')) return undefined;
+    // A non-object message would throw on property access here, taking the
+    // whole listener - and every other message - with it.
+    if (
+      typeof message !== 'object' ||
+      message === null ||
+      typeof message.type !== 'string' ||
+      !message.type.startsWith('offscreen:')
+    ) {
+      return undefined;
+    }
     void handle(message).then(respond, (error: unknown) => {
-      respond({
-        ok: false,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      try {
+        respond({
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      } catch {
+        /* the worker closed the channel; nothing left to answer */
+      }
     });
     return true; // keep the channel open for the async respond
   },
