@@ -32,8 +32,106 @@
   --font-mono: 'Geist Mono', ui-monospace, monospace;
 }
 
+html {
+  color-scheme: light dark;
+}
+
 body {
   background: var(--surface);
   color: var(--text-primary);
   font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Every focus ring in the app, in one place. */
+:where(input, button, summary, a):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-control);
+}
+
+@keyframes pc-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes pc-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes pc-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Results and errors arrive rather than appearing. */
+.pc-enter {
+  animation: pc-enter var(--duration-base) var(--ease-out) both;
+}
+
+/* An indeterminate phase still needs to look alive. */
+.pc-sweep::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--accent) 55%, transparent),
+    transparent
+  );
+  animation: pc-sweep 1.1s linear infinite;
+}
+
+.pc-spin {
+  animation: pc-spin 700ms linear infinite;
+}
+
+/*
+ * Collapse animation without measuring anything in JS: a details element whose
+ * content grid animates from 0fr to 1fr.
+ */
+.pc-collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--duration-base) var(--ease-out);
+}
+
+details[open] > .pc-collapse {
+  grid-template-rows: 1fr;
+}
+
+.pc-collapse > * {
+  overflow: hidden;
+}
+
+.pc-chevron {
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+details[open] .pc-chevron {
+  transform: rotate(90deg);
+}
+
+/* Motion is decoration here; never let it get in someone's way. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

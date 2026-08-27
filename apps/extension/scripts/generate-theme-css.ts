@@ -16,6 +16,18 @@ const ALIASES = `:root {
   --success: var(--green-600);
   --radius-control: 6px;
   --radius-card: 8px;
+
+  /* Spacing rhythm. One scale, so nothing is eyeballed. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+
+  /* Motion. Short and eased-out: this is a tool, not a showreel. */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --duration-fast: 120ms;
+  --duration-base: 180ms;
 }
 `;
 

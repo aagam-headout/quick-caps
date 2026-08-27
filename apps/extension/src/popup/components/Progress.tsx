@@ -18,11 +18,13 @@ export function Progress({ progress }: { progress: CaptureProgress }) {
       ? Math.round((progress.done / progress.total) * 100)
       : null;
   return (
-    <div aria-live="polite">
-      <div className="flex justify-between text-[12px] text-[var(--text-secondary)]">
-        <span>{LABELS[progress.phase]}</span>
+    <div aria-live="polite" className="pc-enter">
+      <div className="flex items-baseline justify-between text-[11.5px]">
+        <span className="text-[var(--text-primary)]">
+          {LABELS[progress.phase]}
+        </span>
         {percent === null ? null : (
-          <span className="font-mono">
+          <span className="font-mono text-[var(--text-secondary)]">
             {progress.done}/{progress.total}
           </span>
         )}
@@ -33,12 +35,17 @@ export function Progress({ progress }: { progress: CaptureProgress }) {
         aria-valuemin={0}
         aria-valuemax={100}
         aria-label={LABELS[progress.phase]}
-        className="mt-1 h-[3px] w-full overflow-hidden rounded-full bg-[var(--surface-raised)]"
+        className="relative mt-[6px] h-[3px] w-full overflow-hidden rounded-full bg-[var(--surface-raised)]"
       >
-        <div
-          className="h-full bg-[var(--accent)] transition-[width] duration-200"
-          style={{ width: `${percent ?? 40}%` }}
-        />
+        {percent === null ? (
+          // No total to count against yet, so sweep instead of faking a number.
+          <div className="pc-sweep absolute inset-0" />
+        ) : (
+          <div
+            className="h-full rounded-full bg-[var(--accent)] transition-[width] duration-300 ease-[var(--ease-out)]"
+            style={{ width: `${percent}%` }}
+          />
+        )}
       </div>
     </div>
   );

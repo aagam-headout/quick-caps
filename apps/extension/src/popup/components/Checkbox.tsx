@@ -6,30 +6,54 @@ type Props = {
   onChange: (checked: boolean) => void;
 };
 
+/**
+ * The native input stays in the tree and keeps its own focus ring and keyboard
+ * behaviour; only the box is drawn. Wrapping the whole row in the label gives a
+ * comfortable hit target instead of a 14px square.
+ */
 export function Checkbox({ id, label, hint, checked, onChange }: Props) {
   return (
-    <div className="flex items-start gap-2 py-[3px]">
-      <input
-        id={id}
-        type="checkbox"
-        checked={checked}
-        onChange={(event) => onChange(event.target.checked)}
-        aria-describedby={hint ? `${id}-hint` : undefined}
-        className="mt-[2px] h-[14px] w-[14px] shrink-0 rounded-[3px] border border-[var(--border)] accent-[var(--accent)]"
-      />
-      <div className="leading-tight">
-        <label htmlFor={id} className="text-[13px] text-[var(--text-primary)]">
+    <label
+      htmlFor={id}
+      className="group flex cursor-pointer items-start gap-2 rounded-[var(--radius-control)] px-[6px] py-[5px] transition-colors duration-[var(--duration-fast)] hover:bg-[var(--surface-raised)]"
+    >
+      <span className="relative mt-[1px] flex h-[15px] w-[15px] shrink-0 items-center justify-center">
+        <input
+          id={id}
+          type="checkbox"
+          checked={checked}
+          onChange={(event) => onChange(event.target.checked)}
+          aria-describedby={hint ? `${id}-hint` : undefined}
+          className="peer h-[15px] w-[15px] cursor-pointer appearance-none rounded-[4px] border border-[var(--border)] bg-[var(--surface)] transition-all duration-[var(--duration-fast)] checked:border-[var(--accent)] checked:bg-[var(--accent)] group-hover:border-[var(--gray-500)] checked:group-hover:border-[var(--accent)]"
+        />
+        <svg
+          viewBox="0 0 12 12"
+          aria-hidden="true"
+          className="pointer-events-none absolute h-[10px] w-[10px] scale-50 text-white opacity-0 transition-all duration-[var(--duration-fast)] peer-checked:scale-100 peer-checked:opacity-100"
+        >
+          <path
+            d="M2 6.2 4.6 8.8 10 3.4"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </span>
+      <span className="min-w-0 leading-[1.35]">
+        <span className="block text-[12.5px] text-[var(--text-primary)]">
           {label}
-        </label>
+        </span>
         {hint ? (
-          <p
+          <span
             id={`${id}-hint`}
-            className="text-[11px] text-[var(--text-secondary)]"
+            className="block text-[11px] text-[var(--text-secondary)]"
           >
             {hint}
-          </p>
+          </span>
         ) : null}
-      </div>
-    </div>
+      </span>
+    </label>
   );
 }
