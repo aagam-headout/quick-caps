@@ -45,6 +45,24 @@ function ownTextLength(el: Element): number {
   return total;
 }
 
+const SNIPPET_CAP = 200;
+
+/**
+ * Own text only (direct text-node children), not descendant text — a
+ * parent's snippet must not duplicate a child region's. Trimmed, collapsed
+ * to single spaces, capped so a snippet never dominates the render budget.
+ */
+function ownTextSnippet(el: Element): string {
+  let text = '';
+  for (const node of el.childNodes) {
+    if (node.nodeType === 3) text += `${node.textContent ?? ''} `;
+  }
+  text = text.trim().replace(/\s+/g, ' ');
+  return text.length > SNIPPET_CAP
+    ? `${text.slice(0, SNIPPET_CAP - 1)}…`
+    : text;
+}
+
 function boxOf(el: Element): Region['box'] {
   const rect = el.getBoundingClientRect();
   return {
@@ -70,8 +88,9 @@ function labelFor(el: Element): string {
  * lose the landmark that makes the tree navigable.
  */
 export function buildRegions(doc: Document, options: RegionOptions): Region[] {
-  let nextRegionId = 1;
-  let nextActionId = 1;
+  // One shared counter: a region id and an action id must never collide,
+  // since Phase B hands both out as numbered handles in the same flat space.
+  let nextId = 1;
 
   const roleOf = (el: Element, tag: string): string | undefined =>
     el.getAttribute('role') ?? ROLE_BY_TAG[tag];
@@ -82,20 +101,20 @@ export function buildRegions(doc: Document, options: RegionOptions): Region[] {
       const tag = node.tagName.toLowerCase();
       if (tag === 'a' && node.hasAttribute('href')) {
         actions.push({
-          id: nextActionId++,
+          id: nextId++,
           type: 'link',
           label: labelFor(node),
           href: node.getAttribute('href') ?? '',
         });
       } else if (tag === 'button') {
         actions.push({
-          id: nextActionId++,
+          id: nextId++,
           type: 'button',
           label: labelFor(node),
         });
       } else if (tag === 'input' || tag === 'select' || tag === 'textarea') {
         actions.push({
-          id: nextActionId++,
+          id: nextId++,
           type: 'input',
           label: node.getAttribute('name') ?? labelFor(node),
         });
@@ -122,7 +141,7 @@ export function buildRegions(doc: Document, options: RegionOptions): Region[] {
     // Ids are claimed before recursing, so a flattened walk reads in document
     // order. Region 1 is the first thing on the page, which is what makes a
     // numbered handle meaningful to anyone reading the tree.
-    const id = nextRegionId++;
+    const id = nextId++;
     const children: Region[] = [];
     for (const child of el.children) children.push(...build(child, depth + 1));
 
@@ -137,6 +156,7 @@ export function buildRegions(doc: Document, options: RegionOptions): Region[] {
         tag,
         box,
         textLength,
+        snippet: ownTextSnippet(el),
         textDensity:
           area > 0 ? Number(((textLength * 1000) / area).toFixed(3)) : 0,
         actions: actionsIn(el),

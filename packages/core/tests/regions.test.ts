@@ -114,4 +114,22 @@ describe('buildRegions', () => {
     expect(tags).not.toContain('style');
     expect(tags).not.toContain('head');
   });
+
+  it('captures own text as a snippet, not descendant text', () => {
+    const regions = flatten(buildRegions(fixtureDocument('static'), options));
+    const paragraph = regions.find((r) => r.tag === 'p')!;
+    expect(paragraph.snippet).toBe(
+      'First paragraph of body text used for density scoring.',
+    );
+    const article = regions.find((r) => r.tag === 'article')!;
+    expect(article.snippet).toBe('');
+  });
+
+  it('assigns region and action ids from one shared, collision-free space', () => {
+    const regions = flatten(buildRegions(fixtureDocument('static'), options));
+    const regionIds = regions.map((r) => r.id);
+    const actionIds = regions.flatMap((r) => r.actions.map((a) => a.id));
+    const all = [...regionIds, ...actionIds];
+    expect(new Set(all).size).toBe(all.length);
+  });
 });

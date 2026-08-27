@@ -86,6 +86,8 @@ export type Region = {
   tag: string;
   box: { x: number; y: number; w: number; h: number };
   textLength: number;
+  /** Own text only (not descendants'), trimmed, capped at 200 chars. */
+  snippet: string;
   /** Text length per 1000 square pixels of area. Zero when area is zero. */
   textDensity: number;
   actions: ActionRef[];
