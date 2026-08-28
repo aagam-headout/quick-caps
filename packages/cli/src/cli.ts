@@ -7,6 +7,7 @@ import { runLayout } from './commands/layout.js';
 import { runTokens } from './commands/tokens.js';
 import { runScrape } from './commands/scrape.js';
 import { runCapture, type CaptureArgs } from './commands/capture.js';
+import { startMcpServer } from './mcp/server.js';
 import { CliError } from './errors.js';
 
 /**
@@ -64,9 +65,12 @@ export async function dispatch(
       }
       return runCapture(args, cwd);
     }
+    case 'mcp':
+      await startMcpServer();
+      return '';
     default:
       throw new Error(
-        `Unknown command: ${command ?? '(none)'}. Expected one of: open, do, read, find, next, layout, tokens, scrape, capture.`,
+        `Unknown command: ${command ?? '(none)'}. Expected one of: open, do, read, find, next, layout, tokens, scrape, capture, mcp.`,
       );
   }
 }

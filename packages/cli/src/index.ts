@@ -20,3 +20,5 @@ export { runCapture, type CaptureArgs } from './commands/capture.js';
 export { interact, type InteractAction } from './interact.js';
 export { ensurePlaywrightSession } from './ensure-playwright.js';
 export { collectViaPlaywrightFor } from './open.js';
+export { buildMcpServer, startMcpServer } from './mcp/server.js';
+export { resolveArtifactRoot, resolveRetentionMs, sweepArtifactRoot } from './mcp/artifacts.js';
