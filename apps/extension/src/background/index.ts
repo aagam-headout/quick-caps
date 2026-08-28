@@ -344,7 +344,7 @@ const CONTEXT_MENU_ID = 'quickcaps-capture';
 function notify(title: string, message: string): void {
   void chrome.notifications.create({
     type: 'basic',
-    iconUrl: chrome.runtime.getURL('icons/icon-128.png'),
+    iconUrl: chrome.runtime.getURL('icons/icon-192.png'),
     title,
     message,
   });

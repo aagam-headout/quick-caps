@@ -82,7 +82,7 @@ transmitted.
 
 ## Assets
 
-- Icons: `apps/extension/public/icons/icon-{16,32,48,128}.png` (shipped in the extension)
+- Icons: `apps/extension/public/icons/icon-{16,32,48,96,128,192}.png` (shipped in the extension)
 - Larger masters (not shipped, for the store listing / future high-DPI use): `docs/store/icon-{256,512}.png`
 - Promo tile (1280×800): `docs/store/promo-tile.png`
 - Screenshot: `docs/store/screenshot-popup.png`

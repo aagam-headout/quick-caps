@@ -49,12 +49,14 @@ describe('manifest', () => {
     expect(script.matches).toEqual(['<all_urls>']);
   });
 
-  it('declares all four icon sizes', () => {
+  it('declares all six icon sizes', () => {
     expect(Object.keys(manifest.icons).sort()).toEqual([
       '128',
       '16',
+      '192',
       '32',
       '48',
+      '96',
     ]);
   });
 

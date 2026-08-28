@@ -26,6 +26,7 @@ beforeEach(() => {
 
   (globalThis as unknown as { chrome: unknown }).chrome = {
     runtime: {
+      getURL: (path: string) => `chrome-extension://test/${path}`,
       connect: () => ({
         postMessage: (message: unknown) => posted.push(message),
         disconnect: vi.fn(),

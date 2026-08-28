@@ -198,30 +198,11 @@ export function App() {
     <main className="flex flex-col gap-[14px] p-[14px]">
       <header className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-[7px]">
-          <span className="flex h-[18px] w-[18px] items-center justify-center rounded-[5px] bg-gradient-to-br from-[#5eb0ff] to-[#003a9e] text-white shadow-[inset_0_0_0_1px_rgba(0,40,120,0.55)]">
-            <svg
-              viewBox="0 0 16 16"
-              aria-hidden="true"
-              className="h-[11px] w-[11px]"
-            >
-              {/* Viewfinder corner brackets around a faceted focus dot —
-                  matches the extension icon. */}
-              <path
-                d="M2 5V2h3M14 5V2h-3M2 11v3h3M14 11v3h-3"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-              <circle cx="8" cy="8" r="2.4" fill="currentColor" />
-              <path
-                d="M8 8L8 5.6A2.4 2.4 0 0 1 10.08 6.8Z"
-                fill="currentColor"
-                opacity="0.85"
-              />
-            </svg>
-          </span>
+          <img
+            src={chrome.runtime.getURL('icons/icon-96.png')}
+            alt=""
+            className="h-[18px] w-[18px] rounded-[5px]"
+          />
           <h1 className="text-[13px] font-medium tracking-[-0.01em] text-[var(--text-primary)]">
             QuickCaps
           </h1>

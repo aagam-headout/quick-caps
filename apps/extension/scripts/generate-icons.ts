@@ -7,11 +7,11 @@ import { fileURLToPath } from 'node:url';
  * Minimal PNG writer. There is no image tooling in this repo and the icons must
  * be real PNGs at exactly the pixel sizes their filenames claim, or Chrome
  * refuses to load the extension. The mark below (viewfinder corner brackets
- * around a faceted focus dot, on a diagonal accent gradient with a soft
- * shadow) is the final artwork, generated rather than drawn by hand so it
- * stays pixel-exact at every required size. 16/32/48/128 are the sizes
- * Chrome's manifest actually uses; 256/512 are extra masters for the store
- * listing and any future high-DPI use.
+ * around a faceted focus dot, on a diagonal accent gradient) is the final
+ * artwork, generated rather than drawn by hand so it stays pixel-exact at
+ * every required size. 16/32/48/128 are the sizes Chrome's manifest actually
+ * uses; 256/512 are extra masters for the store listing and any future
+ * high-DPI use.
  */
 const CRC_TABLE = Array.from({ length: 256 }, (_, n) => {
   let c = n;
@@ -104,7 +104,7 @@ function finishPng(size: number, raw: Uint8Array): Uint8Array {
 
 const ACCENT_DARK: Rgba = [0, 58, 158, 255];
 const ACCENT_LIGHT: Rgba = [94, 176, 255, 255];
-const ACCENT_RIM: Rgba = [0, 40, 120, 255];
+const SHADOW_SHADE: Rgba = [0, 20, 64, 255];
 const MARK: Rgba = [255, 255, 255, 255];
 const MARK_MID: Rgba = [190, 216, 255, 255];
 const MARK_SHADE: Rgba = [120, 172, 245, 255];
@@ -172,7 +172,6 @@ function roundedSquareSdf(u: number, v: number, r: number): number {
 }
 
 const FIELD_CORNER = 0.18; // rounded-square field, corner radius ~18% of the edge
-const FIELD_RIM_WIDTH = 0.025;
 const BRACKET_THICKNESS = 0.07;
 const BRACKET_INSET = 0.2;
 const BRACKET_ARM = 0.18;
@@ -221,11 +220,9 @@ function inBracketSet(
 
 /**
  * Four L-shaped corner brackets around a focus dot, like a camera viewfinder
- * mid-capture. The field is a diagonal gradient rather than a flat fill, with
- * a darker rim so its rounded-square boundary reads clearly against light
- * surfaces (the toolbar, the extensions page). The brackets cast a faint
- * shadow, and the dot is split into three facets — together giving the mark
- * some depth instead of reading as a flat sticker.
+ * mid-capture. The field is a diagonal gradient rather than a flat fill. The
+ * brackets cast a dark shadow, and the dot is split into three facets —
+ * together giving the mark some depth instead of reading as a flat sticker.
  */
 function markColor(u: number, v: number): Rgba {
   const sdf = roundedSquareSdf(u, v, FIELD_CORNER);
@@ -235,15 +232,7 @@ function markColor(u: number, v: number): Rgba {
   const light = 1 - (u + v) / 2;
   let color = mix(ACCENT_DARK, ACCENT_LIGHT, light);
 
-  // A darker rim right at the boundary, evenly thick all the way around
-  // (corners included), so the field's edge is visible instead of
-  // dissolving into a same-toned background.
-  const insideDist = -sdf; // 0 at the edge, growing toward the center
-  if (insideDist < FIELD_RIM_WIDTH) {
-    color = mix(color, ACCENT_RIM, 1 - insideDist / FIELD_RIM_WIDTH);
-  }
-
-  // A soft shadow, offset down-right, sits under the brackets and dot.
+  // A dark shadow, offset down-right, sits under the brackets and dot.
   const inShadow =
     inBracketSet(
       u - SHADOW_OFFSET,
@@ -253,7 +242,7 @@ function markColor(u: number, v: number): Rgba {
       BRACKET_THICKNESS,
     ) ||
     inCircle(u - SHADOW_OFFSET, v - SHADOW_OFFSET, 0.5, 0.5, FOCUS_DOT_RADIUS);
-  if (inShadow) color = mix(color, ACCENT_DARK, 0.45);
+  if (inShadow) color = mix(color, SHADOW_SHADE, 0.6);
 
   if (inBracketSet(u, v, BRACKET_INSET, BRACKET_ARM, BRACKET_THICKNESS)) {
     color = MARK;
@@ -274,7 +263,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 
 // The four sizes Chrome's manifest actually references — these ship inside
 // the extension package, so only these belong under public/.
-for (const size of [16, 32, 48, 128]) {
+for (const size of [16, 32, 48, 96, 128, 192]) {
   const target = join(here, '..', 'public', 'icons', `icon-${size}.png`);
   writeFileSync(target, encodePngAA(size, 4, markColor));
   console.log(`wrote ${target}`);
