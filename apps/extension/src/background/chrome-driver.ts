@@ -30,6 +30,14 @@ export type ChromeDriverDeps = {
 /** Fallback step when the page reports a zero-height viewport. */
 const MIN_STEP_PX = 200;
 
+/**
+ * Marks the element captureFrames should scroll. viewport() and scrollTo()
+ * are each a separate chrome.scripting.executeScript call with no shared JS
+ * state, so the element found once by viewport() is tagged with this
+ * attribute and re-found by attribute in every later scrollTo() call.
+ */
+const SCROLL_ROOT_ATTR = 'data-quickcaps-scroll-root';
+
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -60,25 +68,86 @@ export class ChromeDriver implements PageDriver {
   }
 
   async viewport(): Promise<Viewport> {
-    return this.evaluate(() => ({
-      width: window.innerWidth,
-      height: window.innerHeight,
-      documentWidth: document.documentElement.scrollWidth,
-      documentHeight: document.documentElement.scrollHeight,
-      scrollX: window.scrollX,
-      scrollY: window.scrollY,
-      devicePixelRatio: window.devicePixelRatio,
-    }));
+    const frames = await chrome.scripting.executeScript({
+      target: { tabId: this.tabId },
+      world: 'ISOLATED',
+      func: (attr: string) => {
+        let root = document.querySelector(`[${attr}]`) as HTMLElement | null;
+        if (!root) {
+          const docEl = document.documentElement;
+          // <html>/<body> scrolling normally - documentElement already
+          // reports the real height, nothing to find.
+          if (docEl.scrollHeight <= docEl.clientHeight + 1) {
+            // App-shell layout: <body> pinned at 100vh with overflow hidden,
+            // an inner div scrolling instead - documentElement.scrollHeight
+            // can't see that content, so walk descendants for the actual
+            // scroll container (largest scrollHeight that overflows itself).
+            let best: HTMLElement | null = null;
+            let bestHeight = 0;
+            for (const el of document.body.querySelectorAll<HTMLElement>('*')) {
+              const style = getComputedStyle(el);
+              if (!/(auto|scroll)/.test(style.overflowY)) continue;
+              if (
+                el.scrollHeight > el.clientHeight + 1 &&
+                el.scrollHeight > bestHeight
+              ) {
+                best = el;
+                bestHeight = el.scrollHeight;
+              }
+            }
+            root = best;
+            // scrollTo() runs as a separate executeScript call with no
+            // shared JS state, so tag the element it needs to re-find.
+            if (root) root.setAttribute(attr, '');
+          }
+        }
+        return {
+          width: window.innerWidth,
+          height: window.innerHeight,
+          documentWidth: root
+            ? root.scrollWidth
+            : document.documentElement.scrollWidth,
+          documentHeight: root
+            ? root.scrollHeight
+            : document.documentElement.scrollHeight,
+          scrollX: root ? root.scrollLeft : window.scrollX,
+          scrollY: root ? root.scrollTop : window.scrollY,
+          devicePixelRatio: window.devicePixelRatio,
+        };
+      },
+      args: [SCROLL_ROOT_ATTR],
+    });
+    const first = frames[0];
+    if (!first) throw new Error(`no result from tab ${this.tabId}`);
+    return first.result as Viewport;
   }
 
   async scrollTo(x: number, y: number): Promise<void> {
     await chrome.scripting.executeScript({
       target: { tabId: this.tabId },
       world: 'ISOLATED',
-      func: (px: number, py: number) => {
-        window.scrollTo(px, py);
+      func: (px: number, py: number, attr: string) => {
+        const root = document.querySelector(`[${attr}]`) as HTMLElement | null;
+        if (root) {
+          root.scrollLeft = px;
+          root.scrollTop = py;
+        } else {
+          window.scrollTo(px, py);
+        }
       },
-      args: [x, y],
+      args: [x, y, SCROLL_ROOT_ATTR],
+    });
+  }
+
+  /** Undoes the tagging viewport() may have left on the page's scroll container. */
+  async clearScrollRootTag(): Promise<void> {
+    await chrome.scripting.executeScript({
+      target: { tabId: this.tabId },
+      world: 'ISOLATED',
+      func: (attr: string) => {
+        document.querySelector(`[${attr}]`)?.removeAttribute(attr);
+      },
+      args: [SCROLL_ROOT_ATTR],
     });
   }
 
@@ -118,6 +187,7 @@ export class ChromeDriver implements PageDriver {
     } finally {
       // The user's scroll position is theirs; restore it even on failure.
       await this.scrollTo(origin.x, origin.y);
+      await this.clearScrollRootTag();
     }
 
     return {

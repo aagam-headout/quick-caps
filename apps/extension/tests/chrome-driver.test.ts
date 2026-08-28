@@ -205,9 +205,11 @@ describe('ChromeDriver.screenshotFullPage', () => {
     }).screenshotFullPage();
 
     const scrollArgs = chromeMock.scripting.executeScript.mock.calls
-      .map(([arg]) => arg as { args?: number[] })
-      .filter((arg) => Array.isArray(arg.args))
-      .map((arg) => arg.args!);
+      .map(([arg]) => arg as { args?: unknown[] })
+      // scrollTo() calls pass [x, y, scrollRootAttr]; other executeScript
+      // calls (viewport's, and the post-capture tag cleanup) don't match.
+      .filter((arg) => arg.args?.length === 3)
+      .map((arg) => arg.args!.slice(0, 2));
     expect(scrollArgs.at(-1)).toEqual([0, 300]);
   });
 
@@ -220,9 +222,9 @@ describe('ChromeDriver.screenshotFullPage', () => {
     });
     await expect(driver.screenshotFullPage()).rejects.toThrow('throttled');
     const scrollArgs = chromeMock.scripting.executeScript.mock.calls
-      .map(([arg]) => arg as { args?: number[] })
-      .filter((arg) => Array.isArray(arg.args))
-      .map((arg) => arg.args!);
+      .map(([arg]) => arg as { args?: unknown[] })
+      .filter((arg) => arg.args?.length === 3)
+      .map((arg) => arg.args!.slice(0, 2));
     expect(scrollArgs.at(-1)).toEqual([0, 250]);
   });
 
