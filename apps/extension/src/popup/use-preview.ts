@@ -29,7 +29,14 @@ export function usePreview() {
         type: PREVIEW_SCREENSHOT,
         tabId: tab.id,
       })) as PreviewScreenshotResponse | undefined;
-      if (response && !response.ok) setError(response.error);
+      // No response at all means the worker was torn down mid-preview. Silence
+      // there used to read as success: the spinner stopped and no image
+      // appeared.
+      if (!response) {
+        setError('QuickCaps stopped responding. Try the preview again.');
+      } else if (!response.ok) {
+        setError(response.error);
+      }
     } catch (err) {
       setError(
         err instanceof Error ? err.message : 'Could not preview the page.',

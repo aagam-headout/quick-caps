@@ -98,6 +98,77 @@ describe('stitchFrames', () => {
     ).rejects.toThrow('no frames to stitch');
   });
 
+  it('refuses when every frame failed, rather than returning a blank image', async () => {
+    const { deps } = fakeDeps();
+    deps.decode = vi.fn().mockRejectedValue(new Error('bad png')) as never;
+    await expect(
+      stitchFrames(
+        {
+          frames: [{ dataUrl: 'a', offsetY: 0 }],
+          width: 80,
+          height: 160,
+          devicePixelRatio: 1,
+        },
+        deps,
+      ),
+    ).rejects.toThrow('None of the screenshot frames could be read');
+  });
+
+  it('scales the canvas down instead of exceeding the browser limits', async () => {
+    const { canvas, deps } = fakeDeps();
+    // 3x on a 20000px-tall page is ~1.9 gigapixels: Chrome creates the canvas
+    // and then silently draws nothing on it.
+    await stitchFrames(
+      {
+        frames: [{ dataUrl: 'a', offsetY: 0 }],
+        width: 1600,
+        height: 20_000,
+        devicePixelRatio: 3,
+      },
+      deps,
+    );
+    expect(canvas.width * canvas.height).toBeLessThanOrEqual(256 * 1024 * 1024);
+    expect(canvas.width).toBeGreaterThan(0);
+  });
+
+  it('survives a zero or NaN dimension without throwing on canvas construction', async () => {
+    const { canvas, deps } = fakeDeps();
+    await stitchFrames(
+      {
+        frames: [{ dataUrl: 'a', offsetY: 0 }],
+        width: Number.NaN,
+        height: 0,
+        devicePixelRatio: 1,
+      },
+      deps,
+    );
+    expect(canvas.width).toBe(1);
+    expect(canvas.height).toBe(1);
+  });
+
+  it('releases each decoded bitmap', async () => {
+    const close = vi.fn();
+    const { deps } = fakeDeps();
+    deps.decode = vi.fn(async () => ({
+      width: 100,
+      height: 50,
+      close,
+    })) as never;
+    await stitchFrames(
+      {
+        frames: [
+          { dataUrl: 'a', offsetY: 0 },
+          { dataUrl: 'b', offsetY: 500 },
+        ],
+        width: 800,
+        height: 1000,
+        devicePixelRatio: 1,
+      },
+      deps,
+    );
+    expect(close).toHaveBeenCalledTimes(2);
+  });
+
   it('skips a frame that fails to decode and still returns an image', async () => {
     const { deps, drawImage } = fakeDeps();
     deps.decode = vi

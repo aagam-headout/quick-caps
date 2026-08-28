@@ -124,6 +124,48 @@ describe('runCapture', () => {
     expect(result.warnings.some((w) => w.phase === 'screenshot')).toBe(true);
   });
 
+  it('drops an oversized screenshot from single-file output with a warning', async () => {
+    // Inline base64 costs a third again in size and has to be held as one
+    // string; a zip stores the same bytes verbatim.
+    const result = await runCapture(
+      {
+        ...input,
+        settings: {
+          ...defaultSettings,
+          include: { ...defaultSettings.include, screenshot: true },
+        },
+        frames: [{ dataUrl: 'data:image/png;base64,A', offsetY: 0 }],
+      },
+      deps({
+        stitch: vi.fn().mockResolvedValue(new Uint8Array(25 * 1024 * 1024)),
+      }),
+    );
+    expect(
+      result.warnings.some(
+        (w) => w.phase === 'screenshot' && w.reason.includes('too large'),
+      ),
+    ).toBe(true);
+    expect(result.filename.endsWith('.html')).toBe(true);
+  });
+
+  it('keeps an oversized screenshot in zip output, where it costs its own size', async () => {
+    const result = await runCapture(
+      {
+        ...input,
+        settings: {
+          ...defaultSettings,
+          output: 'zip',
+          include: { ...defaultSettings.include, screenshot: true },
+        },
+        frames: [{ dataUrl: 'data:image/png;base64,A', offsetY: 0 }],
+      },
+      deps({
+        stitch: vi.fn().mockResolvedValue(new Uint8Array(25 * 1024 * 1024)),
+      }),
+    );
+    expect(result.warnings.some((w) => w.phase === 'screenshot')).toBe(false);
+  });
+
   it('warns when the screenshot toggle is on but no frames arrived', async () => {
     const result = await runCapture(
       {

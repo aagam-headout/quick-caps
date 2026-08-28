@@ -69,7 +69,7 @@ async function requestHostAccess(pageUrl: string): Promise<HostAccess> {
 
 /**
  * How long the popup waits with no word at all from the worker before giving
- * up. Generous, because serializing a heavy page legitimately takes a while  - 
+ * up. Generous, because serializing a heavy page legitimately takes a while  -
  * every progress message resets it.
  */
 const SILENCE_TIMEOUT_MS = 180_000;

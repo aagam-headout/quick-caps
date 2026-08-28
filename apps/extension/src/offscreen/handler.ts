@@ -55,6 +55,15 @@ export async function handleOffscreenRequest(
         const bytes = await deps.stitch(message.request);
         return { ok: true, type: 'stitch', bytes: [...bytes] };
       }
+      case 'offscreen:stitch-url': {
+        const bytes = await deps.stitch(message.request);
+        return {
+          ok: true,
+          type: 'stitch-url',
+          url: deps.createObjectUrl(bytes, 'image/png'),
+          byteLength: bytes.byteLength,
+        };
+      }
       case 'offscreen:object-url':
         return {
           ok: true,

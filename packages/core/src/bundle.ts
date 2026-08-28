@@ -102,6 +102,32 @@ export function assetPathFor(url: string, kind: AssetKind): string {
   return `${directory}/${safeSegment(basename, 'asset')}-${shortHash(url)}${suffix}`;
 }
 
+/** Chunked so a multi-megabyte screenshot does not blow the argument limit of
+ * String.fromCharCode with a single spread. */
+function toBase64(bytes: Uint8Array): string {
+  const CHUNK = 0x8000;
+  let binary = '';
+  for (let index = 0; index < bytes.length; index += CHUNK) {
+    binary += String.fromCharCode(
+      ...(bytes.subarray(index, index + CHUNK) as unknown as number[]),
+    );
+  }
+  return btoa(binary);
+}
+
+/**
+ * The screenshot, embedded in single-file output.
+ *
+ * Hidden, because the capture must still open looking like the page it
+ * captured — the viewer panel is what surfaces it. Without this the whole
+ * screenshot pipeline (scrolling the page, capturing every viewport,
+ * stitching) ran for single-file captures and its result was dropped on the
+ * floor: the setting appeared to do nothing but make the capture slow.
+ */
+function screenshotBlock(bytes: Uint8Array): string {
+  return `\n<img data-capture="screenshot" alt="Full-page screenshot of the captured page" style="display:none" src="data:image/png;base64,${toBase64(bytes)}">`;
+}
+
 function jsonBlock(name: string, value: unknown): string {
   // Escaping `</` keeps embedded json from terminating the script element it
   // rides in — the archive must not become an injection vector for its source.
@@ -121,6 +147,10 @@ function metadataDocument(input: BundleInput) {
 export function buildSingleFile(input: BundleInput): BundleOutput {
   const parts = [input.html];
   let hasDataBlock = false;
+  if (input.screenshot && input.screenshot.byteLength > 0) {
+    parts.push(screenshotBlock(input.screenshot));
+    hasDataBlock = true;
+  }
   if (input.settings.include.metadata) {
     parts.push(jsonBlock('metadata', metadataDocument(input)));
     hasDataBlock = true;

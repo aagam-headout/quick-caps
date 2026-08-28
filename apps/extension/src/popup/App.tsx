@@ -257,6 +257,19 @@ const THEME_ICONS = {
   ),
 };
 
+/**
+ * The three things the button below can do. Page Snap is the screenshot on its
+ * own - no archive, no settings - and it is a mode rather than a checkbox
+ * because it answers a different question than "what goes in the capture".
+ */
+type CaptureMode = 'page' | 'element' | 'snap';
+
+const MODE_TABS: { value: CaptureMode; label: string }[] = [
+  { value: 'page', label: 'Full page' },
+  { value: 'element', label: 'Pick element…' },
+  { value: 'snap', label: 'Page Snap' },
+];
+
 function matchingPreset(include: Include): string {
   const found = PRESETS.find((preset) =>
     (Object.keys(preset.include) as (keyof Include)[]).every(
@@ -276,7 +289,7 @@ export function App() {
     running: previewRunning,
     error: previewError,
   } = usePreview();
-  const [mode, setMode] = useState<'page' | 'element'>('page');
+  const [mode, setMode] = useState<CaptureMode>('page');
 
   // Accordion: at most one of the three sections open at a time, so opening
   // one for a better look at it doesn't leave the others' checkboxes
@@ -392,26 +405,12 @@ export function App() {
                 {...(hint ? { hint } : {})}
                 checked={settings.include[key]}
                 onChange={(checked) => setInclude(key, checked)}
+                // The screenshot row used to carry its own "Preview" button.
+                // That action is the Page Snap tab now — one entry point, not
+                // two that do the same thing from different places.
                 {...(key === 'screenshot'
                   ? {
-                      trailing: (
-                        <button
-                          type="button"
-                          onClick={(event) => {
-                            // A trailing button inside the row's <label>
-                            // would otherwise also toggle the checkbox it
-                            // sits in.
-                            event.preventDefault();
-                            event.stopPropagation();
-                            void preview();
-                          }}
-                          disabled={previewRunning}
-                          className="flex cursor-pointer items-center gap-1 rounded-[var(--radius-control)] px-[7px] py-[3px] text-[11px] font-medium text-[var(--accent)] transition-colors duration-[var(--duration-fast)] hover:bg-[color-mix(in_srgb,var(--accent)_10%,transparent)] disabled:cursor-default disabled:opacity-60"
-                        >
-                          {previewRunning ? <SpinnerIcon /> : <OpenArrowIcon />}
-                          {previewRunning ? 'Previewing…' : 'Preview'}
-                        </button>
-                      ),
+                      hint: `${hint} · see the Page Snap tab for it on its own`,
                     }
                   : {})}
               />
@@ -471,37 +470,27 @@ export function App() {
           aria-label="Capture mode"
           className="flex gap-[2px] rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--surface-raised)] p-[2px]"
         >
-          <button
-            type="button"
-            role="tab"
-            aria-selected={mode === 'page'}
-            onClick={() => setMode('page')}
-            className={`flex-1 cursor-pointer rounded-[calc(var(--radius-control)-2px)] px-3 py-[6px] text-[12px] font-medium transition-colors duration-[var(--duration-fast)] ${
-              mode === 'page'
-                ? 'bg-[var(--surface)] text-[var(--text-primary)] shadow-[0_1px_2px_rgba(0,0,0,0.08)]'
-                : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-            }`}
-          >
-            Full page
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={mode === 'element'}
-            onClick={() => setMode('element')}
-            className={`flex-1 cursor-pointer rounded-[calc(var(--radius-control)-2px)] px-3 py-[6px] text-[12px] font-medium transition-colors duration-[var(--duration-fast)] ${
-              mode === 'element'
-                ? 'bg-[var(--surface)] text-[var(--text-primary)] shadow-[0_1px_2px_rgba(0,0,0,0.08)]'
-                : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-            }`}
-          >
-            Pick element…
-          </button>
+          {MODE_TABS.map(({ value, label }) => (
+            <button
+              key={value}
+              type="button"
+              role="tab"
+              aria-selected={mode === value}
+              onClick={() => setMode(value)}
+              className={`flex-1 cursor-pointer rounded-[calc(var(--radius-control)-2px)] px-2 py-[6px] text-[11.5px] font-medium transition-colors duration-[var(--duration-fast)] ${
+                mode === value
+                  ? 'bg-[var(--surface)] text-[var(--text-primary)] shadow-[0_1px_2px_rgba(0,0,0,0.08)]'
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
         </div>
 
         {mode === 'page' ? (
           <CaptureButton running={running} onClick={() => void start()} />
-        ) : (
+        ) : mode === 'element' ? (
           <button
             type="button"
             onClick={() => void pick()}
@@ -510,12 +499,29 @@ export function App() {
           >
             Choose element…
           </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => void preview()}
+            disabled={previewRunning || running}
+            className="flex w-full cursor-pointer items-center justify-center gap-[7px] rounded-[var(--radius-control)] bg-[var(--accent)] px-3 py-[9px] text-[13px] font-medium text-white transition-all duration-[var(--duration-fast)] hover:bg-[var(--accent-hover)] active:scale-[0.985] disabled:cursor-default disabled:opacity-70 disabled:active:scale-100"
+          >
+            {previewRunning ? <SpinnerIcon /> : <OpenArrowIcon />}
+            {previewRunning ? 'Taking Page Snap…' : 'Take Page Snap'}
+          </button>
         )}
 
         {mode === 'element' ? (
           <p className="text-[11px] text-[var(--text-secondary)]">
             Hover the page to highlight, click to select, then confirm in the
             bar that appears. Esc cancels.
+          </p>
+        ) : null}
+
+        {mode === 'snap' ? (
+          <p className="text-[11px] text-[var(--text-secondary)]">
+            One full-page PNG, top to bottom. Opens in a new tab and saves to
+            Downloads/QuickCaps/previews. No archive, no settings.
           </p>
         ) : null}
 

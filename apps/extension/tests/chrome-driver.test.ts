@@ -188,7 +188,11 @@ describe('ChromeDriver.screenshotFullPage', () => {
         frames: [
           { dataUrl: 'data:image/png;base64,AAAA', offsetY: 0 },
           { dataUrl: 'data:image/png;base64,AAAA', offsetY: 500 },
-          { dataUrl: 'data:image/png;base64,AAAA', offsetY: 1000 },
+          // The page stops scrolling at documentHeight - viewportHeight, so
+          // the third frame shows 700..1200 and must be recorded there.
+          // Filing it at the requested 1000 drew it 300px too low and
+          // duplicated the middle of the page across the bottom.
+          { dataUrl: 'data:image/png;base64,AAAA', offsetY: 700 },
         ],
       }),
     );
@@ -261,6 +265,67 @@ describe('ChromeDriver.captureFrames guards', () => {
       frameDelayMs: 0,
     }).captureFrames();
     expect(request.frames).toHaveLength(1);
+  });
+
+  it('retries a frame Chrome throttled instead of losing the screenshot', async () => {
+    stubViewport(chromeMock, { height: 500, documentHeight: 500 });
+    chromeMock.tabs.captureVisibleTab
+      .mockRejectedValueOnce(
+        new Error('MAX_CAPTURE_VISIBLE_TAB_CALLS_PER_SECOND quota exceeded'),
+      )
+      .mockResolvedValue('data:image/png;base64,A');
+
+    const request = await new ChromeDriver(7, {
+      frameDelayMs: 0,
+    }).captureFrames();
+
+    expect(request.frames).toHaveLength(1);
+  });
+
+  it('keeps the frames it did capture when one of them fails outright', async () => {
+    stubViewport(chromeMock, { height: 500, documentHeight: 1500 });
+    let call = 0;
+    chromeMock.tabs.captureVisibleTab.mockImplementation(async () => {
+      call++;
+      // Frame two fails every retry; frames one and three succeed.
+      if (call >= 2 && call <= 4) throw new Error('tab was occluded');
+      return 'data:image/png;base64,A';
+    });
+
+    const request = await new ChromeDriver(7, {
+      frameDelayMs: 0,
+    }).captureFrames();
+
+    expect(request.frames.map((frame) => frame.offsetY)).toEqual([0, 1000]);
+  });
+
+  it('reports a readable reason when no frame could be captured', async () => {
+    stubViewport(chromeMock, { height: 500, documentHeight: 500 });
+    chromeMock.tabs.captureVisibleTab.mockRejectedValue(
+      new Error('tab was occluded'),
+    );
+    await expect(
+      new ChromeDriver(7, { frameDelayMs: 0 }).captureFrames(),
+    ).rejects.toThrow('Could not take the screenshot: tab was occluded');
+  });
+
+  it('refuses to screenshot a tab that is not the visible one', async () => {
+    stubViewport(chromeMock);
+    // captureVisibleTab shoots whatever is on screen, so an inactive tab
+    // would silently produce a picture of a different page.
+    chromeMock.tabs.get.mockResolvedValue({ active: false, windowId: 1 });
+    await expect(
+      new ChromeDriver(7, { frameDelayMs: 0 }).captureFrames(),
+    ).rejects.toThrow('Switch to that tab');
+  });
+
+  it('refuses a page it could not measure rather than throwing on a property read', async () => {
+    chromeMock.scripting.executeScript.mockResolvedValue([
+      { result: undefined },
+    ]);
+    await expect(new ChromeDriver(7).viewport()).rejects.toThrow(
+      'Could not measure the page',
+    );
   });
 
   it('stops at the frame cap on a very tall page', async () => {

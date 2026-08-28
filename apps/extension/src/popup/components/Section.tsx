@@ -4,7 +4,7 @@ type Props = {
   collapsible?: boolean;
   summary?: string;
   children: React.ReactNode;
-  /** Controlled open state. Omit to let the <details> manage its own  - 
+  /** Controlled open state. Omit to let the <details> manage its own  -
    * only sections that need to auto-expand (e.g. on a custom, non-preset
    * selection) pass this. */
   open?: boolean;

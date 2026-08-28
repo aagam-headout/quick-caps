@@ -57,6 +57,9 @@ beforeEach(() => {
       local: {
         get: vi.fn(async (key: string) => ({ [key]: local[key] })),
       },
+      // The popup subscribes so a capture finishing while it is open refreshes
+      // the Recent list.
+      onChanged: { addListener: vi.fn(), removeListener: vi.fn() },
     },
   };
 });
@@ -419,7 +422,7 @@ describe('popup', () => {
     });
   });
 
-  it('clicking Preview next to the screenshot toggle previews without checking it', async () => {
+  it('the Page Snap tab screenshots without touching the capture settings', async () => {
     render(<App />);
     await userEvent.click(await screen.findByText(/^Also include/));
     const screenshotToggle = (await screen.findByLabelText(
@@ -428,9 +431,14 @@ describe('popup', () => {
     expect(screenshotToggle.checked).toBe(false);
 
     await userEvent.click(
-      await screen.findByRole('button', { name: /^preview$/i }),
+      await screen.findByRole('tab', { name: /page snap/i }),
+    );
+    await userEvent.click(
+      await screen.findByRole('button', { name: /take page snap/i }),
     );
 
+    // Page Snap is its own action: the "Full-page screenshot" setting governs
+    // what rides along with a capture and must stay as the user left it.
     expect(screenshotToggle.checked).toBe(false);
     expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
       expect.objectContaining({ type: expect.stringContaining('preview') }),

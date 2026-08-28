@@ -8,6 +8,7 @@
  */
 
 const NAMES: Record<string, string> = {
+  screenshot: 'Screenshot',
   metadata: 'Metadata',
   tokens: 'Design tokens',
   logs: 'Console + network log',
@@ -50,7 +51,7 @@ export function viewerPanelBlock(): string {
   const script = `
 (function(){
   var blocks = Array.prototype.slice.call(
-    document.querySelectorAll('script[data-capture]')
+    document.querySelectorAll('script[data-capture],img[data-capture]')
   );
   if (!blocks.length) return;
 
@@ -142,6 +143,17 @@ export function viewerPanelBlock(): string {
     var block = blocks.filter(function (b) {
       return b.getAttribute('data-capture') === name;
     })[0];
+    // The screenshot rides along as a hidden <img>, not as JSON — show the
+    // picture rather than its data url.
+    if (block.tagName === 'IMG') {
+      body.textContent = '';
+      var shot = document.createElement('img');
+      shot.src = block.getAttribute('src');
+      shot.alt = block.getAttribute('alt') || '';
+      shot.style.cssText = 'display:block;width:100%;height:auto;border-radius:4px';
+      body.appendChild(shot);
+      return;
+    }
     try {
       var pretty = JSON.stringify(JSON.parse(block.textContent), null, 2);
       body.innerHTML = highlight(pretty);

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { HistoryEntry } from '../use-history.js';
 import { formatSize } from '../lib/format-size.js';
 
@@ -17,6 +18,24 @@ const KIND_LABEL: Record<'html' | 'zip' | 'preview', string> = {
 };
 
 export function RecentList({ entries }: { entries: HistoryEntry[] }) {
+  const [error, setError] = useState<string | null>(null);
+
+  /**
+   * Opening a captured file can fail long after it was saved - the user moved
+   * it, emptied their downloads, or Chrome forgot the record. Unhandled, the
+   * click just did nothing at all.
+   */
+  const open = (downloadId: number, filename: string): void => {
+    setError(null);
+    void Promise.resolve()
+      .then(() => chrome.downloads.open(downloadId))
+      .catch(() => {
+        setError(
+          `${filename} could not be opened - it may have been moved or deleted.`,
+        );
+      });
+  };
+
   return (
     <details className="group px-[var(--space-2)]">
       <summary className="flex cursor-pointer list-none items-center gap-[6px] rounded-[var(--radius-control)] py-[3px] text-[10.5px] font-medium uppercase tracking-[0.06em] text-[var(--text-secondary)] transition-colors duration-[var(--duration-fast)] hover:text-[var(--text-primary)] [&::-webkit-details-marker]:hidden">
@@ -61,7 +80,7 @@ export function RecentList({ entries }: { entries: HistoryEntry[] }) {
                     disabled={downloadId === undefined}
                     onClick={() => {
                       if (downloadId !== undefined)
-                        chrome.downloads.open(downloadId);
+                        open(downloadId, entry.filename);
                     }}
                     aria-label={`Open ${entry.filename}`}
                     className="block w-full rounded-[var(--radius-control)] px-[6px] py-[5px] text-left transition-colors duration-[var(--duration-fast)] enabled:cursor-pointer enabled:hover:bg-[var(--surface-raised)] disabled:cursor-default"
@@ -88,6 +107,14 @@ export function RecentList({ entries }: { entries: HistoryEntry[] }) {
             })}
           </ul>
         )}
+        {error ? (
+          <p
+            role="alert"
+            className="pt-[6px] text-[10.5px] leading-[1.4] text-[var(--error)]"
+          >
+            {error}
+          </p>
+        ) : null}
       </div>
     </details>
   );

@@ -11,7 +11,8 @@ import type { Frame } from './capture.js';
  */
 export const PREVIEW_SCREENSHOT = '__quickcaps-preview-screenshot';
 
-export type PreviewScreenshotResponse = { ok: true } | { ok: false; error: string };
+export type PreviewScreenshotResponse =
+  { ok: true } | { ok: false; error: string };
 
 export type OffscreenCaptureRequest = {
   type: 'offscreen:capture';
@@ -21,7 +22,11 @@ export type OffscreenCaptureRequest = {
   settings: CaptureSettings;
   frames?: Frame[];
   /** chrome-driver's own scroll-root-aware canvas dimensions; see CaptureInput. */
-  screenshotGeometry?: { width: number; height: number; devicePixelRatio: number };
+  screenshotGeometry?: {
+    width: number;
+    height: number;
+    devicePixelRatio: number;
+  };
 };
 
 export type OffscreenCaptureResult = {
@@ -35,12 +40,22 @@ export type OffscreenCaptureResult = {
 export type OffscreenRequest =
   | OffscreenCaptureRequest
   | { type: 'offscreen:stitch'; request: StitchRequest }
+  /**
+   * Stitch and keep the bytes where they were made, handing back only a blob
+   * URL. `offscreen:stitch` serializes the whole PNG into a plain number[]
+   * (chrome messaging cannot carry a Uint8Array) and the worker then ships the
+   * same array straight back to mint a blob - two full copies of a
+   * multi-megabyte image through structured clone, for a buffer that never
+   * needed to leave this document.
+   */
+  | { type: 'offscreen:stitch-url'; request: StitchRequest }
   | { type: 'offscreen:object-url'; bytes: number[]; mimeType: string }
   | { type: 'offscreen:revoke'; url: string };
 
 export type OffscreenResponse =
   | { ok: true; type: 'capture'; result: OffscreenCaptureResult }
   | { ok: true; type: 'stitch'; bytes: number[] }
+  | { ok: true; type: 'stitch-url'; url: string; byteLength: number }
   | { ok: true; type: 'object-url'; url: string }
   | { ok: true; type: 'revoked' }
   | { ok: false; error: string };

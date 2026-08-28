@@ -40,6 +40,13 @@ const MIN_STEP_PX = 200;
 const DEFAULT_MAX_SCROLL_HEIGHT_PX = 20_000;
 
 /**
+ * Extra attempts for one frame. captureVisibleTab is throttled to 2/second and
+ * rejects outright past that ("MAX_CAPTURE_VISIBLE_TAB_CALLS_PER_SECOND quota
+ * exceeded"); one transient rejection should not cost the whole screenshot.
+ */
+const CAPTURE_RETRIES = 2;
+
+/**
  * Marks the element captureFrames should scroll. viewport() and scrollTo()
  * are each a separate chrome.scripting.executeScript call with no shared JS
  * state, so the element found once by viewport() is tagged with this
@@ -148,7 +155,29 @@ export class ChromeDriver implements PageDriver {
     });
     const first = frames[0];
     if (!first) throw new Error(`no result from tab ${this.tabId}`);
-    return first.result as Viewport;
+    const view = first.result as Viewport | undefined;
+    // An injection that ran but produced nothing (the page navigated
+    // mid-measurement) would otherwise surface as a TypeError on a property
+    // read three calls later.
+    if (!view || typeof view.height !== 'number') {
+      throw new Error(
+        'Could not measure the page. Reload it and try capturing again.',
+      );
+    }
+    // A NaN or negative dimension poisons every calculation downstream - the
+    // scroll loop, the canvas size, the stitch offsets. Normalize here.
+    const finite = (value: number, fallback: number): number =>
+      Number.isFinite(value) && value > 0 ? value : fallback;
+    return {
+      ...view,
+      width: finite(view.width, 0),
+      height: finite(view.height, 0),
+      documentWidth: finite(view.documentWidth, finite(view.width, 0)),
+      documentHeight: finite(view.documentHeight, finite(view.height, 0)),
+      scrollX: Number.isFinite(view.scrollX) ? view.scrollX : 0,
+      scrollY: Number.isFinite(view.scrollY) ? view.scrollY : 0,
+      devicePixelRatio: finite(view.devicePixelRatio, 1),
+    };
   }
 
   async scrollTo(x: number, y: number): Promise<void> {
@@ -168,16 +197,76 @@ export class ChromeDriver implements PageDriver {
     });
   }
 
-  /** Undoes the tagging viewport() may have left on the page's scroll container. */
+  /**
+   * Undoes the tagging viewport() may have left on the page's scroll container.
+   *
+   * Never throws: it runs in cleanup paths, and the tab having navigated (or
+   * closed) is exactly when it fails - reporting that would mask the real
+   * error the caller is already handling. The attribute dies with the document
+   * either way.
+   */
   async clearScrollRootTag(): Promise<void> {
-    await chrome.scripting.executeScript({
-      target: { tabId: this.tabId },
-      world: 'ISOLATED',
-      func: (attr: string) => {
-        document.querySelector(`[${attr}]`)?.removeAttribute(attr);
-      },
-      args: [SCROLL_ROOT_ATTR],
-    });
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId: this.tabId },
+        world: 'ISOLATED',
+        func: (attr: string) => {
+          document.querySelector(`[${attr}]`)?.removeAttribute(attr);
+        },
+        args: [SCROLL_ROOT_ATTR],
+      });
+    } catch {
+      /* the page is gone; the tag went with it */
+    }
+  }
+
+  /**
+   * The window the tab lives in, so captureVisibleTab targets that window
+   * rather than "whichever window is current" - a capture triggered from a
+   * popup in another window would otherwise screenshot the wrong page.
+   */
+  private async captureWindowId(): Promise<number | undefined> {
+    try {
+      const tab = await chrome.tabs.get(this.tabId);
+      // Only refuse on an explicit false: the field is absent in tests and in
+      // some older Chrome builds, and guessing "inactive" there would block a
+      // capture that would have worked.
+      if (tab?.active === false) {
+        throw new Error(
+          'Chrome can only screenshot the tab you are looking at. Switch to that tab and try again.',
+        );
+      }
+      return tab?.windowId;
+    } catch (error) {
+      // The friendly refusal above must reach the user; a failed tabs.get
+      // (no such tab, no permission) just means "no window id, use the
+      // current one" and the capture below reports its own failure.
+      if (error instanceof Error && error.message.startsWith('Chrome can only'))
+        throw error;
+      return undefined;
+    }
+  }
+
+  /** One frame, retried past Chrome's per-second captureVisibleTab quota. */
+  private async captureFrame(
+    windowId: number | undefined,
+    backoffMs: number,
+  ): Promise<string> {
+    let lastError: unknown = new Error('the screenshot could not be taken');
+    for (let attempt = 0; attempt <= CAPTURE_RETRIES; attempt++) {
+      try {
+        const dataUrl =
+          windowId === undefined
+            ? await chrome.tabs.captureVisibleTab({ format: 'png' })
+            : await chrome.tabs.captureVisibleTab(windowId, { format: 'png' });
+        if (typeof dataUrl === 'string' && dataUrl.length > 0) return dataUrl;
+        lastError = new Error('Chrome returned an empty screenshot frame');
+      } catch (error) {
+        lastError = error;
+      }
+      if (backoffMs > 0) await sleep(backoffMs * (attempt + 1));
+    }
+    throw lastError instanceof Error ? lastError : new Error(String(lastError));
   }
 
   /**
@@ -204,24 +293,61 @@ export class ChromeDriver implements PageDriver {
       Math.max(view.documentHeight, step),
       maxScrollHeightPx,
     );
+    // The page stops scrolling here, so a request past it lands short of what
+    // was asked for. Recording the requested offset instead of this one draws
+    // the last frame too low: the bottom of every page whose height is not an
+    // exact multiple of the viewport came out duplicated and shifted.
+    const maxOffsetY = Math.max(0, view.documentHeight - view.height);
+    const windowId = await this.captureWindowId();
 
+    let lastError: unknown;
+    let coveredTo = 0;
     try {
       for (
-        let offsetY = 0;
-        offsetY < height && frames.length < maxFrames;
-        offsetY += step
+        let requestedY = 0;
+        requestedY < height && frames.length < maxFrames;
+        requestedY += step
       ) {
+        const offsetY = Math.min(requestedY, maxOffsetY);
+        // Clamping can land twice on the same place; a duplicate frame is
+        // pure cost.
+        if (frames.length > 0 && offsetY <= frames[frames.length - 1]!.offsetY)
+          break;
         await this.scrollTo(0, offsetY);
         if (delay > 0) await sleep(delay);
-        frames.push({
-          dataUrl: await chrome.tabs.captureVisibleTab({ format: 'png' }),
-          offsetY,
-        });
+        try {
+          frames.push({
+            dataUrl: await this.captureFrame(windowId, delay),
+            offsetY,
+          });
+          coveredTo = offsetY + step;
+        } catch (error) {
+          // One unreadable frame leaves a gap in the image; failing the whole
+          // screenshot over it would throw away everything else.
+          lastError = error;
+        }
       }
     } finally {
-      // The user's scroll position is theirs; restore it even on failure.
-      await this.scrollTo(origin.x, origin.y);
+      // The user's scroll position is theirs; restore it even on failure, and
+      // do not let cleanup trouble replace the error that got us here.
+      try {
+        await this.scrollTo(origin.x, origin.y);
+      } catch {
+        /* the page navigated; its scroll position is moot */
+      }
       await this.clearScrollRootTag();
+    }
+
+    if (frames.length === 0) {
+      const detail =
+        lastError instanceof Error
+          ? lastError.message
+          : String(lastError ?? '');
+      throw new Error(
+        detail
+          ? `Could not take the screenshot: ${detail}`
+          : 'Could not take the screenshot: Chrome returned no frames.',
+      );
     }
 
     return {
@@ -229,7 +355,7 @@ export class ChromeDriver implements PageDriver {
       width: view.documentWidth,
       // Report the height actually covered, so the canvas is not sized for
       // content that was never captured once the frame cap applied.
-      height: Math.min(height, frames.length * step),
+      height: Math.min(height, coveredTo),
       devicePixelRatio: view.devicePixelRatio,
     };
   }

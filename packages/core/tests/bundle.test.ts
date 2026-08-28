@@ -138,6 +138,22 @@ describe('buildSingleFile', () => {
     expect(text).toContain('"reason":"boom"');
   });
 
+  it('embeds the screenshot instead of discarding it', () => {
+    // A single-file capture used to run the whole screenshot pipeline and then
+    // drop the bytes: the setting looked like it did nothing but slow the
+    // capture down.
+    const text = new TextDecoder().decode(
+      buildSingleFile({
+        ...input,
+        screenshot: new Uint8Array([137, 80, 78, 71]),
+      }).bytes,
+    );
+    expect(text).toContain('<img data-capture="screenshot"');
+    expect(text).toContain('src="data:image/png;base64,');
+    // Hidden: the capture must still open looking like the page it captured.
+    expect(text).toContain('style="display:none"');
+  });
+
   it('escapes a closing script tag inside embedded json', () => {
     const text = new TextDecoder().decode(
       buildSingleFile({

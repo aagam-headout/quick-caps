@@ -7,7 +7,16 @@ const RULES: { test: (url: URL) => boolean; what: string }[] = [
     test: (url) => url.protocol === 'chrome-extension:',
     what: 'extension pages',
   },
+  {
+    test: (url) =>
+      url.protocol === 'devtools:' || url.protocol === 'chrome-untrusted:',
+    what: 'DevTools and other internal pages',
+  },
   { test: (url) => url.protocol === 'view-source:', what: 'view-source pages' },
+  {
+    test: (url) => url.protocol === 'data:' || url.protocol === 'blob:',
+    what: 'data: and blob: pages, which have no source to capture',
+  },
   { test: (url) => url.protocol === 'about:', what: 'blank and about: pages' },
   { test: (url) => url.protocol === 'file:', what: 'local files' },
   {
@@ -35,6 +44,12 @@ export function restrictionFor(rawUrl: string): string | null {
     if (rule.test(url)) {
       return `This page cannot be captured: Chrome does not allow extensions to read ${rule.what}.`;
     }
+  }
+  // A PDF is rendered by Chrome's built-in viewer, not by a DOM the
+  // serializer can walk - the capture "succeeds" and produces an empty page.
+  // Saying so beats handing over a blank file.
+  if (/\.pdf($|[?#])/i.test(url.pathname + url.search)) {
+    return 'This is a PDF, shown by Chrome’s built-in viewer. Use Chrome’s own download button to save it.';
   }
   return null;
 }

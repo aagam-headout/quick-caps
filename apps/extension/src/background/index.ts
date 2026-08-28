@@ -42,6 +42,90 @@ const DOWNLOAD_FOLDER = 'QuickCaps';
  */
 let activeCapture: { tabId: number; settings: CaptureSettings } | null = null;
 
+/**
+ * Claimed synchronously, before any await.
+ *
+ * `activeCapture` cannot serve as the guard on its own: it is only assigned
+ * several awaits into runCapture, so two clicks in the same tick both saw it
+ * null and both proceeded - two captures sharing one offscreen document, the
+ * first to finish closing it under the second. The screenshot preview shares
+ * this flag for the same reason: it opens and closes the same document.
+ */
+let busy = false;
+
+/** A user-facing sentence for anything thrown inside the pipeline. */
+function friendlyError(error: unknown): string {
+  const raw = error instanceof Error ? error.message : String(error);
+  // Chrome's own wording names the manifest, or an internal API, neither of
+  // which helps someone who just needs to accept a prompt or reload a page.
+  if (raw.includes('Cannot access contents') || raw.includes('host permission'))
+    return 'QuickCaps could not read this page. Click Capture again and choose Allow, or reload the page and retry.';
+  if (raw.includes('No tab with id') || raw.includes('No window with id'))
+    return 'That tab was closed before the capture finished. Try again.';
+  if (raw.includes('Frame with ID') || raw.includes('Frame was removed'))
+    return 'The page navigated away mid-capture. Reload it and try again.';
+  if (raw.includes('Extension context invalidated'))
+    return 'QuickCaps was reloaded mid-capture. Try again.';
+  if (raw.includes('QUOTA') || raw.includes('quota'))
+    return 'Chrome limited how fast pages can be screenshotted. Wait a moment and try again.';
+  if (raw.includes('Download error') || raw.includes('USER_CANCELED'))
+    return 'The download was cancelled or blocked by Chrome.';
+  return raw;
+}
+
+/**
+ * Resolves once a download reaches a terminal state.
+ *
+ * Necessary because chrome.downloads.download resolves as soon as the download
+ * *starts*. Revoking the blob URL - or closing the offscreen document that
+ * owns it, which the pipeline does in its `finally` - before the bytes have
+ * been written truncates the file, which is exactly how a large zip or
+ * screenshot lands on disk unopenable.
+ */
+function waitForDownload(
+  downloadId: number,
+  timeoutMs = 120_000,
+): Promise<void> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (): void => {
+      if (settled) return;
+      settled = true;
+      chrome.downloads.onChanged.removeListener(onChanged);
+      clearTimeout(timer);
+      resolve();
+    };
+    const onChanged = (delta: chrome.downloads.DownloadDelta): void => {
+      if (delta.id !== downloadId) return;
+      const state = delta.state?.current;
+      if (state === 'complete' || state === 'interrupted') finish();
+    };
+    chrome.downloads.onChanged.addListener(onChanged);
+    // A small download can finish before the listener is even attached.
+    void chrome.downloads
+      .search({ id: downloadId })
+      .then((items) => {
+        const state = items[0]?.state;
+        if (state === 'complete' || state === 'interrupted') finish();
+      })
+      .catch(() => {
+        /* nothing to check against; the timeout still releases us */
+      });
+    const timer = setTimeout(finish, timeoutMs);
+  });
+}
+
+/** Starts a download, translating Chrome's failures into something readable. */
+async function startDownload(url: string, filename: string): Promise<number> {
+  try {
+    return await chrome.downloads.download({ url, filename });
+  } catch (error) {
+    throw new Error(
+      `The capture was built but could not be saved: ${friendlyError(error)}`,
+    );
+  }
+}
+
 async function loadSettings(): Promise<CaptureSettings> {
   const stored = await chrome.storage.sync.get(SETTINGS_KEY_STORAGE);
   try {
@@ -62,14 +146,19 @@ async function recordHistory(entry: {
   /** Unset only for entries recorded before this field existed. */
   kind?: 'html' | 'zip' | 'preview';
 }): Promise<void> {
-  const stored = await chrome.storage.local.get(HISTORY_KEY);
-  const existing = stored[HISTORY_KEY];
-  // Anything but an array is corrupt; spreading it would throw and lose the
-  // capture the user just made over a bookkeeping detail.
-  const previous = Array.isArray(existing) ? (existing as unknown[]) : [];
-  await chrome.storage.local.set({
-    [HISTORY_KEY]: [entry, ...previous].slice(0, HISTORY_LIMIT),
-  });
+  try {
+    const stored = await chrome.storage.local.get(HISTORY_KEY);
+    const existing = stored[HISTORY_KEY];
+    // Anything but an array is corrupt; spreading it would throw and lose the
+    // capture the user just made over a bookkeeping detail.
+    const previous = Array.isArray(existing) ? (existing as unknown[]) : [];
+    await chrome.storage.local.set({
+      [HISTORY_KEY]: [entry, ...previous].slice(0, HISTORY_LIMIT),
+    });
+  } catch {
+    // Storage being full or unavailable is not worth failing a capture that
+    // already landed on disk; the Recent list is a convenience.
+  }
 }
 
 /**
@@ -258,6 +347,10 @@ async function runCapture(params: {
 
     if (settings.scrollToLoadLazy) {
       await scrollToLoadLazyContent(driver);
+      // viewport() tags the page's scroll container with its own attribute to
+      // re-find it between calls. Left in place, the serializer below copies
+      // that attribute straight into the captured HTML.
+      await driver.clearScrollRootTag();
     }
 
     post({
@@ -276,10 +369,32 @@ async function runCapture(params: {
     // captureFrames scrolls and screenshots the whole document, unaware of
     // any DOM pruning a selective capture already did - skip the work
     // entirely rather than throw away a full-page screenshot downstream.
-    const stitchRequest =
-      settings.include.screenshot && !settings.selectionSelector.trim()
-        ? await driver.captureFrames()
-        : undefined;
+    //
+    // Failure here is reported as a warning, never as a failed capture: the
+    // screenshot is one optional part, and a throttled captureVisibleTab used
+    // to throw away a fully serialized page.
+    let stitchRequest;
+    if (settings.include.screenshot && !settings.selectionSelector.trim()) {
+      post({
+        type: 'capture:progress',
+        progress: {
+          phase: 'screenshot',
+          done: 0,
+          total: 0,
+          warningCount: ir.warnings.length,
+        },
+      });
+      try {
+        stitchRequest = await driver.captureFrames();
+      } catch (error) {
+        ir.warnings.push({
+          phase: 'screenshot',
+          reason: friendlyError(error),
+          detail:
+            'the screenshot was omitted; the rest of the capture is intact',
+        });
+      }
+    }
 
     await session.save({ phase: 'bundling', tabId, startedAt });
     const result = await offscreen.capture({
@@ -309,15 +424,21 @@ async function runCapture(params: {
         warningCount: result.warnings.length,
       },
     });
-    const downloadId = await chrome.downloads.download({
-      url: result.objectUrl,
-      // A forward slash here is a subfolder under the platform's default
-      // Downloads directory on Mac, Windows, and Linux alike - Chrome
-      // normalizes the separator itself, so this needs no per-OS branch.
-      // The bare filename (shown in the UI and in history) is unchanged.
-      filename: `${DOWNLOAD_FOLDER}/${result.filename}`,
+    // A forward slash here is a subfolder under the platform's default
+    // Downloads directory on Mac, Windows, and Linux alike - Chrome
+    // normalizes the separator itself, so this needs no per-OS branch.
+    // The bare filename (shown in the UI and in history) is unchanged.
+    const downloadId = await startDownload(
+      result.objectUrl,
+      `${DOWNLOAD_FOLDER}/${result.filename}`,
+    );
+    // download() resolves when the download starts, not when it finishes;
+    // revoking (and, in `finally`, closing the document that owns the blob)
+    // before then truncates the file.
+    await waitForDownload(downloadId);
+    await offscreen.revoke(result.objectUrl).catch(() => {
+      /* the document may already be gone; the blob went with it */
     });
-    await offscreen.revoke(result.objectUrl);
 
     await recordHistory({
       url: tab.url ?? '',
@@ -336,15 +457,14 @@ async function runCapture(params: {
       warnings: result.warnings,
     });
   } catch (error) {
-    const raw = error instanceof Error ? error.message : String(error);
-    // Chrome's wording here names the manifest, which is useless to a user
-    // who just needs to accept the prompt.
-    const reason = raw.includes('Cannot access contents')
-      ? 'QuickCaps could not read this page. Click Capture again and choose Allow, or reload the page and retry.'
-      : raw;
-    post({ type: 'capture:failed', reason, recoverable: true });
+    post({
+      type: 'capture:failed',
+      reason: friendlyError(error),
+      recoverable: true,
+    });
   } finally {
     activeCapture = null;
+    busy = false;
     await session.clear();
     await offscreen.close();
   }
@@ -358,7 +478,7 @@ function startCapture(params: {
   post: (message: WorkerToPopup) => void;
   settingsOverride?: Partial<CaptureSettings>;
 }): void {
-  if (activeCapture) {
+  if (busy) {
     params.post({
       type: 'capture:failed',
       reason: 'A capture is already running. Wait for it to finish.',
@@ -366,6 +486,8 @@ function startCapture(params: {
     });
     return;
   }
+  // Claimed here, in the same tick as the check - see `busy`.
+  busy = true;
   void runCapture(params);
 }
 
@@ -451,34 +573,56 @@ function waitForTabLoad(tabId: number, timeoutMs = 15_000): Promise<void> {
 async function previewScreenshot(
   tabId: number | undefined,
 ): Promise<PreviewScreenshotResponse> {
-  if (typeof tabId !== 'number') {
+  if (typeof tabId !== 'number' || tabId < 0) {
     return { ok: false, error: 'No active tab to preview.' };
   }
+  // Shares the offscreen document with a real capture, so it shares the lock:
+  // whichever finished first would otherwise close the document under the
+  // other.
+  if (busy) {
+    return {
+      ok: false,
+      error: 'A capture is already running. Wait for it to finish.',
+    };
+  }
+  busy = true;
   const offscreen = new OffscreenClient();
   try {
     const sourceTab = await chrome.tabs.get(tabId).catch(() => undefined);
+    if (!sourceTab) {
+      return { ok: false, error: 'That tab is no longer open. Try again.' };
+    }
+    // The same pages a capture refuses; without this the user gets Chrome's
+    // raw "Cannot access contents of url" instead of a reason.
+    const restriction = sourceTab.url
+      ? restrictionFor(sourceTab.url)
+      : 'No page is open to preview.';
+    if (restriction) return { ok: false, error: restriction };
+
     const driver = new ChromeDriver(tabId);
     const request = await driver.captureFrames();
-    const bytes = await offscreen.stitch(request);
-    const objectUrl = await offscreen.toObjectUrl(bytes, 'image/png');
+    // Stitched straight to a blob URL: shipping the PNG bytes out as a
+    // number[] and back in again cost two full structured-clone copies of a
+    // multi-megabyte image.
+    const { url: objectUrl, byteLength } = await offscreen.stitchToUrl(request);
     const tab = await chrome.tabs.create({ url: objectUrl });
 
     // Also saved to disk (alongside real captures, in their own subfolder)
     // and recorded to history - so a preview shows up in Recent too, not
     // just as a tab that's gone the moment it's closed.
     const filename = captureFilename(
-      sourceTab?.url ?? '',
+      sourceTab.url ?? '',
       new Date().toISOString(),
       'png',
     );
-    const downloadId = await chrome.downloads.download({
-      url: objectUrl,
-      filename: `${DOWNLOAD_FOLDER}/previews/${filename}`,
-    });
+    const downloadId = await startDownload(
+      objectUrl,
+      `${DOWNLOAD_FOLDER}/previews/${filename}`,
+    );
     await recordHistory({
-      url: sourceTab?.url ?? '',
+      url: sourceTab.url ?? '',
       filename,
-      byteLength: bytes.byteLength,
+      byteLength,
       warningCount: 0,
       at: Date.now(),
       downloadId,
@@ -486,16 +630,20 @@ async function previewScreenshot(
     });
 
     // The blob only exists as long as the offscreen document that minted it
-    // stays open (below, in finally) - wait for the tab to actually load it
-    // first.
+    // stays open (below, in finally) - wait for both readers to be done with
+    // it first: the tab that displays it and the download that writes it.
     if (tab.id !== undefined) await waitForTabLoad(tab.id);
-    await offscreen.revoke(objectUrl);
+    await waitForDownload(downloadId);
+    await offscreen.revoke(objectUrl).catch(() => {
+      /* the document may already be gone; the blob went with it */
+    });
     return { ok: true };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = friendlyError(error);
     notify('Screenshot preview failed', message);
     return { ok: false, error: message };
   } finally {
+    busy = false;
     await offscreen.close();
   }
 }
@@ -506,12 +654,14 @@ async function previewScreenshot(
 // channel open until previewScreenshot's promise resolves - otherwise the
 // popup's sendMessage resolves as soon as the message is dispatched, before
 // the capture actually finishes or fails.
-chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
-  const request = message as { type?: string; tabId?: number } | null;
-  if (request?.type !== PREVIEW_SCREENSHOT) return undefined;
-  void previewScreenshot(request.tabId).then(sendResponse);
-  return true;
-});
+chrome.runtime.onMessage.addListener(
+  (message: unknown, _sender, sendResponse) => {
+    const request = message as { type?: string; tabId?: number } | null;
+    if (request?.type !== PREVIEW_SCREENSHOT) return undefined;
+    void previewScreenshot(request.tabId).then(sendResponse);
+    return true;
+  },
+);
 
 /**
  * The element picker (injected on demand from the popup) sends this once the

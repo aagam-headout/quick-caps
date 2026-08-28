@@ -11,6 +11,12 @@ import type { CaptureProgress } from './messages.js';
 
 export type Frame = { dataUrl: string; offsetY: number };
 
+/** Ceiling on a screenshot embedded inline in single-file output. */
+const MAX_INLINE_SCREENSHOT_BYTES = 24 * 1024 * 1024;
+
+const formatMB = (bytes: number): string =>
+  `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+
 export type CaptureInput = {
   ir: PageIR;
   /** Already self-contained: single-file-core inlined it in the page. */
@@ -27,8 +33,7 @@ export type CaptureInput = {
    * clips every frame captured past the first viewport.
    */
   screenshotGeometry?:
-    | { width: number; height: number; devicePixelRatio: number }
-    | undefined;
+    { width: number; height: number; devicePixelRatio: number } | undefined;
 };
 
 export type CaptureDeps = {
@@ -105,14 +110,19 @@ export async function runCapture(
     });
   } else if (settings.include.rawSources) {
     rawSources = new Map();
+    // Deduplicated: a page listing the same stylesheet twice would otherwise
+    // be fetched twice and stored once, so the progress total overcounts and
+    // the network work is wasted.
     const urls = [
-      ir.metadata.url,
-      ...ir.assets
-        .filter(
-          (asset) => asset.kind === 'script' || asset.kind === 'stylesheet',
-        )
-        .map((asset) => asset.url),
-    ];
+      ...new Set([
+        ir.metadata.url,
+        ...ir.assets
+          .filter(
+            (asset) => asset.kind === 'script' || asset.kind === 'stylesheet',
+          )
+          .map((asset) => asset.url),
+      ]),
+    ].filter((url) => typeof url === 'string' && url.length > 0);
     report('fetching-assets', 0, urls.length);
     let done = 0;
     for (const url of urls) {
@@ -146,19 +156,28 @@ export async function runCapture(
   } else if (settings.include.screenshot) {
     report('screenshot');
     if (!input.frames || input.frames.length === 0) {
-      warnings.push({
-        phase: 'screenshot',
-        reason: 'no frames were captured',
-        detail: 'the screenshot was omitted; the rest of the capture is intact',
-      });
+      // The caller that does the framing (chrome-driver, via the worker)
+      // reports its own reason when it fails; a second, vaguer warning saying
+      // the same thing helps nobody.
+      if (!warnings.some((warning) => warning.phase === 'screenshot')) {
+        warnings.push({
+          phase: 'screenshot',
+          reason: 'no frames were captured',
+          detail:
+            'the screenshot was omitted; the rest of the capture is intact',
+        });
+      }
     } else {
       try {
         screenshot = await deps.stitch({
           frames: input.frames,
-          width: input.screenshotGeometry?.width ?? ir.metadata.documentSize.width,
-          height: input.screenshotGeometry?.height ?? ir.metadata.documentSize.height,
+          width:
+            input.screenshotGeometry?.width ?? ir.metadata.documentSize.width,
+          height:
+            input.screenshotGeometry?.height ?? ir.metadata.documentSize.height,
           devicePixelRatio:
-            input.screenshotGeometry?.devicePixelRatio ?? ir.metadata.devicePixelRatio,
+            input.screenshotGeometry?.devicePixelRatio ??
+            ir.metadata.devicePixelRatio,
         });
       } catch (error) {
         warnings.push({
@@ -169,6 +188,23 @@ export async function runCapture(
         });
       }
     }
+  }
+
+  // Single-file output carries the screenshot base64-encoded inline, which
+  // costs a third again in size and has to be held as one string. A zip stores
+  // the same bytes verbatim, so this ceiling applies only to the html path.
+  if (
+    screenshot &&
+    settings.output !== 'zip' &&
+    screenshot.byteLength > MAX_INLINE_SCREENSHOT_BYTES
+  ) {
+    warnings.push({
+      phase: 'screenshot',
+      reason: `the screenshot is ${formatMB(screenshot.byteLength)}, too large to embed in a single HTML file`,
+      detail:
+        'switch Output to "ZIP folder" to keep it; the rest of the capture is intact',
+    });
+    screenshot = undefined;
   }
 
   report('bundling');
@@ -184,12 +220,30 @@ export async function runCapture(
     screenshot,
     rawSources,
   };
-  const bundle =
-    settings.output === 'zip'
-      ? buildZip(bundleInput)
-      : buildSingleFile(bundleInput);
+  // Packaging is the one step with no partial result to fall back on: it is
+  // synchronous, it holds the whole capture in memory at once, and what it
+  // throws on a very large page ("Array buffer allocation failed") means
+  // nothing to the person who pressed Capture.
+  let bundle;
+  try {
+    bundle =
+      settings.output === 'zip'
+        ? buildZip(bundleInput)
+        : buildSingleFile(bundleInput);
+  } catch (error) {
+    throw new Error(
+      `The capture was too large to package (${error instanceof Error ? error.message : String(error)}). Try turning off raw sources or the screenshot.`,
+    );
+  }
 
-  const objectUrl = await deps.createObjectUrl(bundle.bytes, bundle.mimeType);
+  let objectUrl: string;
+  try {
+    objectUrl = await deps.createObjectUrl(bundle.bytes, bundle.mimeType);
+  } catch {
+    throw new Error(
+      'The capture could not be prepared for download - it may be too large. Try a smaller page or fewer extras.',
+    );
+  }
   report('done');
 
   return {
