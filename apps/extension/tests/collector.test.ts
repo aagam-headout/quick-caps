@@ -99,6 +99,44 @@ describe('runCollector', () => {
     expect(document.documentElement.hasAttribute(LOGS_ATTRIBUTE)).toBe(false);
   });
 
+  it('omits perf when the setting is off', async () => {
+    installPage('<html><body></body></html>');
+    const { runCollector } = await loadEntry();
+    expect(runCollector(defaultSettings).perf).toBeUndefined();
+  });
+
+  it('derives a perf report from performance entries when the setting is on', async () => {
+    installPage('<html><body></body></html>');
+    Object.assign(globalThis, {
+      performance: {
+        getEntriesByType: (type: string) =>
+          ({
+            navigation: [
+              {
+                requestStart: 10,
+                responseStart: 35,
+                domContentLoadedEventEnd: 220,
+                loadEventEnd: 480,
+                transferSize: 1500,
+              },
+            ],
+            paint: [{ name: 'first-contentful-paint', startTime: 150 }],
+            'largest-contentful-paint': [{ startTime: 300 }],
+            resource: [{ initiatorType: 'img', transferSize: 4000 }],
+          })[type] ?? [],
+      },
+    });
+    const { runCollector } = await loadEntry();
+    const ir = runCollector({
+      ...defaultSettings,
+      include: { ...defaultSettings.include, perf: true },
+    });
+    expect(ir.perf?.ttfbMs).toBe(25);
+    expect(ir.perf?.firstContentfulPaintMs).toBe(150);
+    expect(ir.perf?.largestContentfulPaintMs).toBe(300);
+    expect(ir.perf?.transferSizeBytes).toBe(5500);
+  });
+
   it('survives a recorder that writes unparseable output', async () => {
     installPage('<html><body></body></html>');
     const { runCollector } = await loadEntry();
@@ -173,6 +211,40 @@ describe('runCollector', () => {
     // An invalid selector must not throw the whole capture.
     expect(() => applyExclusions(':::not-a-selector')()).not.toThrow();
     expect(document.querySelector('.banner')).not.toBeNull();
+  });
+
+  it('prunes everything outside the selection root, keeping its ancestor chain', async () => {
+    installPage(
+      '<html><body><nav>Nav</nav><main><aside>Aside</aside><section id="card">Card</section></main><footer>Footer</footer></body></html>',
+    );
+    const { applySelectionRoot } = await loadEntry();
+    const restore = applySelectionRoot('#card');
+    expect(document.querySelector('nav')).toBeNull();
+    expect(document.querySelector('footer')).toBeNull();
+    expect(document.querySelector('aside')).toBeNull();
+    expect(document.getElementById('card')?.textContent).toBe('Card');
+    // the ancestor is kept, just pruned of its other children
+    expect(document.querySelector('main')).not.toBeNull();
+    restore();
+    expect(document.querySelector('nav')?.textContent).toBe('Nav');
+    expect(document.querySelector('footer')?.textContent).toBe('Footer');
+    expect(document.querySelector('aside')?.textContent).toBe('Aside');
+  });
+
+  it('treats an empty or invalid selection selector as a no-op', async () => {
+    installPage('<html><body><div class="x">X</div></body></html>');
+    const { applySelectionRoot } = await loadEntry();
+    expect(applySelectionRoot('')).toBeInstanceOf(Function);
+    expect(document.querySelector('.x')).not.toBeNull();
+    expect(() => applySelectionRoot(':::bad')()).not.toThrow();
+    expect(document.querySelector('.x')).not.toBeNull();
+  });
+
+  it('treats a selector matching nothing as a no-op', async () => {
+    installPage('<html><body><div class="x">X</div></body></html>');
+    const { applySelectionRoot } = await loadEntry();
+    applySelectionRoot('.missing')();
+    expect(document.querySelector('.x')).not.toBeNull();
   });
 
   it('excludes matching elements from the region tree parked by parkCollectorResult', async () => {

@@ -24,6 +24,10 @@ describe('build artifacts', () => {
     expect(existsSync(join(dist, 'collector.js'))).toBe(true);
   });
 
+  it('builds the injected element picker', () => {
+    expect(existsSync(join(dist, 'picker.js'))).toBe(true);
+  });
+
   it('ships the manifest, icons, and vendored fonts', () => {
     for (const path of [
       'manifest.json',

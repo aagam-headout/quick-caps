@@ -7,6 +7,7 @@ import { restrictionFor } from './restricted.js';
 import {
   FETCH_RESOURCE,
   IR_KEY,
+  PICKER_CAPTURE,
   SERIALIZE_PROGRESS,
   SETTINGS_KEY,
 } from '../content/protocol.js';
@@ -14,10 +15,12 @@ import { fetchResourceForPage } from './resource-proxy.js';
 import type { CollectorOutcome } from '../content/collector.js';
 import {
   CAPTURE_PORT,
+  PREVIEW_SCREENSHOT,
   type OffscreenProgress,
   type PopupToWorker,
   type WorkerToPopup,
 } from '../lib/messages.js';
+import { bytesToDataUrl } from '../lib/data-url.js';
 import type { PageIR } from '@quickcaps/core';
 
 const SETTINGS_KEY_STORAGE = 'settings';
@@ -193,6 +196,10 @@ async function runCapture(params: {
   hasHostPermission: boolean;
   hasPageAccess: boolean;
   post: (message: WorkerToPopup) => void;
+  /** Applied over the user's stored settings for this capture only — used by
+   * the element picker, which sets `selectionSelector` without touching the
+   * saved preference. */
+  settingsOverride?: Partial<CaptureSettings>;
 }): Promise<void> {
   const { tabId, hasPageAccess, post } = params;
   const offscreen = new OffscreenClient();
@@ -221,7 +228,7 @@ async function runCapture(params: {
       return;
     }
 
-    const settings = await loadSettings();
+    const settings = { ...(await loadSettings()), ...params.settingsOverride };
     // Published before any injection: the resource proxy will not serve a
     // page that is not the one being captured.
     activeCapture = { tabId, settings };
@@ -327,6 +334,7 @@ function startCapture(params: {
   hasHostPermission: boolean;
   hasPageAccess: boolean;
   post: (message: WorkerToPopup) => void;
+  settingsOverride?: Partial<CaptureSettings>;
 }): void {
   if (activeCapture) {
     params.post({
@@ -357,7 +365,10 @@ function notify(title: string, message: string): void {
  * optional <all_urls> grant (cross-origin assets) can be missing, and that
  * degrades the same way an unchecked popup capture already does.
  */
-function triggerCapture(tabId: number | undefined): void {
+function triggerCapture(
+  tabId: number | undefined,
+  settingsOverride?: Partial<CaptureSettings>,
+): void {
   if (typeof tabId !== 'number') return;
   void (async () => {
     const hasHostPermission = await checkHostPermission();
@@ -365,6 +376,7 @@ function triggerCapture(tabId: number | undefined): void {
       tabId,
       hasHostPermission,
       hasPageAccess: true,
+      ...(settingsOverride ? { settingsOverride } : {}),
       post: (message) => {
         if (message.type === 'capture:done') {
           notify('Page captured', `${message.filename} saved to Downloads`);
@@ -376,6 +388,53 @@ function triggerCapture(tabId: number | undefined): void {
     });
   })();
 }
+
+/**
+ * Captures and stitches the tab's full page, then opens it as a `data:` URL
+ * in a new tab — a quick look at the screenshot on its own, independent of
+ * running (and downloading) a whole capture.
+ */
+function previewScreenshot(tabId: number | undefined): void {
+  if (typeof tabId !== 'number') return;
+  void (async () => {
+    const offscreen = new OffscreenClient();
+    try {
+      const driver = new ChromeDriver(tabId);
+      const request = await driver.captureFrames();
+      const bytes = await offscreen.stitch(request);
+      await chrome.tabs.create({ url: bytesToDataUrl(bytes, 'image/png') });
+    } catch (error) {
+      notify(
+        'Screenshot preview failed',
+        error instanceof Error ? error.message : String(error),
+      );
+    } finally {
+      await offscreen.close();
+    }
+  })();
+}
+
+// Sent by the popup itself, not a content script, so the tab id travels in
+// the message rather than sender.tab (which is only set for senders that are
+// content scripts running in a tab).
+chrome.runtime.onMessage.addListener((message: unknown) => {
+  const request = message as { type?: string; tabId?: number } | null;
+  if (request?.type !== PREVIEW_SCREENSHOT) return undefined;
+  previewScreenshot(request.tabId);
+  return undefined;
+});
+
+/**
+ * The element picker (injected on demand from the popup) sends this once the
+ * user confirms a selection. Headless, same as the keyboard shortcut, with
+ * the picked selector overriding `selectionSelector` for this one capture.
+ */
+chrome.runtime.onMessage.addListener((message: unknown, sender) => {
+  const request = message as { type?: string; selector?: string } | null;
+  if (request?.type !== PICKER_CAPTURE || !request.selector) return undefined;
+  triggerCapture(sender.tab?.id, { selectionSelector: request.selector });
+  return undefined;
+});
 
 chrome.commands.onCommand.addListener((command) => {
   if (command !== 'capture-page') return;

@@ -13,6 +13,8 @@ import { CompareCaptures } from './components/CompareCaptures.js';
 import { useSettings } from './use-settings.js';
 import { useCapture } from './use-capture.js';
 import { useHistory } from './use-history.js';
+import { usePicker } from './use-picker.js';
+import { usePreview } from './use-preview.js';
 
 type Include = CaptureSettings['include'];
 type Toggle = { key: keyof Include; label: string; hint?: string };
@@ -39,13 +41,18 @@ const EXTRA_TOGGLES: Toggle[] = [
     hint: 'Needs the page open since load',
   },
   {
+    key: 'perf',
+    label: 'Performance snapshot (JSON)',
+    hint: 'TTFB, paint timing, load time - not a Lighthouse audit',
+  },
+  {
     key: 'rawSources',
     label: 'Raw network sources',
     hint: 'What the server sent, before JavaScript',
   },
 ];
 
-type OptionKey = 'scrollToLoadLazy' | 'inertSnapshot';
+type OptionKey = 'scrollToLoadLazy' | 'inertSnapshot' | 'embedViewer';
 const OPTION_TOGGLES: { key: OptionKey; label: string; hint: string }[] = [
   {
     key: 'scrollToLoadLazy',
@@ -56,6 +63,11 @@ const OPTION_TOGGLES: { key: OptionKey; label: string; hint: string }[] = [
     key: 'inertSnapshot',
     label: 'Inert snapshot',
     hint: 'Archive scripts without letting them run when reopened',
+  },
+  {
+    key: 'embedViewer',
+    label: 'Embed viewer panel',
+    hint: 'Lets whoever reopens the file browse metadata/tokens/logs/raw sources',
   },
 ];
 
@@ -78,6 +90,7 @@ const PRESETS: { value: string; label: string; include: Include }[] = [
       metadata: true,
       logs: true,
       rawSources: true,
+      perf: true,
     },
   },
   {
@@ -94,6 +107,7 @@ const PRESETS: { value: string; label: string; include: Include }[] = [
       metadata: true,
       logs: false,
       rawSources: false,
+      perf: false,
     },
   },
   {
@@ -110,6 +124,41 @@ const PRESETS: { value: string; label: string; include: Include }[] = [
       metadata: true,
       logs: false,
       rawSources: false,
+      perf: true,
+    },
+  },
+  {
+    value: 'quick',
+    label: 'Quick capture',
+    include: {
+      html: true,
+      styles: true,
+      scripts: false,
+      images: true,
+      fonts: true,
+      screenshot: false,
+      tokens: false,
+      metadata: true,
+      logs: false,
+      rawSources: false,
+      perf: false,
+    },
+  },
+  {
+    value: 'archive',
+    label: 'Raw archive',
+    include: {
+      html: true,
+      styles: true,
+      scripts: true,
+      images: true,
+      fonts: true,
+      screenshot: false,
+      tokens: false,
+      metadata: true,
+      logs: false,
+      rawSources: true,
+      perf: false,
     },
   },
 ];
@@ -179,6 +228,12 @@ export function App() {
   const { settings, update } = useSettings();
   const { start, progress, result, error, running } = useCapture();
   const { entries } = useHistory();
+  const { pick, error: pickerError } = usePicker();
+  const {
+    preview,
+    running: previewRunning,
+    error: previewError,
+  } = usePreview();
 
   useEffect(() => {
     const root = document.documentElement;
@@ -262,6 +317,7 @@ export function App() {
           values={{
             scrollToLoadLazy: settings.scrollToLoadLazy,
             inertSnapshot: settings.inertSnapshot,
+            embedViewer: settings.embedViewer,
           }}
           onChange={setOption}
         />
@@ -310,6 +366,37 @@ export function App() {
 
       <div className="flex flex-col gap-[10px]">
         <CaptureButton running={running} onClick={() => void start()} />
+
+        <div className="flex gap-[8px]">
+          <button
+            type="button"
+            onClick={() => void pick()}
+            disabled={running}
+            className="flex-1 rounded-[var(--radius-control)] border border-[var(--border)] px-3 py-[7px] text-[12px] font-medium text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] disabled:cursor-default disabled:opacity-70"
+          >
+            Pick element…
+          </button>
+          <button
+            type="button"
+            onClick={() => void preview()}
+            disabled={running || previewRunning}
+            className="flex-1 rounded-[var(--radius-control)] border border-[var(--border)] px-3 py-[7px] text-[12px] font-medium text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] disabled:cursor-default disabled:opacity-70"
+          >
+            {previewRunning ? 'Previewing…' : 'Preview screenshot'}
+          </button>
+        </div>
+
+        {pickerError ? (
+          <p role="alert" className="text-[11.5px] text-[var(--error)]">
+            {pickerError}
+          </p>
+        ) : null}
+
+        {previewError ? (
+          <p role="alert" className="text-[11.5px] text-[var(--error)]">
+            {previewError}
+          </p>
+        ) : null}
 
         {progress && running ? <Progress progress={progress} /> : null}
 

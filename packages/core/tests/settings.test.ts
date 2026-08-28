@@ -9,9 +9,12 @@ describe('capture settings', () => {
   it('defaults match the spec', () => {
     expect(defaultSettings.include.html).toBe(true);
     expect(defaultSettings.include.screenshot).toBe(false);
+    expect(defaultSettings.include.perf).toBe(false);
     expect(defaultSettings.inertSnapshot).toBe(true);
+    expect(defaultSettings.embedViewer).toBe(false);
     expect(defaultSettings.output).toBe('single-file');
     expect(defaultSettings.excludeSelector).toBe('');
+    expect(defaultSettings.selectionSelector).toBe('');
     expect(defaultSettings.filenameTemplate).toBe('{host}-{timestamp}');
     expect(defaultSettings.limits).toEqual({
       concurrency: 6,

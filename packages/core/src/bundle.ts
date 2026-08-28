@@ -2,6 +2,7 @@ import { strToU8, zipSync } from 'fflate';
 import type { AssetKind, PageIR } from './ir.js';
 import type { CaptureSettings } from './settings.js';
 import type { TokenReport } from './tokens.js';
+import { viewerPanelBlock } from './viewer.js';
 
 export type BundleInput = {
   ir: PageIR;
@@ -119,15 +120,31 @@ function metadataDocument(input: BundleInput) {
 
 export function buildSingleFile(input: BundleInput): BundleOutput {
   const parts = [input.html];
+  let hasDataBlock = false;
   if (input.settings.include.metadata) {
     parts.push(jsonBlock('metadata', metadataDocument(input)));
+    hasDataBlock = true;
   }
-  if (input.tokens) parts.push(jsonBlock('tokens', input.tokens));
+  if (input.tokens) {
+    parts.push(jsonBlock('tokens', input.tokens));
+    hasDataBlock = true;
+  }
   if (input.settings.include.logs && input.ir.logs) {
     parts.push(jsonBlock('logs', input.ir.logs));
+    hasDataBlock = true;
+  }
+  if (input.ir.perf) {
+    parts.push(jsonBlock('perf', input.ir.perf));
+    hasDataBlock = true;
   }
   if (input.settings.include.rawSources && input.rawSources) {
     parts.push(jsonBlock('raw', Object.fromEntries(input.rawSources)));
+    hasDataBlock = true;
+  }
+  // Nothing to browse without at least one data block, so the panel would
+  // just be dead weight — skip it even if the setting is on.
+  if (input.settings.embedViewer && hasDataBlock) {
+    parts.push(viewerPanelBlock());
   }
   return {
     filename: captureFilename(
@@ -163,6 +180,9 @@ export function buildZip(input: BundleInput): BundleOutput {
   }
   if (input.settings.include.logs && input.ir.logs) {
     entries['logs.json'] = strToU8(JSON.stringify(input.ir.logs, null, 2));
+  }
+  if (input.ir.perf) {
+    entries['perf.json'] = strToU8(JSON.stringify(input.ir.perf, null, 2));
   }
   if (input.screenshot) entries['screenshot.png'] = input.screenshot;
 

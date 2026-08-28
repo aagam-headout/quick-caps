@@ -1,3 +1,5 @@
+import type { PerfReport } from './perf.js';
+
 export type WarningPhase =
   | 'collect'
   | 'permissions'
@@ -102,5 +104,6 @@ export type PageIR = {
   assets: AssetRef[];
   styleTally: StyleTally;
   logs?: LogEntry[];
+  perf?: PerfReport;
   warnings: Warning[];
 };

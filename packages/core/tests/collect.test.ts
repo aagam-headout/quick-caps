@@ -23,6 +23,30 @@ describe('collectFromDocument', () => {
     expect(ir.metadata.devicePixelRatio).toBe(2);
   });
 
+  it('carries a passed-in perf report through onto the IR', () => {
+    const perf = {
+      ttfbMs: 25,
+      domContentLoadedMs: 220,
+      loadMs: 480,
+      firstPaintMs: null,
+      firstContentfulPaintMs: null,
+      largestContentfulPaintMs: null,
+      transferSizeBytes: null,
+      resourceCount: 0,
+      resourceCountByKind: {},
+    };
+    const ir = collectFromDocument(fixtureDocument('static'), {
+      ...options,
+      perf,
+    });
+    expect(ir.perf).toEqual(perf);
+  });
+
+  it('omits perf when none was passed in', () => {
+    const ir = collectFromDocument(fixtureDocument('static'), options);
+    expect(ir.perf).toBeUndefined();
+  });
+
   it('serializes the live DOM into html', () => {
     const ir = collectFromDocument(fixtureDocument('static'), options);
     expect(ir.html).toContain('<h1>Static Fixture</h1>');

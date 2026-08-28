@@ -1,8 +1,10 @@
 import {
+  buildPerfReport,
   collectFromDocument,
   type CaptureSettings,
   type LogEntry,
   type PageIR,
+  type PerfReport,
 } from '@quickcaps/core';
 import {
   FLUSH_EVENT,
@@ -54,6 +56,54 @@ export function readRecorderLogs(): LogEntry[] | undefined {
 }
 
 /**
+ * Reads the page's own Navigation/Paint/Resource Timing entries and derives
+ * a lightweight perf snapshot from them — not a Lighthouse audit.
+ *
+ * `largest-contentful-paint` can report more than once as bigger content
+ * loads in; the last entry observed is the final value.
+ */
+export function readPerfMetrics(): PerfReport | undefined {
+  try {
+    const [navigation] = performance.getEntriesByType(
+      'navigation',
+    ) as PerformanceNavigationTiming[];
+    const paint = performance
+      .getEntriesByType('paint')
+      .map((entry) => ({ name: entry.name, startTime: entry.startTime }));
+    const lcpEntries = performance.getEntriesByType('largest-contentful-paint');
+    const lastLcp = lcpEntries[lcpEntries.length - 1];
+    const resources = (
+      performance.getEntriesByType('resource') as PerformanceResourceTiming[]
+    ).map((resource) => {
+      return {
+        initiatorType: resource.initiatorType,
+        transferSize: resource.transferSize,
+      };
+    });
+
+    return buildPerfReport({
+      ...(navigation
+        ? {
+            navigation: {
+              requestStart: navigation.requestStart,
+              responseStart: navigation.responseStart,
+              domContentLoadedEventEnd: navigation.domContentLoadedEventEnd,
+              loadEventEnd: navigation.loadEventEnd,
+              transferSize: navigation.transferSize,
+            },
+          }
+        : {}),
+      paint,
+      ...(lastLcp ? { largestContentfulPaintMs: lastLcp.startTime } : {}),
+      resources,
+    });
+  } catch {
+    // A perf snapshot is optional; the rest of the capture is not.
+    return undefined;
+  }
+}
+
+/**
  * The structural and stylistic read of the page: metadata, region tree, and the
  * computed-style tally that design tokens come from.
  *
@@ -62,6 +112,7 @@ export function readRecorderLogs(): LogEntry[] | undefined {
  */
 export function runCollector(settings: CaptureSettings): PageIR {
   const logs = settings.include.logs ? readRecorderLogs() : undefined;
+  const perf = settings.include.perf ? readPerfMetrics() : undefined;
 
   return collectFromDocument(document, {
     settings,
@@ -82,6 +133,7 @@ export function runCollector(settings: CaptureSettings): PageIR {
       return out;
     },
     ...(logs ? { logs } : {}),
+    ...(perf ? { perf } : {}),
   });
 }
 
@@ -123,6 +175,65 @@ export function applyExclusions(selector: string): () => void {
   };
 }
 
+/**
+ * Prunes the live document down to the ancestor chain of the element matching
+ * `selector`, for the duration of a capture, returning a function that puts
+ * everything back.
+ *
+ * Removes the target's ancestors' *siblings* rather than moving the target
+ * itself — moving it would re-parent it under a different ancestor chain and
+ * change which CSS rules and inherited computed values apply to it. Walking
+ * up and pruning siblings at each level keeps its real ancestor chain intact,
+ * so it renders identically to how it looked on the page.
+ *
+ * An empty selector, an invalid one, one matching nothing, or one matching
+ * `<body>`/`<html>` itself is a no-op — same "must not fail the whole
+ * capture" contract as applyExclusions.
+ */
+export function applySelectionRoot(selector: string): () => void {
+  const trimmed = selector.trim();
+  if (!trimmed) return () => {};
+
+  let target: Element | null;
+  try {
+    target = document.querySelector(trimmed);
+  } catch {
+    return () => {};
+  }
+  if (
+    !target ||
+    target === document.body ||
+    target === document.documentElement
+  ) {
+    return () => {};
+  }
+
+  const removed: { node: Element; parent: ParentNode; next: Node | null }[] =
+    [];
+  let node: Element = target;
+  while (
+    node.parentElement &&
+    node.parentElement !== document.documentElement
+  ) {
+    const parent = node.parentElement;
+    for (const sibling of Array.from(parent.children)) {
+      if (sibling === node) continue;
+      removed.push({ node: sibling, parent, next: sibling.nextSibling });
+      sibling.remove();
+    }
+    node = parent;
+  }
+
+  return () => {
+    // Reverse order so each sibling's recorded `next` is still in the tree
+    // (or already reinserted) by the time it's used.
+    for (let i = removed.length - 1; i >= 0; i--) {
+      const { node: sibling, parent, next } = removed[i]!;
+      parent.insertBefore(sibling, next);
+    }
+  };
+}
+
 export type CollectorOutcome =
   | { status: 'running' }
   | { status: 'done'; ir: PageIR; html: string }
@@ -151,7 +262,10 @@ export async function parkCollectorResult(
   if (!settings) return;
 
   globals[IR_KEY] = { status: 'running' } satisfies CollectorOutcome;
-  const restore = applyExclusions(settings.excludeSelector);
+  // Selection root first, so an exclude selector can still strip junk out of
+  // the kept subtree; restored in the opposite order.
+  const restoreSelection = applySelectionRoot(settings.selectionSelector);
+  const restoreExclusions = applyExclusions(settings.excludeSelector);
   try {
     const ir = runCollector(settings);
     const { html, title } = await deps.serialize(settings);
@@ -166,6 +280,7 @@ export async function parkCollectorResult(
       error: error instanceof Error ? error.message : String(error),
     } satisfies CollectorOutcome;
   } finally {
-    restore();
+    restoreExclusions();
+    restoreSelection();
   }
 }

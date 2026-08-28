@@ -22,6 +22,7 @@ export type CollectOptions = {
   /** Injected because the global is unavailable to core by design. */
   computedStyle?: (el: Element) => Record<string, string>;
   logs?: PageIR['logs'];
+  perf?: PageIR['perf'];
   maxRegionDepth?: number;
 };
 
@@ -228,6 +229,7 @@ export function collectFromDocument(
         )
       : emptyTally(),
     ...(options.logs ? { logs: options.logs } : {}),
+    ...(options.perf ? { perf: options.perf } : {}),
     warnings,
   };
 }

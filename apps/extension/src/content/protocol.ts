@@ -27,3 +27,10 @@ export const SERIALIZE_PROGRESS = '__quickcaps-serialize-progress';
 
 /** Event the recorder listens for, to flush synchronously. */
 export const FLUSH_EVENT = '__quickcaps-flush-logs';
+
+/**
+ * Sent by the injected element picker once the user confirms a selection.
+ * Triggers a headless capture (no popup involved, same as the keyboard
+ * shortcut) scoped to just that element.
+ */
+export const PICKER_CAPTURE = '__quickcaps-picker-capture';

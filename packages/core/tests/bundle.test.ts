@@ -172,6 +172,65 @@ describe('buildSingleFile', () => {
     );
     expect(text).not.toContain('data-capture="tokens"');
   });
+
+  it('embeds a perf block when the ir carries a perf report', () => {
+    const perf = {
+      ttfbMs: 25,
+      domContentLoadedMs: 220,
+      loadMs: 480,
+      firstPaintMs: null,
+      firstContentfulPaintMs: null,
+      largestContentfulPaintMs: null,
+      transferSizeBytes: null,
+      resourceCount: 0,
+      resourceCountByKind: {},
+    };
+    const text = new TextDecoder().decode(
+      buildSingleFile({ ...input, ir: { ...ir, perf } }).bytes,
+    );
+    expect(text).toContain('data-capture="perf"');
+    expect(text).toContain('"ttfbMs":25');
+  });
+
+  it('omits the perf block when the ir carries no perf report', () => {
+    const text = new TextDecoder().decode(buildSingleFile(input).bytes);
+    expect(text).not.toContain('data-capture="perf"');
+  });
+
+  it('omits the viewer panel by default', () => {
+    const text = new TextDecoder().decode(buildSingleFile(input).bytes);
+    expect(text).not.toContain('data-quickcaps-viewer');
+  });
+
+  it('embeds a viewer panel when embedViewer is on', () => {
+    const text = new TextDecoder().decode(
+      buildSingleFile({
+        ...input,
+        settings: { ...defaultSettings, embedViewer: true },
+      }).bytes,
+    );
+    expect(text).toContain('data-quickcaps-viewer');
+  });
+
+  it('omits the viewer panel when embedViewer is on but nothing was captured', () => {
+    const text = new TextDecoder().decode(
+      buildSingleFile({
+        ...input,
+        tokens: undefined,
+        settings: {
+          ...defaultSettings,
+          embedViewer: true,
+          include: {
+            ...defaultSettings.include,
+            metadata: false,
+            logs: false,
+            rawSources: false,
+          },
+        },
+      }).bytes,
+    );
+    expect(text).not.toContain('data-quickcaps-viewer');
+  });
 });
 
 describe('buildZip', () => {
@@ -202,6 +261,26 @@ describe('buildZip', () => {
         prefix,
       ).toBe(false);
     }
+  });
+
+  it('includes perf.json only when the ir carries a perf report', () => {
+    expect(Object.keys(unzipSync(buildZip(input).bytes))).not.toContain(
+      'perf.json',
+    );
+    const perf = {
+      ttfbMs: 25,
+      domContentLoadedMs: 220,
+      loadMs: 480,
+      firstPaintMs: null,
+      firstContentfulPaintMs: null,
+      largestContentfulPaintMs: null,
+      transferSizeBytes: null,
+      resourceCount: 0,
+      resourceCountByKind: {},
+    };
+    const files = unzipSync(buildZip({ ...input, ir: { ...ir, perf } }).bytes);
+    expect(Object.keys(files)).toContain('perf.json');
+    expect(JSON.parse(strFromU8(files['perf.json']!)).ttfbMs).toBe(25);
   });
 
   it('includes screenshot.png only when a screenshot was captured', () => {

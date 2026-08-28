@@ -2,6 +2,14 @@ import type { CaptureSettings, PageIR, Warning } from '@quickcaps/core';
 import type { StitchRequest } from '../background/chrome-driver.js';
 import type { Frame } from './capture.js';
 
+/**
+ * One-off request from the popup's "Preview screenshot" button: capture and
+ * stitch the current tab's full page, then open it in a new tab. Independent
+ * of the "Full-page screenshot (PNG)" setting, which only controls whether
+ * the screenshot rides along with an actual capture.
+ */
+export const PREVIEW_SCREENSHOT = '__quickcaps-preview-screenshot';
+
 export type OffscreenCaptureRequest = {
   type: 'offscreen:capture';
   ir: PageIR;

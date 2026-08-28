@@ -50,3 +50,11 @@ export {
   type ThemeTokens,
 } from './theme.js';
 export { fetchAssetBytes, fetchAssetText } from './http.js';
+export {
+  buildPerfReport,
+  type BuildPerfReportInput,
+  type PerfReport,
+  type RawNavigationTiming,
+  type RawPaintEntry,
+  type RawResourceTiming,
+} from './perf.js';

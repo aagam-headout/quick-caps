@@ -13,10 +13,21 @@ export const captureSettingsSchema = z.object({
       metadata: z.boolean().default(true),
       logs: z.boolean().default(false),
       rawSources: z.boolean().default(false),
+      /** A lightweight performance snapshot from the page's own
+       * Navigation/Paint/Resource Timing entries — not a Lighthouse audit. */
+      perf: z.boolean().default(false),
     })
     .default({}),
   scrollToLoadLazy: z.boolean().default(true),
   inertSnapshot: z.boolean().default(true),
+  /**
+   * Embeds a small self-contained viewer panel in single-file output so
+   * whoever reopens the capture can browse the metadata/tokens/logs/raw
+   * blocks that would otherwise just sit inert at the end of the document.
+   * Independent of inertSnapshot: this script is QuickCaps's own trusted
+   * code, not something the captured page supplied.
+   */
+  embedViewer: z.boolean().default(false),
   output: z.enum(['single-file', 'zip']).default('single-file'),
   /**
    * A CSS selector for elements to drop before capture — cookie banners,
@@ -24,6 +35,13 @@ export const captureSettingsSchema = z.object({
    * the live DOM for the duration of the capture only, then restored.
    */
   excludeSelector: z.string().default(''),
+  /**
+   * A CSS selector for the one element to keep, picked via the popup's
+   * "Pick element" tool. Everything outside its ancestor chain is pruned
+   * before capture. Empty string means capture the whole page. Set per
+   * capture, not saved as a sticky preference.
+   */
+  selectionSelector: z.string().default(''),
   /**
    * Tokens: {host}, {date} (yyyyMMdd), {time} (HHmmss), {timestamp}
    * (date-time combined, the v1 default). Unknown tokens pass through
