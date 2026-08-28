@@ -9,11 +9,25 @@
   },
   "homepage": "https://github.com/aagam-headout/quickcaps#readme",
   "type": "module",
-  "main": "./src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
-    ".": "./src/index.ts",
-    "./distill": "./src/distill.ts",
-    "./layout": "./src/layout.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./distill": {
+      "types": "./dist/distill.d.ts",
+      "default": "./dist/distill.js"
+    },
+    "./layout": {
+      "types": "./dist/layout.d.ts",
+      "default": "./dist/layout.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json"
   },
   "dependencies": {
     "fflate": "^0.8.2",

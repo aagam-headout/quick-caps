@@ -17,7 +17,14 @@ let cached: string | null = null;
 export async function collectorBundleSource(): Promise<string> {
   if (cached !== null) return cached;
 
-  const entry = fileURLToPath(new URL('./collector-entry.ts', import.meta.url));
+  // This module itself is loaded as .ts (via vitest/tsx against src) or as
+  // compiled .js (the published dist/ build) — collector-entry must be
+  // resolved with whichever extension this file was actually loaded with,
+  // since dist/ only ships .js and src/ only ships .ts.
+  const ext = import.meta.url.endsWith('.ts') ? '.ts' : '.js';
+  const entry = fileURLToPath(
+    new URL(`./collector-entry${ext}`, import.meta.url),
+  );
   const result = await build({
     entryPoints: [entry],
     bundle: true,
