@@ -8,6 +8,7 @@ function fakeFetch(
     statusText: string;
     headers: Record<string, string>;
     body: Uint8Array;
+    url: string;
   }>,
 ): typeof fetch {
   const body = init.body ?? new Uint8Array([1, 2, 3]);
@@ -15,6 +16,7 @@ function fakeFetch(
     ok: init.ok ?? true,
     status: init.status ?? 200,
     statusText: init.statusText ?? 'OK',
+    url: init.url ?? '',
     headers: {
       get: (name: string) => (init.headers ?? {})[name.toLowerCase()] ?? null,
     },
@@ -65,6 +67,26 @@ describe('fetchAssetBytes', () => {
         impl,
       ),
     ).rejects.toThrow('exceeds per-asset cap');
+  });
+
+  it('returns the post-redirect URL, not the requested one', async () => {
+    const impl = fakeFetch({ url: 'https://x.test/final-destination.png' });
+    const result = await fetchAssetBytes(
+      'https://x.test/original-link.png',
+      { timeoutMs: 100, maxBytes: 1000 },
+      impl,
+    );
+    expect(result.url).toBe('https://x.test/final-destination.png');
+  });
+
+  it('falls back to the requested URL when the fake response has no url set', async () => {
+    const impl = fakeFetch({});
+    const result = await fetchAssetBytes(
+      'https://x.test/a.png',
+      { timeoutMs: 100, maxBytes: 1000 },
+      impl,
+    );
+    expect(result.url).toBe('https://x.test/a.png');
   });
 
   it('aborts after the timeout', async () => {

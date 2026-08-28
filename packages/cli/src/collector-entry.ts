@@ -1,4 +1,13 @@
-import { collectFromDocument, type CollectOptions } from 'quickcaps-core';
+// Imported from the 'quickcaps-core/collect' subpath, not the root barrel:
+// the root barrel also re-exports assertFetchableUrl (url-policy.ts),
+// which imports node:dns/promises. This file is bundled by esbuild for
+// injection into a real browser page (collector-bundle.ts) — even though
+// this file never calls assertFetchableUrl, esbuild can't prove the
+// Node-builtin import used to reach it is side-effect-free, so it survives
+// tree-shaking and throws at runtime in the browser. Importing the
+// narrower subpath keeps url-policy.ts out of this bundle's module graph
+// entirely.
+import { collectFromDocument, type CollectOptions } from 'quickcaps-core/collect';
 
 /** Mirrors apps/extension/src/content/collector.ts's own list — kept as a
  * separate copy rather than a shared import, since sharing it would mean

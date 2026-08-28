@@ -147,4 +147,12 @@ describe('openUrl', () => {
     const result = await openUrl(shellUrl, { static: true });
     expect(result.driver).toBe('static');
   }, 30_000);
+
+  it('rejects a private-address URL before ever attempting a fetch', async () => {
+    // Not a loopback address — loopback is deliberately allowed (see the
+    // ruling on isPrivateIPv4/isPrivateIPv6). 10.0.0.1 is RFC1918.
+    await expect(openUrl('http://10.0.0.1:9999/')).rejects.toThrow(
+      /private|internal/i,
+    );
+  });
 });

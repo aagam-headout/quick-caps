@@ -50,6 +50,7 @@ export {
   type ThemeTokens,
 } from './theme.js';
 export { fetchAssetBytes, fetchAssetText } from './http.js';
+export { assertFetchableUrl, type UrlPolicyOptions } from './url-policy.js';
 export {
   buildPerfReport,
   type BuildPerfReportInput,

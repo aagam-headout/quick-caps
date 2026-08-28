@@ -104,4 +104,10 @@ describe('interact', () => {
     });
     expect(ir.html).toBeDefined();
   }, 30_000);
+
+  it('rejects a private-address URL before launching a browser', async () => {
+    await expect(
+      interact('http://169.254.169.254/', [0], { kind: 'button' }),
+    ).rejects.toThrow(/private|loopback|internal/i);
+  });
 });

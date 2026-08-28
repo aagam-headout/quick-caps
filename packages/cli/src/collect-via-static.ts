@@ -1,9 +1,11 @@
 import {
+  assertFetchableUrl,
   collectFromDocument,
   defaultSettings,
   type PageIR,
 } from 'quickcaps-core';
 import { StaticDriver } from './drivers/static-driver.js';
+import { CliError } from './errors.js';
 
 /**
  * Same Node process, same in-memory linkedom document as StaticDriver
@@ -12,6 +14,13 @@ import { StaticDriver } from './drivers/static-driver.js';
  */
 export async function collectViaStatic(url: string): Promise<PageIR> {
   const driver = await StaticDriver.fetch(url);
+  if (driver.url) {
+    try {
+      await assertFetchableUrl(driver.url);
+    } catch (error) {
+      throw new CliError(error instanceof Error ? error.message : String(error));
+    }
+  }
   const viewport = await driver.viewport();
 
   return collectFromDocument(driver.document, {

@@ -1,5 +1,5 @@
 import { chromium } from 'playwright';
-import type { PageIR } from 'quickcaps-core';
+import { assertFetchableUrl, type PageIR } from 'quickcaps-core';
 import { collectViaPlaywright } from './collect-via-playwright.js';
 import { CliError } from './errors.js';
 
@@ -34,6 +34,12 @@ export async function interact(
   domPath: number[],
   action: InteractAction,
 ): Promise<{ ir: PageIR; driver: 'playwright' }> {
+  try {
+    await assertFetchableUrl(url);
+  } catch (error) {
+    throw new CliError(error instanceof Error ? error.message : String(error));
+  }
+
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage();

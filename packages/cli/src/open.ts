@@ -1,8 +1,9 @@
 import { chromium } from 'playwright';
-import type { PageIR } from 'quickcaps-core';
+import { assertFetchableUrl, type PageIR } from 'quickcaps-core';
 import { flattenRegions } from 'quickcaps-core/distill';
 import { collectViaStatic } from './collect-via-static.js';
 import { collectViaPlaywright } from './collect-via-playwright.js';
+import { CliError } from './errors.js';
 
 /** Both thresholds are validated against the acceptance corpus (spec §7),
  * not derived in the abstract. */
@@ -66,6 +67,12 @@ export async function openUrl(
   url: string,
   opts: { static?: boolean } = {},
 ): Promise<OpenResult> {
+  try {
+    await assertFetchableUrl(url);
+  } catch (error) {
+    throw new CliError(error instanceof Error ? error.message : String(error));
+  }
+
   const staticIr = await collectViaStatic(url);
   if (opts.static === true || !looksLikeEmptyShell(staticIr)) {
     return { ir: staticIr, driver: 'static' };

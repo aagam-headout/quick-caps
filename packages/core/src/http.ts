@@ -37,7 +37,7 @@ export async function fetchAssetBytes(
       throw new Error(`exceeds per-asset cap: ${buffer.byteLength} bytes`);
     }
     return {
-      url,
+      url: response.url || url,
       bytes: new Uint8Array(buffer),
       contentType: response.headers.get('content-type'),
     };
