@@ -69,4 +69,21 @@ describe('pc bin (end-to-end)', () => {
       stderr: expect.stringContaining('Unknown command'),
     });
   }, 30_000);
+
+  it('runs a full open -> layout -> scrape sequence through the real bin', async () => {
+    await execFileAsync('node', [binPath, 'open', baseUrl], { cwd });
+    const { stdout: layoutOut } = await execFileAsync(
+      'node',
+      [binPath, 'layout'],
+      { cwd },
+    );
+    expect(layoutOut).toMatch(/\[\d+\] \w+ \(role=/);
+
+    const { stdout: scrapeOut } = await execFileAsync(
+      'node',
+      [binPath, 'scrape', '{"title":"h1"}'],
+      { cwd },
+    );
+    expect(JSON.parse(scrapeOut).title).toBe('A Real Article');
+  }, 30_000);
 });

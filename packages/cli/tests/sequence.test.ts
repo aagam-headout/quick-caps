@@ -13,12 +13,15 @@ import {
   expect,
   it,
 } from 'vitest';
-import { distillWithScoring } from '@quickcaps/core/distill';
+import { stat } from 'node:fs/promises';
+import { distillWithScoring, distill } from '@quickcaps/core/distill';
 import { runOpen } from '../src/commands/open.js';
 import { runDo } from '../src/commands/do.js';
 import { runRead } from '../src/commands/read.js';
 import { runNext } from '../src/commands/next.js';
 import { runFind, findScore } from '../src/commands/find.js';
+import { runTokens } from '../src/commands/tokens.js';
+import { runCapture } from '../src/commands/capture.js';
 import { readSession } from '../src/session.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -152,4 +155,103 @@ describe('open -> do -> read -> next -> find sequence', () => {
     expect(finalSession.page).toBe(1);
     expect(finalSession.query).toBe('zephyrquokka987');
   });
+});
+
+const toggleHtml = readFileSync(
+  join(here, 'fixtures/toggle-button.html'),
+  'utf8',
+);
+
+describe('open (static) -> tokens (escalation) -> do -> capture sequence', () => {
+  let toggleServer: Server;
+  let toggleUrl: string;
+
+  beforeAll(async () => {
+    toggleServer = createServer((req, res) => {
+      res.writeHead(200, { 'content-type': 'text/html' });
+      res.end(toggleHtml);
+    });
+    await new Promise<void>((resolve) => toggleServer.listen(0, resolve));
+    const address = toggleServer.address();
+    if (!address || typeof address === 'string') {
+      throw new Error('expected the test server to bind a port');
+    }
+    toggleUrl = `http://127.0.0.1:${address.port}/`;
+  });
+
+  afterAll(async () => {
+    await new Promise((resolve) => toggleServer.close(resolve));
+  });
+
+  it('carries valid handles across the static->playwright escalation, into do and capture (Fix 2 + Fix 1/2 integration)', async () => {
+    // 1. open --static — forces StaticDriver even though a real browser
+    // would also be able to render this page.
+    const openedText = await runOpen({ url: toggleUrl, static: true }, cwd);
+    expect(typeof openedText).toBe('string');
+
+    let session = await readSession(cwd);
+    expect(session.driver).toBe('static');
+    const staticButtonHandle = Object.values(session.handles).find(
+      (h) => h.kind === 'button',
+    );
+    expect(staticButtonHandle).toBeDefined();
+
+    // Stamp stale paging state onto the static session — a discriminator
+    // that Fix 2's pre-fix `{ ...session, url, driver, ir }` spread would
+    // carry forward wholesale (since the button/region ids happen to line
+    // up identically between the static and playwright collections of
+    // this simple fixture, a plain id-based assertion alone wouldn't have
+    // caught the regression).
+    await runFind('show', cwd);
+    session = await readSession(cwd);
+    expect(session.query).toBe('show');
+
+    // 2. tokens — triggers ensurePlaywrightSession's unconditional
+    // escalation. Before Fix 2, this would silently carry the static
+    // session's stale `query`/handles/page forward even though
+    // buildRegions handed out entirely new ids for the re-collected
+    // (playwright) tree.
+    const tokensText = await runTokens(cwd);
+    expect(() => JSON.parse(tokensText)).not.toThrow();
+
+    session = await readSession(cwd);
+    expect(session.driver).toBe('playwright');
+    expect(session.page).toBe(0);
+    expect(session.query).toBeUndefined();
+    expect(session.renderer).toBeUndefined();
+
+    // The post-escalation handles must match a fresh distill() of the new
+    // ir exactly — proof the escalation didn't inherit stale state.
+    const freshDistillation = distill(session.ir, {
+      tokenBudget: 500,
+      page: 0,
+    });
+    expect(session.handles).toEqual(freshDistillation.handles);
+
+    const postEscalationButtonHandle = Object.values(session.handles).find(
+      (h) => h.kind === 'button',
+    );
+    expect(postEscalationButtonHandle).toBeDefined();
+
+    // 3. do — click the button using the POST-escalation session's real
+    // handle id. Before Fix 2, this handle id could point at a
+    // nonexistent or wrong action in the re-collected tree.
+    const doText = await runDo(postEscalationButtonHandle!.id, cwd);
+    expect(doText).toContain('Revealed by clicking the button.');
+
+    session = await readSession(cwd);
+    expect(session.page).toBe(0);
+    expect(session.query).toBeUndefined();
+
+    // 4. capture — archives the post-click page to disk.
+    const captureText = await runCapture({}, cwd);
+    expect(captureText).toMatch(/^Wrote .+ \(\d+ bytes\)$/);
+
+    const writtenPath = captureText.slice(
+      'Wrote '.length,
+      captureText.lastIndexOf(' ('),
+    );
+    const stats = await stat(writtenPath);
+    expect(stats.size).toBeGreaterThan(0);
+  }, 30_000);
 });

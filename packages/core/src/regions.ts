@@ -127,18 +127,21 @@ export function buildRegions(doc: Document, options: RegionOptions): Region[] {
           type: 'link',
           label: labelFor(node),
           href: node.getAttribute('href') ?? '',
+          domPath: pathFromBody(node),
         });
       } else if (tag === 'button') {
         actions.push({
           id: nextId++,
           type: 'button',
           label: labelFor(node),
+          domPath: pathFromBody(node),
         });
       } else if (tag === 'input' || tag === 'select' || tag === 'textarea') {
         actions.push({
           id: nextId++,
           type: 'input',
           label: node.getAttribute('name') ?? labelFor(node),
+          domPath: pathFromBody(node),
         });
       }
     }

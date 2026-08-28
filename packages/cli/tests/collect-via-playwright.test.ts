@@ -56,3 +56,18 @@ describe('collectViaPlaywright', () => {
     }
   });
 });
+
+describe('collectViaPlaywright — computed styles', () => {
+  it('populates styleTally when the page has real CSS', async () => {
+    const page = await browser.newPage();
+    try {
+      await page.setContent(
+        '<!doctype html><html><body><main style="color: rgb(255, 0, 0);"><p>Styled text</p></main></body></html>',
+      );
+      const ir = await collectViaPlaywright(page);
+      expect(Object.keys(ir.styleTally.color).length).toBeGreaterThan(0);
+    } finally {
+      await page.close();
+    }
+  });
+});

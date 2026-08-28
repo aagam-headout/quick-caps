@@ -80,6 +80,10 @@ export type ActionRef = {
   type: 'link' | 'button' | 'input';
   label: string;
   href?: string;
+  /** Child-index chain from document.body to this action's own element —
+   * lets `do <n>` relocate the exact clickable/fillable element without
+   * ambiguity, even when it's inside a wrapper-collapsed container. */
+  domPath: number[];
 };
 
 export type Region = {

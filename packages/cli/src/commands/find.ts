@@ -29,8 +29,14 @@ export async function runFind(query: string, cwd: string): Promise<string> {
     { tokenBudget: 500, page: 0 },
   );
 
+  // Destructure `renderer` out rather than spreading it forward: `find`
+  // produces a distillation, not a layout render, so a stale `renderer:
+  // 'layout'` here would make a later `next` silently keep rendering
+  // structural layout output instead of query-scored content.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { renderer, ...rest } = session;
   await writeSession(cwd, {
-    ...session,
+    ...rest,
     page: 0,
     hasMore: distillation.hasMore,
     handles: distillation.handles,

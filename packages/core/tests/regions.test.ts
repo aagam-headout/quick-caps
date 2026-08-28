@@ -156,4 +156,45 @@ describe('buildRegions', () => {
     for (const index of article.domPath) el = el?.children[index] ?? null;
     expect(el?.parentElement?.tagName.toLowerCase()).toBe('main');
   });
+
+  it("records an action's own domPath, not its owning region's", () => {
+    const doc = fixtureDocument('spa');
+    const regions = flatten(buildRegions(doc, options));
+    const buttonAction = regions
+      .flatMap((r) => r.actions)
+      .find((a) => a.type === 'button')!;
+
+    let el: Element | null = doc.body;
+    for (const index of buttonAction.domPath) el = el?.children[index] ?? null;
+    expect(el?.tagName.toLowerCase()).toBe('button');
+    expect(el?.textContent?.trim()).toBe(buttonAction.label);
+  });
+
+  it('gives a wrapper-collapsed button action a domPath that still resolves to the real <button>', () => {
+    // <button><span>Save</span></button> — the button has no own text and
+    // exactly one child, so isWrapper() collapses it away as a Region (the
+    // <span> takes its place in the tree). But actionsIn() runs on the
+    // button's *parent*, classifying the <button> element itself as the
+    // action target — its domPath must still walk to the real <button>,
+    // not to the span that displaced it as a Region.
+    const doc = fixtureDocument('static');
+    const main = doc.querySelector('main')!;
+    const button = doc.createElement('button');
+    const span = doc.createElement('span');
+    span.textContent = 'Save';
+    button.append(span);
+    main.append(button);
+
+    const regions = flatten(buildRegions(doc, options));
+    expect(regions.some((r) => r.tag === 'button')).toBe(false);
+
+    const action = regions
+      .flatMap((r) => r.actions)
+      .find((a) => a.type === 'button' && a.label === 'Save')!;
+    expect(action).toBeDefined();
+
+    let el: Element | null = doc.body;
+    for (const index of action.domPath) el = el?.children[index] ?? null;
+    expect(el?.tagName.toLowerCase()).toBe('button');
+  });
 });

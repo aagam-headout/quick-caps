@@ -6,7 +6,8 @@
   "main": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./distill": "./src/distill.ts"
+    "./distill": "./src/distill.ts",
+    "./layout": "./src/layout.ts"
   },
   "dependencies": {
     "fflate": "^0.8.2",

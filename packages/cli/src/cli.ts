@@ -3,6 +3,10 @@ import { runNext } from './commands/next.js';
 import { runDo } from './commands/do.js';
 import { runRead } from './commands/read.js';
 import { runFind } from './commands/find.js';
+import { runLayout } from './commands/layout.js';
+import { runTokens } from './commands/tokens.js';
+import { runScrape } from './commands/scrape.js';
+import { runCapture, type CaptureArgs } from './commands/capture.js';
 import { CliError } from './errors.js';
 
 /**
@@ -27,8 +31,8 @@ export async function dispatch(
       return runNext(cwd);
     case 'do': {
       const n = Number(rest[0]);
-      if (!Number.isInteger(n)) throw new Error('Usage: pc do <n>');
-      return runDo(n, cwd);
+      if (!Number.isInteger(n)) throw new Error('Usage: pc do <n> [value]');
+      return runDo(n, cwd, rest[1]);
     }
     case 'read': {
       const n = Number(rest[0]);
@@ -40,9 +44,29 @@ export async function dispatch(
       if (!query) throw new Error('Usage: pc find <query>');
       return runFind(query, cwd);
     }
+    case 'layout':
+      return runLayout(cwd);
+    case 'tokens':
+      return runTokens(cwd);
+    case 'scrape': {
+      const shape = rest[0];
+      if (!shape) throw new Error('Usage: pc scrape <shape>');
+      return runScrape(shape, cwd);
+    }
+    case 'capture': {
+      const args: CaptureArgs = {};
+      if (rest.includes('--zip')) args.zip = true;
+      const outIndex = rest.indexOf('--out');
+      if (outIndex !== -1) {
+        const outDir = rest[outIndex + 1];
+        if (!outDir) throw new Error('Usage: pc capture [--zip] [--out <dir>]');
+        args.outDir = outDir;
+      }
+      return runCapture(args, cwd);
+    }
     default:
       throw new Error(
-        `Unknown command: ${command ?? '(none)'}. Expected one of: open, do, read, find, next.`,
+        `Unknown command: ${command ?? '(none)'}. Expected one of: open, do, read, find, next, layout, tokens, scrape, capture.`,
       );
   }
 }

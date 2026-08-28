@@ -18,6 +18,12 @@ export type Session = {
    * silently reverting to default ranking. Absent on sessions produced by
    * `open`/`do`. */
   query?: string;
+  /** Set by `layout` to record that the current handles/page are a
+   * region-only structural render, not a distillation — so `next` knows to
+   * keep paging with renderLayout rather than silently switching to
+   * distill()'s score-ranked content. Absent on sessions produced by
+   * `open`/`do`/`find`. */
+  renderer?: 'layout';
 };
 
 export class SessionNotFoundError extends Error {

@@ -1,5 +1,6 @@
 import { createServer, type Server } from 'node:http';
 import { readFileSync } from 'node:fs';
+import { readFileSync as readFileSyncForInteraction } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -13,9 +14,10 @@ import {
   expect,
   it,
 } from 'vitest';
+import { flattenRegions } from '@quickcaps/core/distill';
 import { runOpen } from '../../src/commands/open.js';
 import { CliError, runDo } from '../../src/commands/do.js';
-import { readSession, writeSession, type Session } from '../../src/session.js';
+import { readSession, writeSession } from '../../src/session.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const fixtureHtml = readFileSync(
@@ -86,55 +88,157 @@ describe('runDo', () => {
     expect(updated.url).toBe(`${baseUrl}about`);
     expect(updated.page).toBe(0);
   });
+});
 
-  it('returns a not-yet-supported message for a button handle without touching the session', async () => {
-    const session: Session = {
-      url: baseUrl,
-      driver: 'static',
-      ir: {
-        metadata: {
-          url: baseUrl,
-          title: '',
-          capturedAt: '2026-08-28T00:00:00.000Z',
-          viewport: { width: 0, height: 0 },
-          documentSize: { width: 0, height: 0 },
-          devicePixelRatio: 1,
-          userAgent: 'test',
-          charset: 'utf-8',
-          meta: {},
-        },
-        html: '<html></html>',
-        regions: [],
-        styles: [],
-        assets: [],
-        styleTally: {
-          color: {},
-          backgroundColor: {},
-          borderColor: {},
-          fontFamily: {},
-          fontSize: {},
-          lineHeight: {},
-          fontWeight: {},
-          spacing: {},
-          borderRadius: {},
-          boxShadow: {},
-        },
-        warnings: [],
-      },
-      page: 0,
-      hasMore: false,
-      handles: {
-        1: { id: 1, kind: 'button', label: 'Submit' },
-      },
-    };
-    await writeSession(cwd, session);
+const toggleHtml = readFileSyncForInteraction(
+  join(here, '../fixtures/toggle-button.html'),
+  'utf8',
+);
+const searchHtml = readFileSyncForInteraction(
+  join(here, '../fixtures/search-form.html'),
+  'utf8',
+);
 
-    const text = await runDo(1, cwd);
-    expect(text).toBe(
-      'not yet supported in this version — coming in a later phase',
+describe('runDo — button/input interaction', () => {
+  it('clicks a button handle and the resulting distillation reflects the click', async () => {
+    const toggleServer = createServer((req, res) => {
+      res.writeHead(200, { 'content-type': 'text/html' });
+      res.end(toggleHtml);
+    });
+    await new Promise<void>((resolve) => toggleServer.listen(0, resolve));
+    const address = toggleServer.address();
+    if (!address || typeof address === 'string') {
+      throw new Error('expected the test server to bind a port');
+    }
+    const toggleUrl = `http://127.0.0.1:${address.port}/`;
+
+    try {
+      await runOpen({ url: toggleUrl }, cwd);
+      const session = await readSession(cwd);
+      const buttonHandle = Object.values(session.handles).find(
+        (h) => h.kind === 'button',
+      )!;
+
+      const text = await runDo(buttonHandle.id, cwd);
+      expect(text).toContain('Revealed by clicking the button.');
+    } finally {
+      await new Promise((resolve) => toggleServer.close(resolve));
+    }
+  }, 30_000);
+
+  it('fills an input handle with a value, submits, and navigates to the result', async () => {
+    const searchServer = createServer((req, res) => {
+      if (req.url?.startsWith('/results')) {
+        const q =
+          new URL(req.url, 'http://localhost').searchParams.get('q') ?? '';
+        res.writeHead(200, { 'content-type': 'text/html' });
+        res.end(
+          `<!doctype html><html><body><main><h1>Results for: ${q}</h1></main></body></html>`,
+        );
+        return;
+      }
+      res.writeHead(200, { 'content-type': 'text/html' });
+      res.end(searchHtml);
+    });
+    await new Promise<void>((resolve) => searchServer.listen(0, resolve));
+    const address = searchServer.address();
+    if (!address || typeof address === 'string') {
+      throw new Error('expected the test server to bind a port');
+    }
+    const searchUrl = `http://127.0.0.1:${address.port}/`;
+
+    try {
+      await runOpen({ url: searchUrl }, cwd);
+      const session = await readSession(cwd);
+      const inputHandle = Object.values(session.handles).find(
+        (h) => h.kind === 'input',
+      )!;
+
+      const text = await runDo(inputHandle.id, cwd, 'wireless mouse');
+      expect(text).toContain('Results for: wireless mouse');
+
+      const updated = await readSession(cwd);
+      expect(updated.url).toContain('/results');
+    } finally {
+      await new Promise((resolve) => searchServer.close(resolve));
+    }
+  }, 30_000);
+
+  it('clicks a wrapper-collapsed button (label inside a <span>) and the resulting distillation reflects the click', async () => {
+    // <button><span>Show More</span></button> — the button has no own text
+    // and exactly one child, so it's wrapper-collapsed away as a *Region*
+    // (regions.ts's isWrapper()); the button action itself must still carry
+    // a domPath that resolves to the real <button>, not silently fall back
+    // to clicking its container.
+    const wrappedToggleHtml =
+      '<!doctype html><html><body><main>' +
+      '<button id="reveal" onclick="document.getElementById(\'revealed\').textContent = \'Revealed by clicking the button.\'">' +
+      '<span>Show More</span></button>' +
+      '<div id="revealed"></div></main></body></html>';
+    const wrappedToggleServer = createServer((req, res) => {
+      res.writeHead(200, { 'content-type': 'text/html' });
+      res.end(wrappedToggleHtml);
+    });
+    await new Promise<void>((resolve) =>
+      wrappedToggleServer.listen(0, resolve),
     );
+    const address = wrappedToggleServer.address();
+    if (!address || typeof address === 'string') {
+      throw new Error('expected the test server to bind a port');
+    }
+    const wrappedToggleUrl = `http://127.0.0.1:${address.port}/`;
 
-    const after = await readSession(cwd);
-    expect(after.url).toBe(baseUrl);
-  });
+    try {
+      await runOpen({ url: wrappedToggleUrl }, cwd);
+      const session = await readSession(cwd);
+      const buttonHandle = Object.values(session.handles).find(
+        (h) => h.kind === 'button',
+      )!;
+
+      const text = await runDo(buttonHandle.id, cwd);
+      expect(text).toContain('Revealed by clicking the button.');
+    } finally {
+      await new Promise((resolve) => wrappedToggleServer.close(resolve));
+    }
+  }, 30_000);
+
+  it('errors clearly on a button/input action whose domPath is missing (a stale pre-domPath session)', async () => {
+    const toggleServer = createServer((req, res) => {
+      res.writeHead(200, { 'content-type': 'text/html' });
+      res.end(toggleHtml);
+    });
+    await new Promise<void>((resolve) => toggleServer.listen(0, resolve));
+    const address = toggleServer.address();
+    if (!address || typeof address === 'string') {
+      throw new Error('expected the test server to bind a port');
+    }
+    const toggleUrl = `http://127.0.0.1:${address.port}/`;
+
+    try {
+      await runOpen({ url: toggleUrl }, cwd);
+      const session = await readSession(cwd);
+      const buttonHandle = Object.values(session.handles).find(
+        (h) => h.kind === 'button',
+      )!;
+
+      // Simulate a .quickcaps/session.json written before
+      // ActionRef.domPath existed (or any other cause of a missing
+      // domPath): strip the owning action's domPath before writing back.
+      for (const { region } of flattenRegions(session.ir.regions)) {
+        for (const action of region.actions) {
+          if (action.id === buttonHandle.id) {
+            // @ts-expect-error simulating a stale session missing domPath
+            delete action.domPath;
+          }
+        }
+      }
+      await writeSession(cwd, session);
+
+      await expect(runDo(buttonHandle.id, cwd)).rejects.toThrow(
+        /location is missing from this session/,
+      );
+    } finally {
+      await new Promise((resolve) => toggleServer.close(resolve));
+    }
+  }, 30_000);
 });

@@ -13,3 +13,10 @@ export {
   SessionNotFoundError,
   type Session,
 } from './session.js';
+export { runLayout } from './commands/layout.js';
+export { runTokens } from './commands/tokens.js';
+export { runScrape, splitSelectorAttr } from './commands/scrape.js';
+export { runCapture, type CaptureArgs } from './commands/capture.js';
+export { interact, type InteractAction } from './interact.js';
+export { ensurePlaywrightSession } from './ensure-playwright.js';
+export { collectViaPlaywrightFor } from './open.js';

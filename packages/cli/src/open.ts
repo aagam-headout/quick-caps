@@ -40,6 +40,24 @@ export type OpenResult = {
 };
 
 /**
+ * Launches a fresh browser, navigates to url, collects, closes the
+ * browser. Extracted out of openUrl's escalation branch so
+ * ensure-playwright.ts (Phase C2) can reuse the exact same
+ * launch/navigate/collect/close sequence for its own unconditional
+ * escalation, rather than duplicating it.
+ */
+export async function collectViaPlaywrightFor(url: string): Promise<PageIR> {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.goto(url);
+    return await collectViaPlaywright(page);
+  } finally {
+    await browser.close();
+  }
+}
+
+/**
  * Static-first with escalation (spec §4): fetch via StaticDriver, and only
  * if it looks like an empty shell — and the caller hasn't opted out with
  * `static: true` — discard it and re-collect through a real browser.
@@ -53,13 +71,6 @@ export async function openUrl(
     return { ir: staticIr, driver: 'static' };
   }
 
-  const browser = await chromium.launch();
-  try {
-    const page = await browser.newPage();
-    await page.goto(url);
-    const ir = await collectViaPlaywright(page);
-    return { ir, driver: 'playwright' };
-  } finally {
-    await browser.close();
-  }
+  const ir = await collectViaPlaywrightFor(url);
+  return { ir, driver: 'playwright' };
 }
