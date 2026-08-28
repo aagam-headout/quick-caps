@@ -1,7 +1,7 @@
 import { writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { darkTheme, lightTheme, themeToCss } from '@quickcaps/core';
+import { darkTheme, lightTheme, themeToCss } from 'quickcaps-core';
 
 const ALIASES = `:root {
   --surface: var(--background-100);

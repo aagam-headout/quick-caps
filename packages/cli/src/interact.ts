@@ -1,5 +1,5 @@
 import { chromium } from 'playwright';
-import type { PageIR } from '@quickcaps/core';
+import type { PageIR } from 'quickcaps-core';
 import { collectViaPlaywright } from './collect-via-playwright.js';
 import { CliError } from './errors.js';
 

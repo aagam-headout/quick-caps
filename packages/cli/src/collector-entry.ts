@@ -1,4 +1,4 @@
-import { collectFromDocument, type CollectOptions } from '@quickcaps/core';
+import { collectFromDocument, type CollectOptions } from 'quickcaps-core';
 
 /** Mirrors apps/extension/src/content/collector.ts's own list — kept as a
  * separate copy rather than a shared import, since sharing it would mean

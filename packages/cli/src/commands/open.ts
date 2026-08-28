@@ -1,4 +1,4 @@
-import { distill } from '@quickcaps/core/distill';
+import { distill } from 'quickcaps-core/distill';
 import { openUrl } from '../open.js';
 import { writeSession } from '../session.js';
 

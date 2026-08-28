@@ -14,7 +14,7 @@ import {
   expect,
   it,
 } from 'vitest';
-import { flattenRegions } from '@quickcaps/core/distill';
+import { flattenRegions } from 'quickcaps-core/distill';
 import { runOpen } from '../../src/commands/open.js';
 import { CliError, runDo } from '../../src/commands/do.js';
 import { readSession, writeSession } from '../../src/session.js';

@@ -1,5 +1,5 @@
 /**
- * @module @quickcaps/cli
+ * @module quickcaps-cli
  *
  * ### `pc mcp`
  *

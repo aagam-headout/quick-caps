@@ -5,7 +5,7 @@ import {
   type LogEntry,
   type PageIR,
   type PerfReport,
-} from '@quickcaps/core';
+} from 'quickcaps-core';
 import {
   FLUSH_EVENT,
   IR_KEY,

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { CaptureSettings } from '@quickcaps/core';
+import type { CaptureSettings } from 'quickcaps-core';
 import { Checkbox } from './components/Checkbox.js';
 import { Section } from './components/Section.js';
 import { SingleSelectDropdown } from './components/SingleSelectDropdown.js';

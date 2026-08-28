@@ -6,7 +6,7 @@ import {
   type FetchOptions,
   type PageIR,
   type Warning,
-} from '@quickcaps/core';
+} from 'quickcaps-core';
 import type { CaptureProgress } from './messages.js';
 
 export type Frame = { dataUrl: string; offsetY: number };

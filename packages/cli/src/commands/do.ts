@@ -1,4 +1,4 @@
-import { distill, flattenRegions } from '@quickcaps/core/distill';
+import { distill, flattenRegions } from 'quickcaps-core/distill';
 import { readSession, writeSession } from '../session.js';
 import { openUrl } from '../open.js';
 import { interact } from '../interact.js';

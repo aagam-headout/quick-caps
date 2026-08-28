@@ -1,5 +1,5 @@
-import { renderLayout } from '@quickcaps/core/layout';
-import type { Handle } from '@quickcaps/core/distill';
+import { renderLayout } from 'quickcaps-core/layout';
+import type { Handle } from 'quickcaps-core/distill';
 import { ensurePlaywrightSession } from '../ensure-playwright.js';
 import { writeSession } from '../session.js';
 

@@ -1,6 +1,6 @@
-import { distill, distillWithScoring } from '@quickcaps/core/distill';
-import type { Handle } from '@quickcaps/core/distill';
-import { renderLayout } from '@quickcaps/core/layout';
+import { distill, distillWithScoring } from 'quickcaps-core/distill';
+import type { Handle } from 'quickcaps-core/distill';
+import { renderLayout } from 'quickcaps-core/layout';
 import { readSession, writeSession } from '../session.js';
 import { findScore } from './find.js';
 

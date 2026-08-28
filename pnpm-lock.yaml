@@ -35,7 +35,7 @@ importers:
 
   apps/extension:
     dependencies:
-      '@quickcaps/core':
+      quickcaps-core:
         specifier: workspace:*
         version: link:../../packages/core
       react:
@@ -99,9 +99,6 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: ^1.30.0
         version: 1.30.0(zod@4.4.3)
-      '@quickcaps/core':
-        specifier: workspace:*
-        version: link:../core
       esbuild:
         specifier: ^0.24.0
         version: 0.24.2
@@ -114,6 +111,9 @@ importers:
       playwright:
         specifier: ^1.48.0
         version: 1.62.1
+      quickcaps-core:
+        specifier: workspace:*
+        version: link:../core
       tsx:
         specifier: ^4.19.0
         version: 4.23.12

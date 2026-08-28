@@ -1,6 +1,6 @@
 import { chromium } from 'playwright';
-import type { PageIR } from '@quickcaps/core';
-import { flattenRegions } from '@quickcaps/core/distill';
+import type { PageIR } from 'quickcaps-core';
+import { flattenRegions } from 'quickcaps-core/distill';
 import { collectViaStatic } from './collect-via-static.js';
 import { collectViaPlaywright } from './collect-via-playwright.js';
 

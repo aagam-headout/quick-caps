@@ -42,7 +42,7 @@ describe('built collector artifact', () => {
   });
 
   it('resolves no workspace package at runtime', () => {
-    expect(code).not.toContain('@quickcaps/core');
+    expect(code).not.toContain('quickcaps-core');
     expect(code).not.toContain('single-file-core/single-file.js');
   });
 
@@ -56,7 +56,7 @@ describe('built collector artifact', () => {
 
   it('does not pull in an unused heavyweight dependency (e.g. a tokenizer BPE table)', () => {
     // Verified build size at time of writing is ~907 kB (single-file-core
-    // dominates). A prior regression had `@quickcaps/core`'s barrel export
+    // dominates). A prior regression had `quickcaps-core`'s barrel export
     // re-exporting `distill` (unused by the extension), which transitively
     // pulled in `gpt-tokenizer`'s vocab table and roughly doubled this file
     // to ~1.89 MB. This ceiling — current size plus ~20% headroom — is

@@ -1,7 +1,13 @@
 {
-  "name": "@quickcaps/cli",
-  "version": "0.0.0",
-  "private": true,
+  "name": "quickcaps-cli",
+  "version": "0.1.0",
+  "description": "Distill any rendered web page into a few hundred tokens of numbered regions and actions, or capture it to disk — a CLI and MCP server for agents.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aagam-headout/quickcaps.git"
+  },
+  "homepage": "https://github.com/aagam-headout/quickcaps#readme",
   "type": "module",
   "main": "./src/index.ts",
   "exports": {
@@ -12,7 +18,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
-    "@quickcaps/core": "workspace:*",
+    "quickcaps-core": "workspace:*",
     "esbuild": "^0.24.0",
     "fflate": "^0.8.2",
     "linkedom": "^0.18.5",

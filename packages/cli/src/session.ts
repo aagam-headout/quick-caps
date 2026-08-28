@@ -1,7 +1,7 @@
 import { access, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { PageIR } from '@quickcaps/core';
-import type { Handle } from '@quickcaps/core/distill';
+import type { PageIR } from 'quickcaps-core';
+import type { Handle } from 'quickcaps-core/distill';
 import { CliError } from './errors.js';
 
 export type Session = {

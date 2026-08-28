@@ -1,5 +1,5 @@
 import type { Page } from 'playwright';
-import { defaultSettings, type PageIR } from '@quickcaps/core';
+import { defaultSettings, type PageIR } from 'quickcaps-core';
 import { collectorBundleSource } from './collector-bundle.js';
 
 /**

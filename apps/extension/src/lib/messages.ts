@@ -1,4 +1,4 @@
-import type { CaptureSettings, PageIR, Warning } from '@quickcaps/core';
+import type { CaptureSettings, PageIR, Warning } from 'quickcaps-core';
 import type { StitchRequest } from '../background/chrome-driver.js';
 import type { Frame } from './capture.js';
 

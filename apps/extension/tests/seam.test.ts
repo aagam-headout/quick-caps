@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { defaultSettings, fetchAssets, type AssetRef } from '@quickcaps/core';
+import { defaultSettings, fetchAssets, type AssetRef } from 'quickcaps-core';
 import { installChromeMock } from './chrome-mock.js';
 import { ChromeDriver } from '../src/background/chrome-driver.js';
 

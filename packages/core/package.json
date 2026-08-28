@@ -1,7 +1,13 @@
 {
-  "name": "@quickcaps/core",
-  "version": "0.0.0",
-  "private": true,
+  "name": "quickcaps-core",
+  "version": "0.1.0",
+  "description": "Rendered-DOM page distillation engine for quickcaps-cli — PageIR, design-token extraction, single-file/zip capture bundling.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aagam-headout/quickcaps.git"
+  },
+  "homepage": "https://github.com/aagam-headout/quickcaps#readme",
   "type": "module",
   "main": "./src/index.ts",
   "exports": {

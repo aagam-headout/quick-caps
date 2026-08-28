@@ -1,4 +1,4 @@
-import { buildTokens } from '@quickcaps/core';
+import { buildTokens } from 'quickcaps-core';
 import { ensurePlaywrightSession } from '../ensure-playwright.js';
 
 /** Matches apps/extension/src/lib/capture.ts's existing buildTokens usage —

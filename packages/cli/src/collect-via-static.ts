@@ -2,7 +2,7 @@ import {
   collectFromDocument,
   defaultSettings,
   type PageIR,
-} from '@quickcaps/core';
+} from 'quickcaps-core';
 import { StaticDriver } from './drivers/static-driver.js';
 
 /**

@@ -1,6 +1,6 @@
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { buildSingleFile, buildZip, defaultSettings } from '@quickcaps/core';
+import { buildSingleFile, buildZip, defaultSettings } from 'quickcaps-core';
 import { ensurePlaywrightSession } from '../ensure-playwright.js';
 
 export type CaptureArgs = {

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { unzipSync, strFromU8 } from 'fflate';
-import { defaultSettings, emptyTally, type PageIR } from '@quickcaps/core';
+import { defaultSettings, emptyTally, type PageIR } from 'quickcaps-core';
 import { runCapture, type CaptureDeps } from '../src/lib/capture.js';
 
 const ir: PageIR = {
