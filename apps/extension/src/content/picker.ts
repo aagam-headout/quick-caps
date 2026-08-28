@@ -180,10 +180,25 @@ export function installPicker(deps: PickerDeps): () => void {
     if (event.key === 'Escape') cleanup();
   }
 
+  /**
+   * `place` reads viewport-relative coordinates, which only stay correct
+   * until the next scroll — highlight and target drift apart otherwise,
+   * scroll-only, no mouse movement, until the mouse moves again. Re-running
+   * it on every scroll (capture phase, so a scroll inside a nested
+   * container is caught too, not just window/document scrolling) keeps the
+   * box glued to whichever element is current.
+   */
+  function onScroll(): void {
+    const target = picked ?? hovered;
+    if (target) place(target);
+  }
+
   function cleanup(): void {
     document.removeEventListener('mousemove', onMove, true);
     document.removeEventListener('click', onClick, true);
     document.removeEventListener('keydown', onKey, true);
+    window.removeEventListener('scroll', onScroll, true);
+    window.removeEventListener('resize', onScroll);
     highlight.remove();
     bar.remove();
   }
@@ -199,6 +214,8 @@ export function installPicker(deps: PickerDeps): () => void {
   document.addEventListener('mousemove', onMove, true);
   document.addEventListener('click', onClick, true);
   document.addEventListener('keydown', onKey, true);
+  window.addEventListener('scroll', onScroll, { capture: true, passive: true });
+  window.addEventListener('resize', onScroll);
   document.body.appendChild(highlight);
   document.body.appendChild(bar);
 
