@@ -28,6 +28,9 @@ vi.mock('../src/commands/scrape.js', () => ({
 vi.mock('../src/commands/capture.js', () => ({
   runCapture: vi.fn(async () => 'capture message'),
 }));
+vi.mock('../src/mcp/server.js', () => ({
+  startMcpServer: vi.fn(async () => undefined),
+}));
 
 const { dispatch } = await import('../src/cli.js');
 
@@ -114,5 +117,12 @@ describe('dispatch — extended commands', () => {
     const { runDo } = await import('../src/commands/do.js');
     await dispatch(['do', '5']);
     expect(runDo).toHaveBeenCalledWith(5, expect.any(String), undefined);
+  });
+
+  it('routes "mcp" to startMcpServer and resolves an empty string', async () => {
+    const { startMcpServer } = await import('../src/mcp/server.js');
+    const result = await dispatch(['mcp']);
+    expect(result).toBe('');
+    expect(startMcpServer).toHaveBeenCalledOnce();
   });
 });
