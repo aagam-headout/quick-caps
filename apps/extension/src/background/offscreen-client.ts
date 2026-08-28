@@ -9,6 +9,16 @@ import type {
 const DOCUMENT_PATH = 'src/offscreen/index.html';
 
 /**
+ * Ceiling on one round trip to the offscreen document.
+ *
+ * Generous: stitching a tall page or bundling a heavy archive is real work.
+ * But a document that has stopped answering - crashed on a huge canvas, torn
+ * down mid-message - leaves sendMessage pending forever, and that pending
+ * promise used to hold the capture lock for the life of the worker.
+ */
+const DEFAULT_TIMEOUT_MS = 120_000;
+
+/**
  * Wraps the offscreen document, which exists for the things a service worker
  * cannot do: decode and compose images, and create an object URL.
  *
@@ -17,6 +27,8 @@ const DOCUMENT_PATH = 'src/offscreen/index.html';
  */
 export class OffscreenClient {
   private creating: Promise<void> | undefined;
+
+  constructor(private readonly timeoutMs: number = DEFAULT_TIMEOUT_MS) {}
 
   async ensure(): Promise<void> {
     if (await chrome.offscreen.hasDocument()) return;
@@ -45,10 +57,29 @@ export class OffscreenClient {
     await this.creating;
   }
 
+  /** Fails a round trip the offscreen document never answered. */
+  private bounded<T>(work: Promise<T>, what: string): Promise<T> {
+    if (this.timeoutMs <= 0) return work;
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(
+        () =>
+          reject(
+            new Error(
+              `QuickCaps' background helper stopped responding (${what}). Try again.`,
+            ),
+          ),
+        this.timeoutMs,
+      );
+      work.then(resolve, reject).finally(() => clearTimeout(timer));
+    });
+  }
+
   private async send(request: OffscreenRequest): Promise<OffscreenResponse> {
     await this.ensure();
-    const response = (await chrome.runtime.sendMessage(request)) as
-      OffscreenResponse | undefined;
+    const response = (await this.bounded(
+      chrome.runtime.sendMessage(request),
+      request.type,
+    )) as OffscreenResponse | undefined;
     // Undefined means nothing answered - the document was torn down between
     // ensure() and the send. Dereferencing `.ok` here would throw a TypeError
     // that reads as a bug rather than as the transient it is.
