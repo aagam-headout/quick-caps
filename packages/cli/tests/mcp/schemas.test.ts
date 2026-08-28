@@ -14,7 +14,9 @@ import {
 
 describe('open schema', () => {
   it('requires a url, static is optional', () => {
-    expect(z.object(openInputSchema).parse({ url: 'https://example.com' })).toEqual({
+    expect(
+      z.object(openInputSchema).parse({ url: 'https://example.com' }),
+    ).toEqual({
       url: 'https://example.com',
     });
     expect(() => z.object(openInputSchema).parse({})).toThrow();
@@ -34,14 +36,18 @@ describe('do schema', () => {
 
 describe('read schema', () => {
   it('requires an integer handle', () => {
-    expect(z.object(readInputSchema).parse({ handle: 2 })).toEqual({ handle: 2 });
+    expect(z.object(readInputSchema).parse({ handle: 2 })).toEqual({
+      handle: 2,
+    });
     expect(() => z.object(readInputSchema).parse({})).toThrow();
   });
 });
 
 describe('find schema', () => {
   it('requires a non-empty query', () => {
-    expect(z.object(findInputSchema).parse({ query: 'x' })).toEqual({ query: 'x' });
+    expect(z.object(findInputSchema).parse({ query: 'x' })).toEqual({
+      query: 'x',
+    });
     expect(() => z.object(findInputSchema).parse({ query: '' })).toThrow();
   });
 });
@@ -56,7 +62,9 @@ describe('empty schemas', () => {
 
 describe('scrape schema', () => {
   it('requires a shape string', () => {
-    expect(z.object(scrapeInputSchema).parse({ shape: '{"title":"h1"}' })).toEqual({
+    expect(
+      z.object(scrapeInputSchema).parse({ shape: '{"title":"h1"}' }),
+    ).toEqual({
       shape: '{"title":"h1"}',
     });
     expect(() => z.object(scrapeInputSchema).parse({})).toThrow();
@@ -66,7 +74,9 @@ describe('scrape schema', () => {
 describe('capture schema', () => {
   it('zip and outDir are both optional', () => {
     expect(z.object(captureInputSchema).parse({})).toEqual({});
-    expect(z.object(captureInputSchema).parse({ zip: true, outDir: '/tmp/x' })).toEqual({
+    expect(
+      z.object(captureInputSchema).parse({ zip: true, outDir: '/tmp/x' }),
+    ).toEqual({
       zip: true,
       outDir: '/tmp/x',
     });

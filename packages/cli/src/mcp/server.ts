@@ -47,7 +47,10 @@ export function buildMcpServer(): McpServer {
     async (args) =>
       toToolResult(() =>
         runOpen(
-          { url: args.url, ...(args.static !== undefined && { static: args.static }) },
+          {
+            url: args.url,
+            ...(args.static !== undefined && { static: args.static }),
+          },
           cwd,
         ),
       ),
@@ -67,7 +70,8 @@ export function buildMcpServer(): McpServer {
     'pc_do',
     {
       title: 'Follow an action',
-      description: 'Follow the action at a numbered handle (click a button, type into an input).',
+      description:
+        'Follow the action at a numbered handle (click a button, type into an input).',
       inputSchema: doInputSchema,
     },
     async (args) => toToolResult(() => runDo(args.handle, cwd, args.value)),
@@ -97,7 +101,8 @@ export function buildMcpServer(): McpServer {
     'pc_layout',
     {
       title: 'Structural layout',
-      description: 'Structural tree of the current page: regions, roles, boxes.',
+      description:
+        'Structural tree of the current page: regions, roles, boxes.',
       inputSchema: layoutInputSchema,
     },
     async () => toToolResult(() => runLayout(cwd)),
@@ -107,7 +112,8 @@ export function buildMcpServer(): McpServer {
     'pc_tokens',
     {
       title: 'Design tokens',
-      description: 'Extracted colors, type scale, spacing, and radii for the current page.',
+      description:
+        'Extracted colors, type scale, spacing, and radii for the current page.',
       inputSchema: tokensInputSchema,
     },
     async () => toToolResult(() => runTokens(cwd)),
@@ -117,7 +123,8 @@ export function buildMcpServer(): McpServer {
     'pc_scrape',
     {
       title: 'Schema-driven scrape',
-      description: 'Extract fields from the current page per a {field: selector} JSON shape.',
+      description:
+        'Extract fields from the current page per a {field: selector} JSON shape.',
       inputSchema: scrapeInputSchema,
     },
     async (args) => toToolResult(() => runScrape(args.shape, cwd)),
@@ -137,7 +144,10 @@ export function buildMcpServer(): McpServer {
         await ensureArtifactRoot(root);
         await sweepArtifactRoot(root, resolveRetentionMs());
         return runCapture(
-          { ...(args.zip !== undefined && { zip: args.zip }), outDir: args.outDir ?? root },
+          {
+            ...(args.zip !== undefined && { zip: args.zip }),
+            outDir: args.outDir ?? root,
+          },
           cwd,
         );
       }),

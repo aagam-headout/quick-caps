@@ -5,7 +5,9 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 vi.mock('../../src/commands/open.js', () => ({
   runOpen: vi.fn(async (args: { url: string }) => `opened ${args.url}`),
 }));
-vi.mock('../../src/commands/next.js', () => ({ runNext: vi.fn(async () => 'next-out') }));
+vi.mock('../../src/commands/next.js', () => ({
+  runNext: vi.fn(async () => 'next-out'),
+}));
 vi.mock('../../src/commands/do.js', () => ({
   runDo: vi.fn(async (handle: number) => `did ${handle}`),
 }));
@@ -15,16 +17,24 @@ vi.mock('../../src/commands/read.js', () => ({
 vi.mock('../../src/commands/find.js', () => ({
   runFind: vi.fn(async (query: string) => `found ${query}`),
 }));
-vi.mock('../../src/commands/layout.js', () => ({ runLayout: vi.fn(async () => 'layout-out') }));
-vi.mock('../../src/commands/tokens.js', () => ({ runTokens: vi.fn(async () => '{"tokens":true}') }));
+vi.mock('../../src/commands/layout.js', () => ({
+  runLayout: vi.fn(async () => 'layout-out'),
+}));
+vi.mock('../../src/commands/tokens.js', () => ({
+  runTokens: vi.fn(async () => '{"tokens":true}'),
+}));
 vi.mock('../../src/commands/scrape.js', () => ({
   runScrape: vi.fn(async (shape: string) => `scraped ${shape}`),
 }));
 vi.mock('../../src/commands/capture.js', () => ({
-  runCapture: vi.fn(async (args: { outDir?: string }) => `Wrote ${args.outDir}/x.html (10 bytes)`),
+  runCapture: vi.fn(
+    async (args: { outDir?: string }) =>
+      `Wrote ${args.outDir}/x.html (10 bytes)`,
+  ),
 }));
 vi.mock('../../src/mcp/artifacts.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../src/mcp/artifacts.js')>();
+  const actual =
+    await importOriginal<typeof import('../../src/mcp/artifacts.js')>();
   return {
     ...actual,
     ensureArtifactRoot: vi.fn(actual.ensureArtifactRoot),
@@ -38,9 +48,13 @@ const { ensureArtifactRoot } = await import('../../src/mcp/artifacts.js');
 
 async function connectedClient() {
   const server = buildMcpServer();
-  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  const [clientTransport, serverTransport] =
+    InMemoryTransport.createLinkedPair();
   const client = new Client({ name: 'test-client', version: '0.0.0' });
-  await Promise.all([client.connect(clientTransport), server.connect(serverTransport)]);
+  await Promise.all([
+    client.connect(clientTransport),
+    server.connect(serverTransport),
+  ]);
   return client;
 }
 
@@ -70,8 +84,13 @@ describe('buildMcpServer', () => {
       name: 'pc_open',
       arguments: { url: 'https://example.com' },
     });
-    expect(runOpen).toHaveBeenCalledWith({ url: 'https://example.com', static: undefined }, expect.any(String));
-    expect(result.content).toEqual([{ type: 'text', text: 'opened https://example.com' }]);
+    expect(runOpen).toHaveBeenCalledWith(
+      { url: 'https://example.com', static: undefined },
+      expect.any(String),
+    );
+    expect(result.content).toEqual([
+      { type: 'text', text: 'opened https://example.com' },
+    ]);
   });
 
   it('defaults pc_capture outDir to the artifact root, not cwd', async () => {
@@ -80,16 +99,22 @@ describe('buildMcpServer', () => {
     const [args] = vi.mocked(runCapture).mock.calls.at(-1)!;
     expect(args.outDir).not.toBe(process.cwd());
     expect(args.outDir).toContain('quickcaps-mcp-artifacts');
-    expect(result.content).toContainEqual(expect.objectContaining({ type: 'text' }));
+    expect(result.content).toContainEqual(
+      expect.objectContaining({ type: 'text' }),
+    );
   });
 
   it('surfaces an artifact root failure as isError instead of a protocol error', async () => {
-    vi.mocked(ensureArtifactRoot).mockRejectedValueOnce(new Error('EACCES: permission denied'));
+    vi.mocked(ensureArtifactRoot).mockRejectedValueOnce(
+      new Error('EACCES: permission denied'),
+    );
 
     const client = await connectedClient();
     const result = await client.callTool({ name: 'pc_capture', arguments: {} });
     expect(result.isError).toBe(true);
-    expect(result.content).toEqual([{ type: 'text', text: 'EACCES: permission denied' }]);
+    expect(result.content).toEqual([
+      { type: 'text', text: 'EACCES: permission denied' },
+    ]);
   });
 
   it('surfaces a thrown CliError as isError instead of a protocol error', async () => {
@@ -98,7 +123,10 @@ describe('buildMcpServer', () => {
     vi.mocked(runDo).mockRejectedValueOnce(new CliError('no such handle'));
 
     const client = await connectedClient();
-    const result = await client.callTool({ name: 'pc_do', arguments: { handle: 999 } });
+    const result = await client.callTool({
+      name: 'pc_do',
+      arguments: { handle: 999 },
+    });
     expect(result.isError).toBe(true);
     expect(result.content).toEqual([{ type: 'text', text: 'no such handle' }]);
   });
