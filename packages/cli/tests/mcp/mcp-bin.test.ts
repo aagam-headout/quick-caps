@@ -4,13 +4,24 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdtemp, rm, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const binPath = join(here, '../../bin/pc.mjs');
-const fixtureHtml = readFileSync(join(here, '../fixtures/static-article.html'), 'utf8');
+const fixtureHtml = readFileSync(
+  join(here, '../fixtures/static-article.html'),
+  'utf8',
+);
 
 let server: Server;
 let baseUrl: string;
@@ -50,7 +61,10 @@ function firstText(content: unknown): string {
   return item.text;
 }
 
-async function connect(): Promise<{ client: Client; transport: StdioClientTransport }> {
+async function connect(): Promise<{
+  client: Client;
+  transport: StdioClientTransport;
+}> {
   const transport = new StdioClientTransport({
     command: 'node',
     args: [binPath, 'mcp'],
@@ -88,11 +102,17 @@ describe('pc mcp (end-to-end over stdio)', () => {
   it('runs a real open -> layout -> scrape round trip', async () => {
     const { client, transport } = await connect();
     try {
-      const openResult = await client.callTool({ name: 'pc_open', arguments: { url: baseUrl } });
+      const openResult = await client.callTool({
+        name: 'pc_open',
+        arguments: { url: baseUrl },
+      });
       expect(openResult.isError).toBeFalsy();
       expect(firstText(openResult.content)).toContain('A Real Article');
 
-      const layoutResult = await client.callTool({ name: 'pc_layout', arguments: {} });
+      const layoutResult = await client.callTool({
+        name: 'pc_layout',
+        arguments: {},
+      });
       expect(firstText(layoutResult.content)).toMatch(/\[\d+\] \w+ \(role=/);
 
       const scrapeResult = await client.callTool({
@@ -110,7 +130,10 @@ describe('pc mcp (end-to-end over stdio)', () => {
     const { client, transport } = await connect();
     try {
       await client.callTool({ name: 'pc_open', arguments: { url: baseUrl } });
-      const result = await client.callTool({ name: 'pc_do', arguments: { handle: 9999 } });
+      const result = await client.callTool({
+        name: 'pc_do',
+        arguments: { handle: 9999 },
+      });
       expect(result.isError).toBe(true);
     } finally {
       await transport.close();
@@ -121,12 +144,18 @@ describe('pc mcp (end-to-end over stdio)', () => {
     const { client, transport } = await connect();
     try {
       await client.callTool({ name: 'pc_open', arguments: { url: baseUrl } });
-      const result = await client.callTool({ name: 'pc_capture', arguments: {} });
+      const result = await client.callTool({
+        name: 'pc_capture',
+        arguments: {},
+      });
       expect(result.isError).toBeFalsy();
       const text = firstText(result.content);
       expect(text).toContain(artifactRoot);
       const written = await readdir(artifactRoot);
-      expect(written.length).toBe(1);
+      const captureFiles = written.filter(
+        (name) => name !== '.quickcaps-mcp-artifacts',
+      );
+      expect(captureFiles.length).toBe(1);
     } finally {
       await transport.close();
     }
