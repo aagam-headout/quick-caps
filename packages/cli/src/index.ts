@@ -14,7 +14,7 @@
  * notion of "current shell directory" the way a terminal user does:
  *
  * - `QUICKCAPS_MCP_ARTIFACT_ROOT` — where capture files land by default.
- *   Defaults to `<os tmpdir>/quickcaps-mcp-artifacts`.
+ *   Defaults to a per-user directory under the OS temp directory (e.g., `<os tmpdir>/quickcaps-mcp-artifacts-<uid>`).
  * - `QUICKCAPS_MCP_ARTIFACT_RETENTION_MS` — files older than this are swept
  *   before each `pc_capture` call, so an agent capturing in a loop doesn't
  *   fill the disk. Defaults to 24 hours.
