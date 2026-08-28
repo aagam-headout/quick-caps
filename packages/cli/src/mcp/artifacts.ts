@@ -1,4 +1,4 @@
-import { mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -15,9 +15,10 @@ const SENTINEL_FILE = '.quickcaps-mcp-artifacts';
 export function resolveArtifactRoot(
   env: NodeJS.ProcessEnv = process.env,
 ): string {
-  return (
-    env.QUICKCAPS_MCP_ARTIFACT_ROOT ?? join(tmpdir(), 'quickcaps-mcp-artifacts')
-  );
+  if (env.QUICKCAPS_MCP_ARTIFACT_ROOT) return env.QUICKCAPS_MCP_ARTIFACT_ROOT;
+  const suffix =
+    typeof process.getuid === 'function' ? `-${process.getuid()}` : '';
+  return join(tmpdir(), `quickcaps-mcp-artifacts${suffix}`);
 }
 
 /** How long a capture file is kept before the next sweep deletes it.
@@ -40,6 +41,16 @@ export function resolveRetentionMs(
  * on this call and every future one, even though `pc_capture` can still
  * write into it. */
 export async function ensureArtifactRoot(root: string): Promise<void> {
+  const existingStat = await lstat(root).catch((error) => {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+    throw error;
+  });
+  if (existingStat?.isSymbolicLink()) {
+    throw new Error(
+      `Refusing to use ${root} as the artifact root: it is a symlink, not a real directory.`,
+    );
+  }
+
   let freshlyCreated = true;
   try {
     // Non-recursive first: distinguishes "didn't exist, we just made it"
@@ -105,7 +116,7 @@ export async function sweepArtifactRoot(
   for (const entry of entries) {
     if (entry === SENTINEL_FILE) continue;
     const path = join(root, entry);
-    const info = await stat(path);
+    const info = await lstat(path);
     if (!info.isFile()) continue;
     if (now - info.mtimeMs > maxAgeMs) {
       await rm(path, { force: true });

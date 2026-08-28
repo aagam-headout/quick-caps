@@ -11,8 +11,9 @@ import {
 
 describe('resolveArtifactRoot', () => {
   it('defaults to a quickcaps-mcp-artifacts dir under the OS tmpdir', () => {
-    expect(resolveArtifactRoot({})).toBe(
-      join(tmpdir(), 'quickcaps-mcp-artifacts'),
+    const path = resolveArtifactRoot({});
+    expect(path.startsWith(join(tmpdir(), 'quickcaps-mcp-artifacts'))).toBe(
+      true,
     );
   });
 
@@ -20,6 +21,16 @@ describe('resolveArtifactRoot', () => {
     expect(
       resolveArtifactRoot({ QUICKCAPS_MCP_ARTIFACT_ROOT: '/custom/root' }),
     ).toBe('/custom/root');
+  });
+
+  it('includes the process uid in the default path when available', () => {
+    const path = resolveArtifactRoot({});
+    if (typeof process.getuid === 'function') {
+      expect(path).toContain(String(process.getuid()));
+    } else {
+      // Windows has no process.getuid — the default stays the fixed name.
+      expect(path).toContain('quickcaps-mcp-artifacts');
+    }
   });
 });
 
@@ -99,6 +110,76 @@ describe('sweepArtifactRoot', () => {
 
     expect(deleted).toEqual([]);
     await expect(stat(sentinel)).resolves.toBeDefined();
+  });
+});
+
+describe('ensureArtifactRoot — symlink refusal', () => {
+  let parent: string;
+
+  beforeEach(async () => {
+    parent = await mkdtemp(join(tmpdir(), 'quickcaps-symlink-'));
+  });
+
+  afterEach(async () => {
+    await rm(parent, { recursive: true, force: true });
+  });
+
+  it('refuses a root that is a symlink rather than following it', async () => {
+    const { symlink, mkdir: mkdirReal } = await import('node:fs/promises');
+    const realTarget = join(parent, 'real-target');
+    await mkdirReal(realTarget);
+    const linkPath = join(parent, 'link-to-target');
+    await symlink(realTarget, linkPath, 'dir');
+
+    await expect(ensureArtifactRoot(linkPath)).rejects.toThrow(/symlink/i);
+
+    // The sentinel must not have been planted in the real target either.
+    await expect(
+      stat(join(realTarget, '.quickcaps-mcp-artifacts')),
+    ).rejects.toThrow();
+  });
+});
+
+describe('sweepArtifactRoot — lstat, not stat', () => {
+  let root: string;
+
+  beforeEach(async () => {
+    root = await mkdtemp(join(tmpdir(), 'quickcaps-lstat-'));
+  });
+
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it('never deletes a symlink entry regardless of age', async () => {
+    const { symlink, writeFile: writeFileReal, utimes: utimesReal } =
+      await import('node:fs/promises');
+    await ensureArtifactRoot(root);
+
+    // A target file that is new (should NOT cause the link to survive).
+    const targetDir = await mkdtemp(join(tmpdir(), 'quickcaps-target-'));
+    const target = join(targetDir, 'new-target.html');
+    await writeFileReal(target, 'x');
+
+    const linkPath = join(root, 'old-link.html');
+    await symlink(target, linkPath);
+    const oldTime = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    await utimesReal(linkPath, oldTime, oldTime).catch(() => {
+      // utimes on a symlink follows the link on some platforms with no
+      // lutimes equivalent in fs/promises — if this environment can't set
+      // the link's own mtime independently, skip the strict assertion
+      // below and just confirm the sweep doesn't crash on a symlink entry.
+    });
+
+    const deleted = await sweepArtifactRoot(root, 60 * 60 * 1000);
+    // Symlink entries are skipped outright by the lstat-based check — never
+    // deleted, regardless of age classification, and the sweep must not
+    // throw on encountering one, nor delete the real target file outside root.
+    expect(Array.isArray(deleted)).toBe(true);
+    expect(deleted).not.toContain(linkPath);
+    await expect(stat(target)).resolves.toBeDefined();
+
+    await rm(targetDir, { recursive: true, force: true });
   });
 });
 
