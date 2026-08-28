@@ -44,7 +44,7 @@ tool (`pc_open`, `pc_do`, `pc_read`, `pc_find`, `pc_next`, `pc_layout`,
 `pc_capture`'s default output location:
 
 - `QUICKCAPS_MCP_ARTIFACT_ROOT` — defaults to a per-user directory under
-  the OS temp directory.
+  the OS temp directory (e.g., `<os tmpdir>/quickcaps-mcp-artifacts-<uid>`).
 - `QUICKCAPS_MCP_ARTIFACT_RETENTION_MS` — files older than this are swept
   before each `pc_capture` call. Defaults to 24 hours.
 
