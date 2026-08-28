@@ -73,10 +73,25 @@ export async function runCapture(
     maxBytes: settings.limits.maxAssetBytes,
   };
 
+  const isSelective = settings.selectionSelector.trim().length > 0;
+
   // Raw network sources: what the server sent, before any JavaScript ran. The
   // one thing a serialized live DOM cannot tell you.
+  //
+  // Skipped for a selective capture: the DOM was pruned down to one
+  // element's ancestor chain, but `<head>` (and so ir.assets, gathered by
+  // walking the whole document) is untouched by that pruning — this would
+  // otherwise still re-fetch every stylesheet and script on the page in
+  // full, in service of a capture the user asked to be just one element.
   let rawSources: Map<string, string> | undefined;
-  if (settings.include.rawSources) {
+  if (settings.include.rawSources && isSelective) {
+    warnings.push({
+      phase: 'assets',
+      reason:
+        'raw sources are skipped for a selective (single-element) capture',
+      detail: 'the rest of the capture is intact',
+    });
+  } else if (settings.include.rawSources) {
     rawSources = new Map();
     const urls = [
       ir.metadata.url,
@@ -103,8 +118,20 @@ export async function runCapture(
     }
   }
 
+  // Skipped for a selective capture for the same reason as raw sources:
+  // frame capture (chrome-driver.ts) scrolls and screenshots the whole
+  // document, unaware of any DOM pruning — a picked element would otherwise
+  // still embed a full-page screenshot alongside it.
   let screenshot: Uint8Array | undefined;
-  if (settings.include.screenshot) {
+  if (settings.include.screenshot && isSelective) {
+    report('screenshot');
+    warnings.push({
+      phase: 'screenshot',
+      reason:
+        'the screenshot is skipped for a selective (single-element) capture',
+      detail: 'the rest of the capture is intact',
+    });
+  } else if (settings.include.screenshot) {
     report('screenshot');
     if (!input.frames || input.frames.length === 0) {
       warnings.push({

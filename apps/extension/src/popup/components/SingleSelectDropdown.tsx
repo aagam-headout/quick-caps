@@ -48,6 +48,7 @@ export function SingleSelectDropdown({
         onClick={() => setOpen((next) => !next)}
         {...(compact ? { compact: true } : {})}
         {...(emphasis ? { emphasis: true } : {})}
+        {...(current?.icon ? { icon: current.icon } : {})}
       />
 
       {open ? (

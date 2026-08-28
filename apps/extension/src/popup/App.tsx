@@ -2,8 +2,6 @@ import { useEffect, useState } from 'react';
 import type { CaptureSettings } from '@quickcaps/core';
 import { Checkbox } from './components/Checkbox.js';
 import { Section } from './components/Section.js';
-import { TextField } from './components/TextField.js';
-import { MultiSelectDropdown } from './components/MultiSelectDropdown.js';
 import { SingleSelectDropdown } from './components/SingleSelectDropdown.js';
 import { Progress } from './components/Progress.js';
 import { CaptureButton } from './components/CaptureButton.js';
@@ -15,6 +13,7 @@ import { useCapture } from './use-capture.js';
 import { useHistory } from './use-history.js';
 import { usePicker } from './use-picker.js';
 import { usePreview } from './use-preview.js';
+import { formatSize } from './lib/format-size.js';
 
 type Include = CaptureSettings['include'];
 type Toggle = { key: keyof Include; label: string; hint?: string };
@@ -316,36 +315,51 @@ export function App() {
           </div>
         </Section>
 
-        <MultiSelectDropdown
-          legend="Also include"
-          options={EXTRA_TOGGLES.map((toggle) =>
-            toggle.key === 'screenshot'
-              ? {
-                  ...toggle,
-                  trailing: (
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        // A trailing button inside the row's <label> would
-                        // otherwise also toggle the checkbox it sits in.
-                        event.preventDefault();
-                        event.stopPropagation();
-                        void preview();
-                      }}
-                      disabled={previewRunning}
-                      className="cursor-pointer rounded-[var(--radius-control)] px-[7px] py-[3px] text-[11px] font-medium text-[var(--accent)] transition-colors duration-[var(--duration-fast)] hover:bg-[color-mix(in_srgb,var(--accent)_10%,transparent)] disabled:cursor-default disabled:opacity-60"
-                    >
-                      {previewRunning ? 'Previewing…' : 'Preview'}
-                    </button>
-                  ),
-                }
-              : toggle,
-          )}
-          values={settings.include}
-          onChange={setInclude}
-        />
+        <Section
+          title="Also include"
+          collapsible
+          summary={`${EXTRA_TOGGLES.filter(({ key }) => settings.include[key]).length}/${EXTRA_TOGGLES.length}`}
+        >
+          <div className="-mx-[6px]">
+            {EXTRA_TOGGLES.map(({ key, label, hint }) => (
+              <Checkbox
+                key={key}
+                id={`include-${key}`}
+                label={label}
+                {...(hint ? { hint } : {})}
+                checked={settings.include[key]}
+                onChange={(checked) => setInclude(key, checked)}
+                {...(key === 'screenshot'
+                  ? {
+                      trailing: (
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            // A trailing button inside the row's <label>
+                            // would otherwise also toggle the checkbox it
+                            // sits in.
+                            event.preventDefault();
+                            event.stopPropagation();
+                            void preview();
+                          }}
+                          disabled={previewRunning}
+                          className="cursor-pointer rounded-[var(--radius-control)] px-[7px] py-[3px] text-[11px] font-medium text-[var(--accent)] transition-colors duration-[var(--duration-fast)] hover:bg-[color-mix(in_srgb,var(--accent)_10%,transparent)] disabled:cursor-default disabled:opacity-60"
+                        >
+                          {previewRunning ? 'Previewing…' : 'Preview'}
+                        </button>
+                      ),
+                    }
+                  : {})}
+              />
+            ))}
+          </div>
+        </Section>
 
-        <Section title="Advanced" collapsible>
+        <Section
+          title="Advanced"
+          collapsible
+          summary={`${OPTION_TOGGLES.filter(({ key }) => settings[key]).length}/${OPTION_TOGGLES.length}`}
+        >
           <div className="-mx-[6px]">
             {OPTION_TOGGLES.map(({ key, label, hint }) => (
               <Checkbox
@@ -357,22 +371,6 @@ export function App() {
                 onChange={(checked) => setOption(key, checked)}
               />
             ))}
-            <TextField
-              id="filename-template"
-              label="Filename template"
-              hint="Tokens: {host} {date} {time} {timestamp}"
-              placeholder="{host}-{timestamp}"
-              value={settings.filenameTemplate}
-              onChange={(value) => update({ filenameTemplate: value })}
-            />
-            <TextField
-              id="exclude-selector"
-              label="Exclude selector"
-              hint="CSS selector for elements to drop before capture"
-              placeholder=".cookie-banner, #chat-widget"
-              value={settings.excludeSelector}
-              onChange={(value) => update({ excludeSelector: value })}
-            />
           </div>
         </Section>
       </div>
@@ -504,7 +502,7 @@ export function App() {
                   {result.filename}
                 </p>
                 <p className="text-[10.5px] text-[var(--text-secondary)]">
-                  {(result.byteLength / 1024).toFixed(1)} KB saved to Downloads
+                  {formatSize(result.byteLength)} saved to Downloads
                 </p>
               </div>
             </div>

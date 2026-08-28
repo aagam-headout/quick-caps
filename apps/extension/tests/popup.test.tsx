@@ -93,9 +93,7 @@ describe('popup', () => {
     }
 
     // The rest live inside dropdowns, closed by default.
-    await userEvent.click(
-      await screen.findByRole('button', { name: /also include/i }),
-    );
+    await userEvent.click(await screen.findByText(/^Also include/));
     for (const label of [
       /screenshot/i,
       /Design tokens/,
@@ -108,7 +106,7 @@ describe('popup', () => {
 
     // The behavior toggles that used to live in a separate "Options"
     // dropdown are now Checkboxes inside the "Advanced" section.
-    await userEvent.click(await screen.findByText(/^Advanced$/));
+    await userEvent.click(await screen.findByText(/^Advanced/));
     for (const label of [/lazy content/, /Inert snapshot/]) {
       expect(await screen.findByLabelText(label), String(label)).toBeDefined();
     }
@@ -127,9 +125,7 @@ describe('popup', () => {
 
   it('persists a toggle change to sync storage', async () => {
     render(<App />);
-    await userEvent.click(
-      await screen.findByRole('button', { name: /also include/i }),
-    );
+    await userEvent.click(await screen.findByText(/^Also include/));
     await userEvent.click(await screen.findByLabelText(/screenshot/i));
     await waitFor(() => {
       expect(
@@ -340,16 +336,18 @@ describe('popup', () => {
     ).toBe(true);
   });
 
-  it('shows a tick for each selected "Also include" item and toggles it closed', async () => {
+  it('shows a tick for each selected "Also include" item and expands/collapses as an accordion', async () => {
     render(<App />);
-    await userEvent.click(
-      await screen.findByRole('button', { name: /also include/i }),
-    );
+    const summary = await screen.findByText(/^Also include/);
+    const details = summary.closest('details') as HTMLDetailsElement;
+    await userEvent.click(summary);
+    expect(details.open).toBe(true);
     expect(await screen.findByLabelText(/Metadata/)).toBeDefined();
-    await userEvent.keyboard('{Escape}');
-    await waitFor(() => {
-      expect(screen.queryByLabelText(/Metadata/)).toBeNull();
-    });
+    // An accordion pushes content down rather than overlaying it, so
+    // collapsing means the <details> itself closes, not the content
+    // unmounting — it stays in the DOM either way.
+    await userEvent.click(summary);
+    expect(details.open).toBe(false);
   });
 
   it('selecting a Preset closes the dropdown and updates the summary', async () => {
@@ -404,11 +402,26 @@ describe('popup', () => {
     ).toBeDefined();
   });
 
-  it('clicking Preview next to the screenshot toggle previews without checking it', async () => {
+  it('injects the picker and closes the popup on Choose element', async () => {
+    const close = vi.spyOn(window, 'close').mockImplementation(() => {});
     render(<App />);
     await userEvent.click(
-      await screen.findByRole('button', { name: /also include/i }),
+      await screen.findByRole('tab', { name: /pick element/i }),
     );
+    await userEvent.click(
+      await screen.findByRole('button', { name: /^choose element/i }),
+    );
+    await waitFor(() => {
+      expect(chrome.scripting.executeScript).toHaveBeenCalledWith(
+        expect.objectContaining({ files: ['picker.js'] }),
+      );
+      expect(close).toHaveBeenCalled();
+    });
+  });
+
+  it('clicking Preview next to the screenshot toggle previews without checking it', async () => {
+    render(<App />);
+    await userEvent.click(await screen.findByText(/^Also include/));
     const screenshotToggle = (await screen.findByLabelText(
       /screenshot/i,
     )) as HTMLInputElement;
