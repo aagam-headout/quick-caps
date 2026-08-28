@@ -127,7 +127,7 @@ export async function serializePage(
       removeImports: false,
       removeScripts: settings.inertSnapshot || !settings.include.scripts,
       blockScripts: settings.inertSnapshot || !settings.include.scripts,
-      removeUnusedStyles: false,
+      removeUnusedStyles: Boolean(settings.selectionSelector.trim()),
       removeHiddenElements: false,
       compressHTML: false,
       // Never let SingleFile wait for deferred images. Pages built on
