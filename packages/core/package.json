@@ -29,9 +29,12 @@
       "default": "./dist/collect.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json"
+    "build": "tsc -p tsconfig.build.json",
+    "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
     "fflate": "^0.8.2",

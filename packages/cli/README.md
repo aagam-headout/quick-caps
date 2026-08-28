@@ -58,6 +58,13 @@ rendered-DOM fidelity and real design-token extraction: pages that need a
 real browser to produce their real content, and cases where you want
 actual computed colors/spacing/type scale, not just text.
 
+## Local development
+
+Run `pnpm --filter quickcaps-cli dev -- <command>` (or `pnpm run dev -- <command>`
+from `packages/cli`) to run `src/cli.ts` directly via `tsx`, so edits under
+`src/` take effect immediately instead of silently running against a stale
+`dist/` build.
+
 ## Known limitations
 
 - `capture`'s output directory (`--out`, or MCP's `pc_capture` `outDir`

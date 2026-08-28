@@ -25,24 +25,24 @@ export async function dispatch(
     case 'open': {
       const staticFlag = rest.includes('--static');
       const url = rest.find((arg) => !arg.startsWith('--'));
-      if (!url) throw new Error('Usage: pc open <url> [--static]');
+      if (!url) throw new CliError('Usage: pc open <url> [--static]');
       return runOpen({ url, static: staticFlag }, cwd);
     }
     case 'next':
       return runNext(cwd);
     case 'do': {
       const n = Number(rest[0]);
-      if (!Number.isInteger(n)) throw new Error('Usage: pc do <n> [value]');
+      if (!Number.isInteger(n)) throw new CliError('Usage: pc do <n> [value]');
       return runDo(n, cwd, rest[1]);
     }
     case 'read': {
       const n = Number(rest[0]);
-      if (!Number.isInteger(n)) throw new Error('Usage: pc read <n>');
+      if (!Number.isInteger(n)) throw new CliError('Usage: pc read <n>');
       return runRead(n, cwd);
     }
     case 'find': {
       const query = rest.join(' ');
-      if (!query) throw new Error('Usage: pc find <query>');
+      if (!query) throw new CliError('Usage: pc find <query>');
       return runFind(query, cwd);
     }
     case 'layout':
@@ -51,7 +51,7 @@ export async function dispatch(
       return runTokens(cwd);
     case 'scrape': {
       const shape = rest[0];
-      if (!shape) throw new Error('Usage: pc scrape <shape>');
+      if (!shape) throw new CliError('Usage: pc scrape <shape>');
       return runScrape(shape, cwd);
     }
     case 'capture': {
@@ -60,7 +60,8 @@ export async function dispatch(
       const outIndex = rest.indexOf('--out');
       if (outIndex !== -1) {
         const outDir = rest[outIndex + 1];
-        if (!outDir) throw new Error('Usage: pc capture [--zip] [--out <dir>]');
+        if (!outDir)
+          throw new CliError('Usage: pc capture [--zip] [--out <dir>]');
         args.outDir = outDir;
       }
       return runCapture(args, cwd);
@@ -69,7 +70,7 @@ export async function dispatch(
       await startMcpServer();
       return '';
     default:
-      throw new Error(
+      throw new CliError(
         `Unknown command: ${command ?? '(none)'}. Expected one of: open, do, read, find, next, layout, tokens, scrape, capture, mcp.`,
       );
   }

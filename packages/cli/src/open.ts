@@ -46,12 +46,34 @@ export type OpenResult = {
  * ensure-playwright.ts (Phase C2) can reuse the exact same
  * launch/navigate/collect/close sequence for its own unconditional
  * escalation, rather than duplicating it.
+ *
+ * Validates the URL both before and after navigation. The pre-navigation
+ * check makes this function self-validating regardless of caller —
+ * ensure-playwright.ts calls this directly with a session-stored URL and
+ * has no check of its own, so this is the only guard on that path. The
+ * post-navigation check re-validates `page.url()` (what the browser
+ * actually landed on after following any redirects), since a redirect can
+ * carry the request to a private/internal address the pre-navigation
+ * check on the original `url` never saw.
  */
 export async function collectViaPlaywrightFor(url: string): Promise<PageIR> {
+  try {
+    await assertFetchableUrl(url);
+  } catch (error) {
+    throw new CliError(error instanceof Error ? error.message : String(error));
+  }
+
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage();
     await page.goto(url);
+    try {
+      await assertFetchableUrl(page.url());
+    } catch (error) {
+      throw new CliError(
+        error instanceof Error ? error.message : String(error),
+      );
+    }
     return await collectViaPlaywright(page);
   } finally {
     await browser.close();

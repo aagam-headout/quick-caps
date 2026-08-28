@@ -44,6 +44,13 @@ export async function interact(
   try {
     const page = await browser.newPage();
     await page.goto(url);
+    try {
+      await assertFetchableUrl(page.url());
+    } catch (error) {
+      throw new CliError(
+        error instanceof Error ? error.message : String(error),
+      );
+    }
 
     const handle = await page.evaluateHandle((path: number[]) => {
       let el: Element | null = document.body;
