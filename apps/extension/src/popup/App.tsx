@@ -4,6 +4,7 @@ import { Checkbox } from './components/Checkbox.js';
 import { Section } from './components/Section.js';
 import { TextField } from './components/TextField.js';
 import { MultiSelectDropdown } from './components/MultiSelectDropdown.js';
+import { DropdownPanel } from './components/DropdownPanel.js';
 import { SingleSelectDropdown } from './components/SingleSelectDropdown.js';
 import { Progress } from './components/Progress.js';
 import { CaptureButton } from './components/CaptureButton.js';
@@ -15,6 +16,7 @@ import { useCapture } from './use-capture.js';
 import { useHistory } from './use-history.js';
 import { usePicker } from './use-picker.js';
 import { usePreview } from './use-preview.js';
+import { formatSize } from './lib/format-size.js';
 
 type Include = CaptureSettings['include'];
 type Toggle = { key: keyof Include; label: string; hint?: string };
@@ -345,7 +347,10 @@ export function App() {
           onChange={setInclude}
         />
 
-        <Section title="Advanced" collapsible>
+        <DropdownPanel
+          legend="Advanced"
+          summary={`${OPTION_TOGGLES.filter(({ key }) => settings[key]).length}/${OPTION_TOGGLES.length}`}
+        >
           <div className="-mx-[6px]">
             {OPTION_TOGGLES.map(({ key, label, hint }) => (
               <Checkbox
@@ -374,7 +379,7 @@ export function App() {
               onChange={(value) => update({ excludeSelector: value })}
             />
           </div>
-        </Section>
+        </DropdownPanel>
       </div>
 
       <SingleSelectDropdown
@@ -504,7 +509,7 @@ export function App() {
                   {result.filename}
                 </p>
                 <p className="text-[10.5px] text-[var(--text-secondary)]">
-                  {(result.byteLength / 1024).toFixed(1)} KB saved to Downloads
+                  {formatSize(result.byteLength)} saved to Downloads
                 </p>
               </div>
             </div>

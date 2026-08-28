@@ -32,6 +32,20 @@ export function computeSelector(el: Element): string {
   return steps.length > 0 ? steps.join(' > ') : el.tagName.toLowerCase();
 }
 
+/**
+ * A short, human-readable label for the confirm bar — the full
+ * `computeSelector` path is exact but unreadable at a glance
+ * (`div:nth-child(6) > div:nth-child(1) > ...`). Shown to the user; the
+ * precise selector still does the actual work and rides along as a tooltip.
+ */
+export function describeElement(el: Element): string {
+  const tag = el.tagName.toLowerCase();
+  if (el.id) return `${tag}#${el.id}`;
+  const firstClass =
+    typeof el.className === 'string' ? el.className.trim().split(/\s+/)[0] : '';
+  return firstClass ? `${tag}.${firstClass}` : tag;
+}
+
 const HIGHLIGHT_STYLE: Partial<CSSStyleDeclaration> = {
   position: 'fixed',
   pointerEvents: 'none',
@@ -44,31 +58,52 @@ const HIGHLIGHT_STYLE: Partial<CSSStyleDeclaration> = {
 const BAR_STYLE: Partial<CSSStyleDeclaration> = {
   position: 'fixed',
   left: '50%',
-  bottom: '16px',
+  bottom: '20px',
   transform: 'translateX(-50%)',
   zIndex: '2147483647',
+  boxSizing: 'border-box',
   display: 'flex',
-  gap: '8px',
-  padding: '8px 10px',
-  borderRadius: '8px',
-  background: '#1f1f1f',
-  color: '#e6e6e6',
-  font: '13px/1.4 system-ui,sans-serif',
   alignItems: 'center',
+  gap: '10px',
+  maxWidth: 'min(92vw, 420px)',
+  padding: '8px 8px 8px 14px',
+  borderRadius: '999px',
+  background: '#1e1e1ef2',
+  color: '#f2f2f2',
+  font: '13px/1.4 -apple-system,system-ui,sans-serif',
+  boxShadow: '0 10px 30px rgba(0,0,0,0.35)',
+  border: '1px solid rgba(255,255,255,0.08)',
 };
 
-function button(label: string): HTMLButtonElement {
+const LABEL_STYLE: Partial<CSSStyleDeclaration> = {
+  flex: '1 1 auto',
+  minWidth: '0',
+  overflow: 'hidden',
+  whiteSpace: 'nowrap',
+  textOverflow: 'ellipsis',
+  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+  fontSize: '12px',
+  color: '#c9c9c9',
+};
+
+function button(
+  label: string,
+  variant: 'primary' | 'secondary',
+): HTMLButtonElement {
   const el = document.createElement('button');
   el.type = 'button';
   el.textContent = label;
   Object.assign(el.style, {
     cursor: 'pointer',
     border: 'none',
-    borderRadius: '6px',
-    padding: '5px 10px',
-    background: '#333',
-    color: '#e6e6e6',
+    borderRadius: '999px',
+    padding: '6px 12px',
+    background: variant === 'primary' ? '#4f8cff' : 'rgba(255,255,255,0.1)',
+    color: variant === 'primary' ? '#fff' : '#f2f2f2',
     font: 'inherit',
+    fontWeight: variant === 'primary' ? '600' : '500',
+    whiteSpace: 'nowrap',
+    flexShrink: '0',
   } satisfies Partial<CSSStyleDeclaration>);
   return el;
 }
@@ -88,10 +123,18 @@ export function installPicker(deps: PickerDeps): () => void {
   const bar = document.createElement('div');
   Object.assign(bar.style, BAR_STYLE);
   const label = document.createElement('span');
-  const captureButton = button('Capture');
-  const pickAgainButton = button('Pick again');
-  const cancelButton = button('Cancel');
-  bar.append(label, captureButton, pickAgainButton, cancelButton);
+  Object.assign(label.style, LABEL_STYLE);
+  const captureButton = button('Capture', 'primary');
+  const pickAgainButton = button('Retry', 'secondary');
+  const cancelButton = button('Cancel', 'secondary');
+  const actions = document.createElement('div');
+  Object.assign(actions.style, {
+    display: 'flex',
+    gap: '6px',
+    flexShrink: '0',
+  } satisfies Partial<CSSStyleDeclaration>);
+  actions.append(captureButton, pickAgainButton, cancelButton);
+  bar.append(label, actions);
   bar.style.display = 'none';
 
   let hovered: Element | null = null;
@@ -123,7 +166,8 @@ export function installPicker(deps: PickerDeps): () => void {
     if (!hovered) return;
     picked = hovered;
     place(picked);
-    label.textContent = computeSelector(picked);
+    label.textContent = describeElement(picked);
+    label.title = computeSelector(picked);
     bar.style.display = 'flex';
   }
 

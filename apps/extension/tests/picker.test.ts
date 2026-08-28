@@ -54,3 +54,27 @@ describe('computeSelector', () => {
     expect(computeSelector(divs[0]!)).not.toBe(computeSelector(divs[1]!));
   });
 });
+
+describe('describeElement', () => {
+  it('prefers the id', async () => {
+    installPage('<html><body><div id="card">Card</div></body></html>');
+    const { describeElement } = await loadEntry();
+    expect(describeElement(document.getElementById('card')!)).toBe('div#card');
+  });
+
+  it('falls back to the tag and first class when there is no id', async () => {
+    installPage(
+      '<html><body><section class="card highlighted">Card</section></body></html>',
+    );
+    const { describeElement } = await loadEntry();
+    expect(describeElement(document.querySelector('section')!)).toBe(
+      'section.card',
+    );
+  });
+
+  it('falls back to just the tag when there is neither an id nor a class', async () => {
+    installPage('<html><body><article>Post</article></body></html>');
+    const { describeElement } = await loadEntry();
+    expect(describeElement(document.querySelector('article')!)).toBe('article');
+  });
+});

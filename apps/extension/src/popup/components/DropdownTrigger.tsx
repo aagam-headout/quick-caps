@@ -8,6 +8,9 @@ type Props = {
   compact?: boolean;
   /** Accent-tinted styling for the one trigger that's the primary lever, not a secondary option. */
   emphasis?: boolean;
+  /** The current selection's icon, shown ahead of the summary text — lets a
+   * trigger like Theme read at a glance without opening the panel. */
+  icon?: React.ReactNode;
 };
 
 /**
@@ -23,6 +26,7 @@ export function DropdownTrigger({
   onClick,
   compact,
   emphasis,
+  icon,
 }: Props) {
   return (
     <button
@@ -41,6 +45,14 @@ export function DropdownTrigger({
       {compact ? null : (
         <span className="uppercase tracking-[0.06em]">{legend}</span>
       )}
+      {icon ? (
+        <span
+          aria-hidden="true"
+          className="shrink-0 text-[var(--text-secondary)]"
+        >
+          {icon}
+        </span>
+      ) : null}
       <span
         className={`min-w-0 truncate normal-case tracking-normal ${compact ? '' : 'ml-auto'}`}
       >

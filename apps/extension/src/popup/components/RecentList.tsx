@@ -1,9 +1,5 @@
 import type { HistoryEntry } from '../use-history.js';
-
-function formatSize(bytes: number): string {
-  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-  return `${Math.round(bytes / 1024)} KB`;
-}
+import { formatSize } from '../lib/format-size.js';
 
 function formatWhen(at: number): string {
   const minutes = Math.round((Date.now() - at) / 60_000);
