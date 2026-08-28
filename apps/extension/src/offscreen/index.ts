@@ -67,6 +67,7 @@ chrome.runtime.onMessage.addListener(
             html: request.html,
             settings: request.settings,
             frames: request.frames,
+            screenshotGeometry: request.screenshotGeometry,
           },
           captureDeps(),
         ),

@@ -20,7 +20,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) {
+  :root:not([data-theme="light"]) {
     --background-100: #0a0a0a;
     --background-200: #000000;
     --gray-100: #1a1a1a;
@@ -41,7 +41,7 @@
   }
 }
 
-:root[data-theme='dark'] {
+:root[data-theme="dark"] {
   --background-100: #0a0a0a;
   --background-200: #000000;
   --gray-100: #1a1a1a;

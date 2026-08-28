@@ -9,6 +9,8 @@ export type HistoryEntry = {
   // Optional: entries recorded before this field existed won't have one, and
   // an entry can lose it if chrome.downloads later evicts the record.
   downloadId?: number;
+  /** Unset only for entries recorded before this field existed. */
+  kind?: 'html' | 'zip' | 'preview';
 };
 
 /** Metadata for recent captures. Never the archives themselves. */

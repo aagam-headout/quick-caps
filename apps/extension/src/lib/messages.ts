@@ -4,9 +4,10 @@ import type { Frame } from './capture.js';
 
 /**
  * One-off request from the popup's "Preview screenshot" button: capture and
- * stitch the current tab's full page, then open it in a new tab. Independent
- * of the "Full-page screenshot (PNG)" setting, which only controls whether
- * the screenshot rides along with an actual capture.
+ * stitch the current tab's full page, open it in a new tab, and also save it
+ * to QuickCaps/previews (recorded in history, so it shows up in Recent too).
+ * Independent of the "Full-page screenshot (PNG)" setting, which only
+ * controls whether the screenshot rides along with an actual capture.
  */
 export const PREVIEW_SCREENSHOT = '__quickcaps-preview-screenshot';
 
@@ -19,6 +20,8 @@ export type OffscreenCaptureRequest = {
   html: string;
   settings: CaptureSettings;
   frames?: Frame[];
+  /** chrome-driver's own scroll-root-aware canvas dimensions; see CaptureInput. */
+  screenshotGeometry?: { width: number; height: number; devicePixelRatio: number };
 };
 
 export type OffscreenCaptureResult = {

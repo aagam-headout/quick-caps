@@ -10,6 +10,12 @@ function formatWhen(at: number): string {
   return `${Math.round(hours / 24)}d ago`;
 }
 
+const KIND_LABEL: Record<'html' | 'zip' | 'preview', string> = {
+  html: 'HTML',
+  zip: 'ZIP',
+  preview: 'Preview',
+};
+
 export function RecentList({ entries }: { entries: HistoryEntry[] }) {
   return (
     <details className="group px-[var(--space-2)]">
@@ -60,8 +66,15 @@ export function RecentList({ entries }: { entries: HistoryEntry[] }) {
                     aria-label={`Open ${entry.filename}`}
                     className="block w-full rounded-[var(--radius-control)] px-[6px] py-[5px] text-left transition-colors duration-[var(--duration-fast)] enabled:cursor-pointer enabled:hover:bg-[var(--surface-raised)] disabled:cursor-default"
                   >
-                    <span className="block truncate font-mono text-[11px] text-[var(--text-primary)]">
-                      {entry.filename}
+                    <span className="flex items-center gap-[5px]">
+                      <span className="block truncate font-mono text-[11px] text-[var(--text-primary)]">
+                        {entry.filename}
+                      </span>
+                      {entry.kind ? (
+                        <span className="shrink-0 rounded-full bg-[var(--surface-raised)] px-[6px] py-[1px] text-[9.5px] font-medium uppercase tracking-[0.04em] text-[var(--text-secondary)]">
+                          {KIND_LABEL[entry.kind]}
+                        </span>
+                      ) : null}
                     </span>
                     <span className="text-[10.5px] text-[var(--text-secondary)]">
                       {formatSize(entry.byteLength)} · {formatWhen(entry.at)}

@@ -37,7 +37,7 @@ export function viewerPanelBlock(): string {
 #quickcaps-viewer .qc-tabs button{cursor:pointer;border:1px solid transparent;border-radius:999px;padding:4px 10px;background:#232323;color:#b3b3b3;font:500 11px/1.4 system-ui,sans-serif;transition:background-color .15s ease,color .15s ease,border-color .15s ease}
 #quickcaps-viewer .qc-tabs button:hover{color:#e6e6e6;background:#2a2a2a}
 #quickcaps-viewer .qc-tabs button.qc-active{background:#3730a3;color:#e0e3ff;border-color:#4c46c9}
-#quickcaps-viewer .qc-body{flex:1;overflow:auto;padding:12px 14px}
+#quickcaps-viewer .qc-body{flex:1;min-height:0;overflow:auto;padding:12px 14px}
 #quickcaps-viewer .qc-body pre{white-space:pre-wrap;word-break:break-word;margin:0;animation:qc-fade .12s ease}
 #quickcaps-viewer .qc-key{color:#7dd3fc}
 #quickcaps-viewer .qc-string{color:#86efac}

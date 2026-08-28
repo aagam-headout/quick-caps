@@ -17,6 +17,18 @@ export type CaptureInput = {
   html: string;
   settings: CaptureSettings;
   frames?: Frame[] | undefined;
+  /**
+   * Canvas size for stitching, from chrome-driver's own scroll-root-aware
+   * measurement (chrome-driver.ts's viewport()). Falls back to
+   * ir.metadata.documentSize when absent, but that field comes from a
+   * simpler document.documentElement.scrollWidth/scrollHeight in the content
+   * collector and under-reports on app-shell pages that scroll an inner
+   * container instead of <html>/<body> - using it for canvas sizing there
+   * clips every frame captured past the first viewport.
+   */
+  screenshotGeometry?:
+    | { width: number; height: number; devicePixelRatio: number }
+    | undefined;
 };
 
 export type CaptureDeps = {
@@ -143,9 +155,10 @@ export async function runCapture(
       try {
         screenshot = await deps.stitch({
           frames: input.frames,
-          width: ir.metadata.documentSize.width,
-          height: ir.metadata.documentSize.height,
-          devicePixelRatio: ir.metadata.devicePixelRatio,
+          width: input.screenshotGeometry?.width ?? ir.metadata.documentSize.width,
+          height: input.screenshotGeometry?.height ?? ir.metadata.documentSize.height,
+          devicePixelRatio:
+            input.screenshotGeometry?.devicePixelRatio ?? ir.metadata.devicePixelRatio,
         });
       } catch (error) {
         warnings.push({

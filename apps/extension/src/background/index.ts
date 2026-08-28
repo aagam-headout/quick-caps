@@ -1,4 +1,8 @@
-import { parseSettings, type CaptureSettings } from '@quickcaps/core';
+import {
+  captureFilename,
+  parseSettings,
+  type CaptureSettings,
+} from '@quickcaps/core';
 import { ChromeDriver } from './chrome-driver.js';
 import { OffscreenClient } from './offscreen-client.js';
 import { CaptureSession } from './session.js';
@@ -21,7 +25,6 @@ import {
   type PopupToWorker,
   type WorkerToPopup,
 } from '../lib/messages.js';
-import { bytesToDataUrl } from '../lib/data-url.js';
 import type { PageIR } from '@quickcaps/core';
 
 const SETTINGS_KEY_STORAGE = 'settings';
@@ -56,6 +59,8 @@ async function recordHistory(entry: {
   warningCount: number;
   at: number;
   downloadId: number;
+  /** Unset only for entries recorded before this field existed. */
+  kind?: 'html' | 'zip' | 'preview';
 }): Promise<void> {
   const stored = await chrome.storage.local.get(HISTORY_KEY);
   const existing = stored[HISTORY_KEY];
@@ -271,9 +276,9 @@ async function runCapture(params: {
     // captureFrames scrolls and screenshots the whole document, unaware of
     // any DOM pruning a selective capture already did - skip the work
     // entirely rather than throw away a full-page screenshot downstream.
-    const frames =
+    const stitchRequest =
       settings.include.screenshot && !settings.selectionSelector.trim()
-        ? (await driver.captureFrames()).frames
+        ? await driver.captureFrames()
         : undefined;
 
     await session.save({ phase: 'bundling', tabId, startedAt });
@@ -281,7 +286,18 @@ async function runCapture(params: {
       ir,
       html,
       settings,
-      ...(frames ? { frames } : {}),
+      ...(stitchRequest
+        ? {
+            frames: stitchRequest.frames,
+            // Use chrome-driver's own scroll-root-aware measurement for the
+            // canvas, not ir.metadata.documentSize - see capture.ts.
+            screenshotGeometry: {
+              width: stitchRequest.width,
+              height: stitchRequest.height,
+              devicePixelRatio: stitchRequest.devicePixelRatio,
+            },
+          }
+        : {}),
     });
 
     post({
@@ -307,6 +323,7 @@ async function runCapture(params: {
       url: tab.url ?? '',
       filename: result.filename,
       byteLength: result.byteLength,
+      kind: result.mimeType === 'application/zip' ? 'zip' : 'html',
       warningCount: result.warnings.length,
       at: Date.now(),
       downloadId,
@@ -395,9 +412,41 @@ function triggerCapture(
 }
 
 /**
- * Captures and stitches the tab's full page, then opens it as a `data:` URL
- * in a new tab - a quick look at the screenshot on its own, independent of
- * running (and downloading) a whole capture.
+ * Resolves once a tab finishes loading (or after timeoutMs) - used so a blob
+ * URL's source document isn't torn down before the tab has actually fetched
+ * it, without leaving the caller waiting forever if something stalls.
+ */
+function waitForTabLoad(tabId: number, timeoutMs = 15_000): Promise<void> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (): void => {
+      if (settled) return;
+      settled = true;
+      chrome.tabs.onUpdated.removeListener(onUpdated);
+      clearTimeout(timer);
+      resolve();
+    };
+    const onUpdated = (
+      updatedTabId: number,
+      info: chrome.tabs.TabChangeInfo,
+    ): void => {
+      if (updatedTabId === tabId && info.status === 'complete') finish();
+    };
+    chrome.tabs.onUpdated.addListener(onUpdated);
+    const timer = setTimeout(finish, timeoutMs);
+  });
+}
+
+/**
+ * Captures and stitches the tab's full page, opens it in a new tab, and
+ * saves it to QuickCaps/previews alongside real captures (recorded in
+ * history, so it shows up in Recent too) - a quick look at the screenshot on
+ * its own, independent of running (and downloading) a whole capture.
+ *
+ * Opened as a blob: URL rather than embedding the PNG as a `data:` URL: a
+ * data: URL's whole payload lives in the URL string, and Chrome silently
+ * fails navigation past ~2MB of URL - a full-page screenshot of any real
+ * page crosses that easily, and it just opened about:blank with no error.
  */
 async function previewScreenshot(
   tabId: number | undefined,
@@ -407,10 +456,40 @@ async function previewScreenshot(
   }
   const offscreen = new OffscreenClient();
   try {
+    const sourceTab = await chrome.tabs.get(tabId).catch(() => undefined);
     const driver = new ChromeDriver(tabId);
     const request = await driver.captureFrames();
     const bytes = await offscreen.stitch(request);
-    await chrome.tabs.create({ url: bytesToDataUrl(bytes, 'image/png') });
+    const objectUrl = await offscreen.toObjectUrl(bytes, 'image/png');
+    const tab = await chrome.tabs.create({ url: objectUrl });
+
+    // Also saved to disk (alongside real captures, in their own subfolder)
+    // and recorded to history - so a preview shows up in Recent too, not
+    // just as a tab that's gone the moment it's closed.
+    const filename = captureFilename(
+      sourceTab?.url ?? '',
+      new Date().toISOString(),
+      'png',
+    );
+    const downloadId = await chrome.downloads.download({
+      url: objectUrl,
+      filename: `${DOWNLOAD_FOLDER}/previews/${filename}`,
+    });
+    await recordHistory({
+      url: sourceTab?.url ?? '',
+      filename,
+      byteLength: bytes.byteLength,
+      warningCount: 0,
+      at: Date.now(),
+      downloadId,
+      kind: 'preview',
+    });
+
+    // The blob only exists as long as the offscreen document that minted it
+    // stays open (below, in finally) - wait for the tab to actually load it
+    // first.
+    if (tab.id !== undefined) await waitForTabLoad(tab.id);
+    await offscreen.revoke(objectUrl);
     return { ok: true };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

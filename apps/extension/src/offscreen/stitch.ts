@@ -1,5 +1,12 @@
 import type { StitchRequest } from '../background/chrome-driver.js';
 
+/** Refuses to hand back a screenshot bigger than this - a runaway stitch
+ * (huge page, high DPI) should fail with a clear message instead of landing
+ * an enormous file in the user's downloads. */
+const MAX_OUTPUT_BYTES = 200 * 1024 * 1024;
+
+const formatMB = (bytes: number): string => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+
 export type StitchDeps = {
   createCanvas: (width: number, height: number) => OffscreenCanvas;
   decode: (dataUrl: string) => Promise<ImageBitmap>;
@@ -44,5 +51,10 @@ export async function stitchFrames(
   }
 
   const blob = await canvas.convertToBlob({ type: 'image/png' });
+  if (blob.size > MAX_OUTPUT_BYTES) {
+    throw new Error(
+      `Screenshot is ${formatMB(blob.size)}, over the ${formatMB(MAX_OUTPUT_BYTES)} limit`,
+    );
+  }
   return new Uint8Array(await blob.arrayBuffer());
 }

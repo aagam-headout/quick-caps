@@ -25,10 +25,19 @@ export type ChromeDriverDeps = {
    * is roughly 60 MB before the canvas even sees them.
    */
   maxFrames?: number;
+  /** Ceiling on how far down the page captureFrames will scroll. */
+  maxScrollHeightPx?: number;
 };
 
 /** Fallback step when the page reports a zero-height viewport. */
 const MIN_STEP_PX = 200;
+
+/**
+ * Default ceiling on total scroll height for a full-page screenshot. Past
+ * this an infinite-scroll feed or similar just keeps growing the capture -
+ * cap it rather than scroll (and hold frames in memory) forever.
+ */
+const DEFAULT_MAX_SCROLL_HEIGHT_PX = 20_000;
 
 /**
  * Marks the element captureFrames should scroll. viewport() and scrollTo()
@@ -79,18 +88,38 @@ export class ChromeDriver implements PageDriver {
           // reports the real height, nothing to find.
           if (docEl.scrollHeight <= docEl.clientHeight + 1) {
             // App-shell layout: <body> pinned at 100vh with overflow hidden,
-            // an inner div scrolling instead - documentElement.scrollHeight
-            // can't see that content, so walk descendants for the actual
+            // some element scrolling instead - documentElement.scrollHeight
+            // can't see that content, so walk candidates for the actual
             // scroll container (largest scrollHeight that overflows itself).
+            // <body> itself is a candidate too - querySelectorAll('*') on it
+            // only returns descendants, so scan it separately, or app-shell
+            // pages where <body> is the scroller (not an inner div) fall
+            // straight through to the documentElement fallback and report a
+            // viewport-sized document.
+            // "Biggest scrollHeight wins" alone picks up unrelated scrollers
+            // (a sidebar nav list, a hidden dropdown, a long off-screen
+            // panel) that outscore the real content pane - none of them are
+            // what's on screen, so scrolling them leaves the visible page
+            // static and every captured frame identical. Require the
+            // candidate to actually cover most of the viewport, so it's the
+            // pane the user is looking at.
             let best: HTMLElement | null = null;
             let bestHeight = 0;
-            for (const el of document.body.querySelectorAll<HTMLElement>('*')) {
+            for (const el of [
+              document.body,
+              ...document.body.querySelectorAll<HTMLElement>('*'),
+            ]) {
               const style = getComputedStyle(el);
               if (!/(auto|scroll)/.test(style.overflowY)) continue;
+              if (el.scrollHeight <= el.clientHeight + 1) continue;
+              const rect = el.getBoundingClientRect();
               if (
-                el.scrollHeight > el.clientHeight + 1 &&
-                el.scrollHeight > bestHeight
+                rect.width < window.innerWidth * 0.5 ||
+                rect.height < window.innerHeight * 0.5
               ) {
+                continue;
+              }
+              if (el.scrollHeight > bestHeight) {
                 best = el;
                 bestHeight = el.scrollHeight;
               }
@@ -161,6 +190,8 @@ export class ChromeDriver implements PageDriver {
   async captureFrames(): Promise<StitchRequest> {
     const delay = this.deps.frameDelayMs ?? 550;
     const maxFrames = this.deps.maxFrames ?? 40;
+    const maxScrollHeightPx =
+      this.deps.maxScrollHeightPx ?? DEFAULT_MAX_SCROLL_HEIGHT_PX;
     const view = await this.viewport();
     const origin = { x: view.scrollX, y: view.scrollY };
     const frames: StitchRequest['frames'] = [];
@@ -169,7 +200,10 @@ export class ChromeDriver implements PageDriver {
     // the worker forever. Guaranteeing forward progress matters more than the
     // step being exactly right.
     const step = view.height > 0 ? view.height : MIN_STEP_PX;
-    const height = Math.max(view.documentHeight, step);
+    const height = Math.min(
+      Math.max(view.documentHeight, step),
+      maxScrollHeightPx,
+    );
 
     try {
       for (
