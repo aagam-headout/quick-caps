@@ -37,7 +37,7 @@ const STYLE_PROPERTIES = [
 /**
  * Reads the recorder's ring buffer across the world boundary.
  *
- * The recorder must run in the MAIN world — patching the ISOLATED world's
+ * The recorder must run in the MAIN world - patching the ISOLATED world's
  * console and fetch would observe nothing the page does. A DOM attribute is
  * genuinely shared between worlds, so the collector asks for a flush with a
  * synchronous event and reads the result out of the attribute.
@@ -57,7 +57,7 @@ export function readRecorderLogs(): LogEntry[] | undefined {
 
 /**
  * Reads the page's own Navigation/Paint/Resource Timing entries and derives
- * a lightweight perf snapshot from them — not a Lighthouse audit.
+ * a lightweight perf snapshot from them - not a Lighthouse audit.
  *
  * `largest-contentful-paint` can report more than once as bigger content
  * loads in; the last entry observed is the final value.
@@ -142,7 +142,7 @@ export function runCollector(settings: CaptureSettings): PageIR {
  * duration of a capture, returning a function that puts each one back where
  * it came from.
  *
- * Real removal, not `display: none` — single-file-core is asked to keep
+ * Real removal, not `display: none` - single-file-core is asked to keep
  * hidden elements (`removeHiddenElements: false`, see serialize.ts) so a
  * cookie banner merely hidden would still end up in the captured output. An
  * invalid selector or an empty string is a no-op rather than a thrown error:
@@ -181,13 +181,13 @@ export function applyExclusions(selector: string): () => void {
  * everything back.
  *
  * Removes the target's ancestors' *siblings* rather than moving the target
- * itself — moving it would re-parent it under a different ancestor chain and
+ * itself - moving it would re-parent it under a different ancestor chain and
  * change which CSS rules and inherited computed values apply to it. Walking
  * up and pruning siblings at each level keeps its real ancestor chain intact,
  * so it renders identically to how it looked on the page.
  *
  * An empty selector, an invalid one, one matching nothing, or one matching
- * `<body>`/`<html>` itself is a no-op — same "must not fail the whole
+ * `<body>`/`<html>` itself is a no-op - same "must not fail the whole
  * capture" contract as applyExclusions.
  */
 export function applySelectionRoot(selector: string): () => void {

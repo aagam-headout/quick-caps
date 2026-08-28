@@ -12,7 +12,7 @@ function formatWhen(at: number): string {
 
 export function RecentList({ entries }: { entries: HistoryEntry[] }) {
   return (
-    <details className="group">
+    <details className="group px-[var(--space-2)]">
       <summary className="flex cursor-pointer list-none items-center gap-[6px] rounded-[var(--radius-control)] py-[3px] text-[10.5px] font-medium uppercase tracking-[0.06em] text-[var(--text-secondary)] transition-colors duration-[var(--duration-fast)] hover:text-[var(--text-primary)] [&::-webkit-details-marker]:hidden">
         <svg
           viewBox="0 0 12 12"

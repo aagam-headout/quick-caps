@@ -7,13 +7,45 @@ import { Progress } from './components/Progress.js';
 import { CaptureButton } from './components/CaptureButton.js';
 import { WarningList } from './components/WarningList.js';
 import { RecentList } from './components/RecentList.js';
-import { CompareCaptures } from './components/CompareCaptures.js';
 import { useSettings } from './use-settings.js';
 import { useCapture } from './use-capture.js';
 import { useHistory } from './use-history.js';
 import { usePicker } from './use-picker.js';
 import { usePreview } from './use-preview.js';
 import { formatSize } from './lib/format-size.js';
+
+const OpenArrowIcon = () => (
+  <svg viewBox="0 0 16 16" aria-hidden="true" className="h-[13px] w-[13px]">
+    <path
+      d="M7 9 13 3M9 3h4v4M13 9v3a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h3"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+const SpinnerIcon = () => (
+  <svg
+    viewBox="0 0 16 16"
+    aria-hidden="true"
+    className="pc-spin h-[13px] w-[13px]"
+  >
+    <circle
+      cx="8"
+      cy="8"
+      r="6.5"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeDasharray="30 12"
+      opacity="0.9"
+    />
+  </svg>
+);
 
 type Include = CaptureSettings['include'];
 type Toggle = { key: keyof Include; label: string; hint?: string };
@@ -30,36 +62,36 @@ const EXTRA_TOGGLES: Toggle[] = [
   {
     key: 'screenshot',
     label: 'Full-page screenshot (PNG)',
-    hint: 'Stitched top to bottom, saved alongside the capture',
+    hint: 'One image of the whole page, from top to bottom',
   },
   {
     key: 'tokens',
     label: 'Design tokens (JSON)',
-    hint: 'Colours, type scale, spacing used on the page',
+    hint: "The page's colors, fonts, and spacing values, extracted as data",
   },
   {
     key: 'metadata',
     label: 'Metadata',
-    hint: 'URL, capture time, warnings, and the settings used',
+    hint: 'Basic info about the capture: page URL, time, and settings used',
   },
   {
     key: 'logs',
     label: 'Console + network log',
-    hint: 'Needs the page open since load',
+    hint: 'Only works if the page was open when it loaded',
   },
   {
     key: 'perf',
     label: 'Performance snapshot (JSON)',
-    hint: 'TTFB, paint timing, load time - not a Lighthouse audit',
+    hint: 'Load and rendering timings, a quick gauge, not a full audit',
   },
   {
     key: 'rawSources',
     label: 'Raw network sources',
-    hint: 'What the server sent, before JavaScript',
+    hint: "The page's original files as the server sent them, before any JavaScript ran",
   },
 ];
 
-/** Behavior toggles, shown in Advanced alongside the text fields — merged
+/** Behavior toggles, shown in Advanced alongside the text fields - merged
  * out of a former "Options" dropdown that only added a second vague bucket
  * next to "Extras" and "Advanced". */
 type OptionKey = 'scrollToLoadLazy' | 'inertSnapshot' | 'embedViewer';
@@ -67,17 +99,17 @@ const OPTION_TOGGLES: { key: OptionKey; label: string; hint: string }[] = [
   {
     key: 'scrollToLoadLazy',
     label: 'Scroll to load lazy content',
-    hint: 'Materializes lazy images before capturing',
+    hint: 'Scrolls the page first, so images that load on scroll get captured too',
   },
   {
     key: 'inertSnapshot',
     label: 'Inert snapshot',
-    hint: 'Strips and blocks scripts so a reopened capture never re-runs analytics or trackers',
+    hint: "Removes scripts so opening the capture later doesn't re-fire analytics or trackers",
   },
   {
     key: 'embedViewer',
     label: 'Embed viewer panel',
-    hint: 'Adds a button to the archive for browsing its metadata/tokens/logs/perf/raw data',
+    hint: 'Adds a built-in button for browsing the captured data (metadata, tokens, logs, etc.)',
   },
 ];
 
@@ -246,6 +278,21 @@ export function App() {
   } = usePreview();
   const [mode, setMode] = useState<'page' | 'element'>('page');
 
+  // Accordion: at most one of the three sections open at a time, so opening
+  // one for a better look at it doesn't leave the others' checkboxes
+  // scrolled halfway off. "Page contents" starts collapsed like the rest - a
+  // new user's path is preset -> capture, not five checkboxes - but auto-
+  // opens the moment the selection stops matching any preset, since that
+  // only happens because the user is already mid-edit; a manual collapse
+  // afterwards still wins.
+  const isCustom = matchingPreset(settings.include) === '';
+  const [openSection, setOpenSection] = useState<
+    'page' | 'extras' | 'advanced' | null
+  >(isCustom ? 'page' : null);
+  useEffect(() => {
+    if (isCustom) setOpenSection((current) => current ?? 'page');
+  }, [isCustom]);
+
   useEffect(() => {
     const root = document.documentElement;
     if (settings.theme === 'system') root.removeAttribute('data-theme');
@@ -261,7 +308,7 @@ export function App() {
   };
 
   return (
-    <main className="flex flex-col gap-[14px] p-[14px]">
+    <main className="flex flex-col gap-[var(--space-4)] p-[var(--space-4)]">
       <header className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-[7px]">
           <img
@@ -299,9 +346,19 @@ export function App() {
         }}
       />
 
-      <div className="flex flex-col gap-[10px]">
-        <Section title="Page contents">
-          <div className="-mx-[6px]">
+      <div className="flex flex-col gap-[var(--space-3)]">
+        <Section
+          title="Page contents"
+          collapsible
+          summary={`${PAGE_TOGGLES.filter(({ key }) => settings.include[key]).length}/${PAGE_TOGGLES.length}`}
+          open={openSection === 'page'}
+          onOpenChange={(open) =>
+            setOpenSection((current) =>
+              open ? 'page' : current === 'page' ? null : current,
+            )
+          }
+        >
+          <div>
             {PAGE_TOGGLES.map(({ key, label, hint }) => (
               <Checkbox
                 key={key}
@@ -319,8 +376,14 @@ export function App() {
           title="Also include"
           collapsible
           summary={`${EXTRA_TOGGLES.filter(({ key }) => settings.include[key]).length}/${EXTRA_TOGGLES.length}`}
+          open={openSection === 'extras'}
+          onOpenChange={(open) =>
+            setOpenSection((current) =>
+              open ? 'extras' : current === 'extras' ? null : current,
+            )
+          }
         >
-          <div className="-mx-[6px]">
+          <div>
             {EXTRA_TOGGLES.map(({ key, label, hint }) => (
               <Checkbox
                 key={key}
@@ -343,8 +406,9 @@ export function App() {
                             void preview();
                           }}
                           disabled={previewRunning}
-                          className="cursor-pointer rounded-[var(--radius-control)] px-[7px] py-[3px] text-[11px] font-medium text-[var(--accent)] transition-colors duration-[var(--duration-fast)] hover:bg-[color-mix(in_srgb,var(--accent)_10%,transparent)] disabled:cursor-default disabled:opacity-60"
+                          className="flex cursor-pointer items-center gap-1 rounded-[var(--radius-control)] px-[7px] py-[3px] text-[11px] font-medium text-[var(--accent)] transition-colors duration-[var(--duration-fast)] hover:bg-[color-mix(in_srgb,var(--accent)_10%,transparent)] disabled:cursor-default disabled:opacity-60"
                         >
+                          {previewRunning ? <SpinnerIcon /> : <OpenArrowIcon />}
                           {previewRunning ? 'Previewing…' : 'Preview'}
                         </button>
                       ),
@@ -359,8 +423,14 @@ export function App() {
           title="Advanced"
           collapsible
           summary={`${OPTION_TOGGLES.filter(({ key }) => settings[key]).length}/${OPTION_TOGGLES.length}`}
+          open={openSection === 'advanced'}
+          onOpenChange={(open) =>
+            setOpenSection((current) =>
+              open ? 'advanced' : current === 'advanced' ? null : current,
+            )
+          }
         >
-          <div className="-mx-[6px]">
+          <div>
             {OPTION_TOGGLES.map(({ key, label, hint }) => (
               <Checkbox
                 key={key}
@@ -395,7 +465,7 @@ export function App() {
         }
       />
 
-      <div className="flex flex-col gap-[10px]">
+      <div className="flex flex-col gap-[var(--space-3)]">
         <div
           role="tablist"
           aria-label="Capture mode"
@@ -511,11 +581,8 @@ export function App() {
         ) : null}
       </div>
 
-      <div className="flex flex-col gap-[10px] border-t border-[var(--border)] pt-[10px]">
+      <div className="flex flex-col gap-[var(--space-3)] border-t border-[var(--border)] pt-[var(--space-3)]">
         <RecentList entries={entries} />
-        <Section title="Compare captures" collapsible>
-          <CompareCaptures />
-        </Section>
       </div>
     </main>
   );

@@ -33,7 +33,7 @@ function defaultSerialize(args: unknown[]): string {
  * This must run in the MAIN world: patching the ISOLATED world's console and
  * fetch would observe nothing the page itself does. That means the ISOLATED
  * collector cannot read the buffer directly, so the buffer is flushed into a
- * DOM attribute — shared between worlds — in response to a synchronous event.
+ * DOM attribute - shared between worlds - in response to a synchronous event.
  *
  * Two properties matter more than the feature. Every wrapper calls through to
  * the original and returns its value unchanged, and a throw inside the recorder

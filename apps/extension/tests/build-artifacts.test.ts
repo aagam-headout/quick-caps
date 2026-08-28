@@ -20,6 +20,11 @@ describe('build artifacts', () => {
     expect(existsSync(join(dist, 'src/offscreen/index.html'))).toBe(true);
   });
 
+  it('builds the onboarding page at the path onInstalled opens', () => {
+    // Must match the url passed to chrome.tabs.create in src/background/index.ts.
+    expect(existsSync(join(dist, 'src/onboarding/index.html'))).toBe(true);
+  });
+
   it('builds the injected collector', () => {
     expect(existsSync(join(dist, 'collector.js'))).toBe(true);
   });

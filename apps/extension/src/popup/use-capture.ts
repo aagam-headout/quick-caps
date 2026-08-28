@@ -42,7 +42,7 @@ export type HostAccess = {
  * Two grants matter for different reasons. `<all_urls>` is what makes
  * cross-origin stylesheets and images fetchable, and declining it only degrades
  * the capture. Access to the page's own origin is what makes the page readable
- * at all — activeTab is supposed to cover that, but it does not survive every
+ * at all - activeTab is supposed to cover that, but it does not survive every
  * path through the permission dialog, so ask for it explicitly rather than
  * failing with Chrome's opaque "Cannot access contents of the page".
  */
@@ -69,7 +69,7 @@ async function requestHostAccess(pageUrl: string): Promise<HostAccess> {
 
 /**
  * How long the popup waits with no word at all from the worker before giving
- * up. Generous, because serializing a heavy page legitimately takes a while —
+ * up. Generous, because serializing a heavy page legitimately takes a while  - 
  * every progress message resets it.
  */
 const SILENCE_TIMEOUT_MS = 180_000;

@@ -22,7 +22,7 @@ const RULES: { test: (url: URL) => boolean; what: string }[] = [
 /**
  * A human-readable reason, or null when the page is capturable. The reason
  * names the category so the popup can say something specific instead of failing
- * generically — "cannot be captured" with no explanation reads as a bug.
+ * generically - "cannot be captured" with no explanation reads as a bug.
  */
 export function restrictionFor(rawUrl: string): string | null {
   let url: URL;

@@ -8,7 +8,7 @@ type Props = {
   compact?: boolean;
   /** Accent-tinted styling for the one trigger that's the primary lever, not a secondary option. */
   emphasis?: boolean;
-  /** The current selection's icon, shown ahead of the summary text — lets a
+  /** The current selection's icon, shown ahead of the summary text - lets a
    * trigger like Theme read at a glance without opening the panel. */
   icon?: React.ReactNode;
 };

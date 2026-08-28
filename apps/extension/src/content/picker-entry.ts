@@ -6,7 +6,7 @@ import { PICKER_CAPTURE } from './protocol.js';
  * chrome.scripting.executeScript({ files: ['picker.js'] }) when the user
  * clicks "Pick element" in the popup. chrome.runtime is browser-only, so
  * that dependency lives here rather than in picker.ts, which stays loadable
- * — and testable — in Node.
+ * - and testable - in Node.
  */
 installPicker({
   onCapture: (selector) => {

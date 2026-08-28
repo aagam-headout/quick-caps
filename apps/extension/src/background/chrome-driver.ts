@@ -35,7 +35,7 @@ const sleep = (ms: number): Promise<void> =>
 
 /**
  * PageDriver over Chrome's extension APIs. Every core function already proven
- * against the fake driver runs against this one unchanged — that was the point
+ * against the fake driver runs against this one unchanged - that was the point
  * of putting the interface in first.
  */
 export class ChromeDriver implements PageDriver {

@@ -21,7 +21,7 @@ describe('manifest', () => {
 
   it('declares the keyboard shortcut for a popup-free capture', () => {
     expect(manifest.commands['capture-page']?.suggested_key?.default).toBe(
-      'Ctrl+Shift+K',
+      'Ctrl+Shift+U',
     );
   });
 

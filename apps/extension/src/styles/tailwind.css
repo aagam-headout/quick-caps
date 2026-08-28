@@ -99,6 +99,65 @@ body {
   animation: pc-spin 700ms linear infinite;
 }
 
+@keyframes pc-focus-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 45%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 12px color-mix(in srgb, var(--accent) 20%, transparent);
+  }
+}
+
+/* Draws the eye to the one button a first-time visitor is meant to reach
+ * for. Loops for as long as the button sits there unclicked - a couple of
+ * pulses on mount are easy to miss while still reading the page above it. */
+.pc-focus-pulse {
+  animation: pc-focus-pulse 1600ms var(--ease-out) infinite;
+}
+
+/* Onboarding's "Got it" CTA: swap the shared accent focus ring for
+ * black/white (whichever --text-primary resolves to in the active theme)
+ * instead of the default accent one, and thin it down - 2px reads heavy
+ * against this button's own size. */
+.pc-onboarding-cta:focus-visible {
+  outline-color: var(--text-primary);
+  outline-width: 1px;
+  outline-offset: 1px;
+}
+
+/* Click ripple, pure CSS: a centered flash that snaps in instantly on
+ * :active (no transition) and fades back out over 500ms once the mouse
+ * releases, when the base transition applies again. No click-position
+ * tracking needed - it reads as a ripple without JS. */
+.pc-ripple {
+  position: relative;
+  overflow: hidden;
+}
+
+.pc-ripple::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, white 55%, transparent) 0%,
+    transparent 70%
+  );
+  opacity: 0;
+  transform: scale(0.3);
+  transition:
+    transform 500ms var(--ease-out),
+    opacity 500ms var(--ease-out);
+  pointer-events: none;
+}
+
+.pc-ripple:active::after {
+  transform: scale(1);
+  opacity: 1;
+  transition: none;
+}
+
 /*
  * Collapse animation without measuring anything in JS: a details element whose
  * content grid animates from 0fr to 1fr.
@@ -115,6 +174,31 @@ details[open] > .pc-collapse {
 
 .pc-collapse > * {
   overflow: hidden;
+}
+
+/*
+ * Checkbox row hints: same 0fr -> 1fr grid trick as .pc-collapse, but for a
+ * hover/focus-revealed hint instead of a click-toggled details element. A
+ * floating tooltip (position: fixed, coordinates computed off
+ * getBoundingClientRect) kept clipping inside the extension popup's tiny
+ * window - its actual rendered frame doesn't reliably match what
+ * window.innerWidth/innerHeight report. Expanding in normal document flow
+ * sidesteps that: it can only ever push the row below it down, never render
+ * somewhere the popup can't show.
+ */
+.pc-hint-row {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--duration-base) var(--ease-out);
+}
+
+.pc-hint-row > * {
+  overflow: hidden;
+}
+
+label:has(.pc-hint-trigger:hover) .pc-hint-row,
+label:has(.pc-hint-trigger:focus-visible) .pc-hint-row {
+  grid-template-rows: 1fr;
 }
 
 .pc-chevron {

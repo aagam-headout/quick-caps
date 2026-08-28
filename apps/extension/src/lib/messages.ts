@@ -10,6 +10,8 @@ import type { Frame } from './capture.js';
  */
 export const PREVIEW_SCREENSHOT = '__quickcaps-preview-screenshot';
 
+export type PreviewScreenshotResponse = { ok: true } | { ok: false; error: string };
+
 export type OffscreenCaptureRequest = {
   type: 'offscreen:capture';
   ir: PageIR;

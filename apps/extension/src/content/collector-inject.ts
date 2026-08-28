@@ -8,7 +8,7 @@ import { SERIALIZE_PROGRESS } from './protocol.js';
  *
  * Side effects and browser-only dependencies live only in *-entry / *-inject
  * files. single-file-core is imported here rather than in collector.ts so that
- * module stays loadable — and testable — in Node.
+ * module stays loadable - and testable - in Node.
  */
 void parkCollectorResult(window as unknown as Record<string, unknown>, {
   serialize: (settings) =>

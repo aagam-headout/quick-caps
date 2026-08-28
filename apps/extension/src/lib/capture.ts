@@ -80,7 +80,7 @@ export async function runCapture(
   //
   // Skipped for a selective capture: the DOM was pruned down to one
   // element's ancestor chain, but `<head>` (and so ir.assets, gathered by
-  // walking the whole document) is untouched by that pruning — this would
+  // walking the whole document) is untouched by that pruning - this would
   // otherwise still re-fetch every stylesheet and script on the page in
   // full, in service of a capture the user asked to be just one element.
   let rawSources: Map<string, string> | undefined;
@@ -120,7 +120,7 @@ export async function runCapture(
 
   // Skipped for a selective capture for the same reason as raw sources:
   // frame capture (chrome-driver.ts) scrolls and screenshots the whole
-  // document, unaware of any DOM pruning — a picked element would otherwise
+  // document, unaware of any DOM pruning - a picked element would otherwise
   // still embed a full-page screenshot alongside it.
   let screenshot: Uint8Array | undefined;
   if (settings.include.screenshot && isSelective) {

@@ -4,7 +4,7 @@ import { useCallback, useState } from 'react';
  * Injects the element picker into the active tab, then closes the popup.
  *
  * The click that triggers this happens inside the popup itself, not on the
- * page — a popup only auto-closes on a click that lands outside it, so
+ * page - a popup only auto-closes on a click that lands outside it, so
  * without an explicit window.close() here it would just sit there on top of
  * the page while the picker's overlay is trying to do its own thing
  * underneath. The picker's own confirm bar drives the capture from here.

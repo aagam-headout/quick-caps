@@ -13,7 +13,7 @@ const DOCUMENT_PATH = 'src/offscreen/index.html';
  * cannot do: decode and compose images, and create an object URL.
  *
  * Its lifetime also tends to keep the worker alive during a capture, but that
- * is a side effect and not relied on — session.ts carries the durability story.
+ * is a side effect and not relied on - session.ts carries the durability story.
  */
 export class OffscreenClient {
   private creating: Promise<void> | undefined;

@@ -16,6 +16,7 @@ import type { CollectorOutcome } from '../content/collector.js';
 import {
   CAPTURE_PORT,
   PREVIEW_SCREENSHOT,
+  type PreviewScreenshotResponse,
   type OffscreenProgress,
   type PopupToWorker,
   type WorkerToPopup,
@@ -33,7 +34,7 @@ const DOWNLOAD_FOLDER = 'QuickCaps';
  *
  * Two captures cannot overlap: they share one offscreen document, so whichever
  * finished first would tear it down underneath the other. It also scopes the
- * resource proxy — without it the worker would fetch any url any content script
+ * resource proxy - without it the worker would fetch any url any content script
  * asked for, for as long as the extension was installed.
  */
 let activeCapture: { tabId: number; settings: CaptureSettings } | null = null;
@@ -71,7 +72,7 @@ async function recordHistory(entry: {
  * ISOLATED-world global.
  *
  * Polled rather than returned for two reasons: an injected file's completion
- * value is not its result, and serializing a page is asynchronous — SingleFile
+ * value is not its result, and serializing a page is asynchronous - SingleFile
  * has to fetch every asset before it can finish.
  */
 async function collect(
@@ -186,7 +187,7 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, respond) => {
 });
 
 /**
- * The capture pipeline itself, shared by every trigger — the popup's port,
+ * The capture pipeline itself, shared by every trigger - the popup's port,
  * the keyboard shortcut, and the context-menu entry. `post` is how each
  * trigger surfaces progress and the outcome: a port message for the popup,
  * a notification for the two that run with no UI open at all.
@@ -196,7 +197,7 @@ async function runCapture(params: {
   hasHostPermission: boolean;
   hasPageAccess: boolean;
   post: (message: WorkerToPopup) => void;
-  /** Applied over the user's stored settings for this capture only — used by
+  /** Applied over the user's stored settings for this capture only - used by
    * the element picker, which sets `selectionSelector` without touching the
    * saved preference. */
   settingsOverride?: Partial<CaptureSettings>;
@@ -268,7 +269,7 @@ async function runCapture(params: {
     }
 
     // captureFrames scrolls and screenshots the whole document, unaware of
-    // any DOM pruning a selective capture already did — skip the work
+    // any DOM pruning a selective capture already did - skip the work
     // entirely rather than throw away a full-page screenshot downstream.
     const frames =
       settings.include.screenshot && !settings.selectionSelector.trim()
@@ -295,7 +296,7 @@ async function runCapture(params: {
     const downloadId = await chrome.downloads.download({
       url: result.objectUrl,
       // A forward slash here is a subfolder under the platform's default
-      // Downloads directory on Mac, Windows, and Linux alike — Chrome
+      // Downloads directory on Mac, Windows, and Linux alike - Chrome
       // normalizes the separator itself, so this needs no per-OS branch.
       // The bare filename (shown in the UI and in history) is unchanged.
       filename: `${DOWNLOAD_FOLDER}/${result.filename}`,
@@ -363,7 +364,7 @@ function notify(title: string, message: string): void {
 }
 
 /**
- * Entry point for triggers with no popup open — the keyboard shortcut and the
+ * Entry point for triggers with no popup open - the keyboard shortcut and the
  * context-menu item. Both grant activeTab on the invoking tab the same way
  * the toolbar button does, so the page itself is always readable; only the
  * optional <all_urls> grant (cross-origin assets) can be missing, and that
@@ -395,37 +396,42 @@ function triggerCapture(
 
 /**
  * Captures and stitches the tab's full page, then opens it as a `data:` URL
- * in a new tab — a quick look at the screenshot on its own, independent of
+ * in a new tab - a quick look at the screenshot on its own, independent of
  * running (and downloading) a whole capture.
  */
-function previewScreenshot(tabId: number | undefined): void {
-  if (typeof tabId !== 'number') return;
-  void (async () => {
-    const offscreen = new OffscreenClient();
-    try {
-      const driver = new ChromeDriver(tabId);
-      const request = await driver.captureFrames();
-      const bytes = await offscreen.stitch(request);
-      await chrome.tabs.create({ url: bytesToDataUrl(bytes, 'image/png') });
-    } catch (error) {
-      notify(
-        'Screenshot preview failed',
-        error instanceof Error ? error.message : String(error),
-      );
-    } finally {
-      await offscreen.close();
-    }
-  })();
+async function previewScreenshot(
+  tabId: number | undefined,
+): Promise<PreviewScreenshotResponse> {
+  if (typeof tabId !== 'number') {
+    return { ok: false, error: 'No active tab to preview.' };
+  }
+  const offscreen = new OffscreenClient();
+  try {
+    const driver = new ChromeDriver(tabId);
+    const request = await driver.captureFrames();
+    const bytes = await offscreen.stitch(request);
+    await chrome.tabs.create({ url: bytesToDataUrl(bytes, 'image/png') });
+    return { ok: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    notify('Screenshot preview failed', message);
+    return { ok: false, error: message };
+  } finally {
+    await offscreen.close();
+  }
 }
 
 // Sent by the popup itself, not a content script, so the tab id travels in
 // the message rather than sender.tab (which is only set for senders that are
-// content scripts running in a tab).
-chrome.runtime.onMessage.addListener((message: unknown) => {
+// content scripts running in a tab). Returns `true` to keep the message
+// channel open until previewScreenshot's promise resolves - otherwise the
+// popup's sendMessage resolves as soon as the message is dispatched, before
+// the capture actually finishes or fails.
+chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
   const request = message as { type?: string; tabId?: number } | null;
   if (request?.type !== PREVIEW_SCREENSHOT) return undefined;
-  previewScreenshot(request.tabId);
-  return undefined;
+  void previewScreenshot(request.tabId).then(sendResponse);
+  return true;
 });
 
 /**
@@ -451,7 +457,7 @@ chrome.commands.onCommand.addListener((command) => {
   })();
 });
 
-chrome.runtime.onInstalled.addListener(() => {
+chrome.runtime.onInstalled.addListener((details) => {
   chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({
       id: CONTEXT_MENU_ID,
@@ -459,6 +465,15 @@ chrome.runtime.onInstalled.addListener(() => {
       contexts: ['page'],
     });
   });
+
+  // Explains what QuickCaps will ask permission for, and why, before Chrome's
+  // native prompt shows up unexplained on the first capture. Skipped on
+  // update/browser-update reinstalls, which is not a first impression.
+  if (details.reason === 'install') {
+    void chrome.tabs.create({
+      url: chrome.runtime.getURL('src/onboarding/index.html'),
+    });
+  }
 });
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {

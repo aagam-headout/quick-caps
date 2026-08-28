@@ -3,7 +3,7 @@
  * screenshot in a new tab without going through the offscreen document's
  * blob-URL lifetime (which is scoped to that document staying open).
  *
- * Chunked rather than `String.fromCharCode(...bytes)` in one call — that
+ * Chunked rather than `String.fromCharCode(...bytes)` in one call - that
  * spreads the whole array onto the call stack, which throws
  * "Maximum call stack size exceeded" on a screenshot of any real size.
  */

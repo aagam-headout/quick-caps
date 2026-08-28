@@ -23,7 +23,7 @@ type Props = {
 /**
  * A compact trigger button showing the current choice, opening a floating
  * panel of radio rows with a tick mark on the selected one. Choosing a row
- * closes the panel immediately — this is one choice, not a checklist.
+ * closes the panel immediately - this is one choice, not a checklist.
  */
 export function SingleSelectDropdown({
   legend,

@@ -9,8 +9,8 @@ import { FETCH_RESOURCE } from './protocol.js';
  *
  * This replaced a hand-rolled inliner that lost webfonts, produced XHTML, and
  * broke when another extension injected an element into the page's head.
- * Self-contained page capture has a long tail — shadow DOM, canvas, srcset,
- * @import chains, deferred images — and this library has absorbed it.
+ * Self-contained page capture has a long tail - shadow DOM, canvas, srcset,
+ * @import chains, deferred images - and this library has absorbed it.
  */
 
 export type ResourceFetchResponse = {
@@ -132,7 +132,7 @@ export async function serializePage(
       compressHTML: false,
       // Never let SingleFile wait for deferred images. Pages built on
       // IntersectionObserver frequently never trigger inside its timing window
-      // and the whole serialization hangs — this is what made a real capture
+      // and the whole serialization hangs - this is what made a real capture
       // time out. The worker does its own scroll pass before injecting, so
       // lazy content is already materialized by the time we get here.
       loadDeferredImages: false,

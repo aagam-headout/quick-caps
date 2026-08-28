@@ -26,7 +26,9 @@ export const manifest = {
   // when that grant is missing.
   commands: {
     'capture-page': {
-      suggested_key: { default: 'Ctrl+Shift+K', mac: 'Command+Shift+K' },
+      // K and C-ish combos collide with Chrome/Firefox devtools bindings
+      // (Ctrl+Shift+C/I/J, Firefox's console on K) — U is free on all three.
+      suggested_key: { default: 'Ctrl+Shift+U', mac: 'Command+Shift+U' },
       description: 'Capture the current page with QuickCaps',
     },
   },

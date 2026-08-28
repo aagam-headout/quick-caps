@@ -14,10 +14,14 @@ export default defineConfig({
     modulePreload: { polyfill: false },
     rollupOptions: {
       // The offscreen document is opened by chrome.offscreen.createDocument,
-      // not referenced from the manifest, so crxjs does not discover it. Left
-      // out of the inputs it is simply never built, and createDocument 404s at
-      // runtime — invisible to unit tests, which all mock chrome.offscreen.
-      input: { offscreen: 'src/offscreen/index.html' },
+      // and the onboarding page by chrome.tabs.create — neither is referenced
+      // from the manifest, so crxjs does not discover them. Left out of the
+      // inputs they are simply never built, and the runtime call 404s —
+      // invisible to unit tests, which all mock the chrome APIs involved.
+      input: {
+        offscreen: 'src/offscreen/index.html',
+        onboarding: 'src/onboarding/index.html',
+      },
     },
   },
 });
