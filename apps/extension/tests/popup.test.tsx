@@ -402,6 +402,23 @@ describe('popup', () => {
     ).toBeDefined();
   });
 
+  it('injects the picker and closes the popup on Choose element', async () => {
+    const close = vi.spyOn(window, 'close').mockImplementation(() => {});
+    render(<App />);
+    await userEvent.click(
+      await screen.findByRole('tab', { name: /pick element/i }),
+    );
+    await userEvent.click(
+      await screen.findByRole('button', { name: /^choose element/i }),
+    );
+    await waitFor(() => {
+      expect(chrome.scripting.executeScript).toHaveBeenCalledWith(
+        expect.objectContaining({ files: ['picker.js'] }),
+      );
+      expect(close).toHaveBeenCalled();
+    });
+  });
+
   it('clicking Preview next to the screenshot toggle previews without checking it', async () => {
     render(<App />);
     await userEvent.click(await screen.findByText(/^Also include/));
