@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { buildRegions } from '../src/regions.js';
-import { flattenRegions, scoreOf, renderRegions, distill } from '../src/distill.js';
+import {
+  flattenRegions,
+  scoreOf,
+  renderRegions,
+  distill,
+} from '../src/distill.js';
 import { fixtureDocument } from './fake-driver.js';
 import { collectFromDocument } from '../src/collect.js';
 import { defaultSettings } from '../src/settings.js';
@@ -28,14 +33,18 @@ describe('scoreOf', () => {
 
 describe('flattenRegions', () => {
   it('walks in document order and records depth', () => {
-    const flat = flattenRegions(buildRegions(fixtureDocument('static'), regionOptions));
+    const flat = flattenRegions(
+      buildRegions(fixtureDocument('static'), regionOptions),
+    );
     expect(flat[0]!.depth).toBe(1);
     const article = flat.find((e) => e.region.tag === 'article')!;
     expect(article.depth).toBeGreaterThan(1);
   });
 
-  it('records each entry\'s full ancestor id chain', () => {
-    const flat = flattenRegions(buildRegions(fixtureDocument('static'), regionOptions));
+  it("records each entry's full ancestor id chain", () => {
+    const flat = flattenRegions(
+      buildRegions(fixtureDocument('static'), regionOptions),
+    );
     const main = flat.find((e) => e.region.tag === 'main')!;
     const article = flat.find((e) => e.region.tag === 'article')!;
     expect(article.parentIds).toContain(main.region.id);
@@ -44,14 +53,18 @@ describe('flattenRegions', () => {
 
 describe('renderRegions', () => {
   it('renders a selected region with its snippet and indented by depth', () => {
-    const flat = flattenRegions(buildRegions(fixtureDocument('static'), regionOptions));
+    const flat = flattenRegions(
+      buildRegions(fixtureDocument('static'), regionOptions),
+    );
     const article = flat.find((e) => e.region.tag === 'article')!;
     const text = renderRegions(flat, new Set([article.region.id]));
     expect(text).toContain(`[${article.region.id}] ${article.region.role}`);
   });
 
-  it('renders an action inline on its owning region\'s line', () => {
-    const flat = flattenRegions(buildRegions(fixtureDocument('static'), regionOptions));
+  it("renders an action inline on its owning region's line", () => {
+    const flat = flattenRegions(
+      buildRegions(fixtureDocument('static'), regionOptions),
+    );
     const article = flat.find((e) => e.region.tag === 'article')!;
     const link = article.region.actions.find((a) => a.type === 'link')!;
     const text = renderRegions(flat, new Set([article.region.id]));
@@ -59,14 +72,18 @@ describe('renderRegions', () => {
   });
 
   it('omits the quoted snippet clause for a region with no own text', () => {
-    const flat = flattenRegions(buildRegions(fixtureDocument('static'), regionOptions));
+    const flat = flattenRegions(
+      buildRegions(fixtureDocument('static'), regionOptions),
+    );
     const main = flat.find((e) => e.region.tag === 'main')!;
     const text = renderRegions(flat, new Set([main.region.id]));
     expect(text).not.toContain('"');
   });
 
   it('only renders ids present in the given set', () => {
-    const flat = flattenRegions(buildRegions(fixtureDocument('static'), regionOptions));
+    const flat = flattenRegions(
+      buildRegions(fixtureDocument('static'), regionOptions),
+    );
     const text = renderRegions(flat, new Set());
     expect(text).toBe('');
   });
@@ -96,7 +113,7 @@ describe('distill', () => {
     expect(result.tokenCount).toBeLessThanOrEqual(8);
   });
 
-  it('pulls in a selected region\'s ancestors for free', () => {
+  it("pulls in a selected region's ancestors for free", () => {
     const ir = collectFromDocument(fixtureDocument('static'), collectOptions);
     const result = distill(ir, { tokenBudget: 500 });
     const mainId = ir.regions.find((r) => r.tag === 'main')!.id;
@@ -113,7 +130,10 @@ describe('distill', () => {
   });
 
   it('paginates deterministically with no id repeated across pages', () => {
-    const ir = collectFromDocument(fixtureDocument('nav-heavy'), collectOptions);
+    const ir = collectFromDocument(
+      fixtureDocument('nav-heavy'),
+      collectOptions,
+    );
     const budget = 30;
     const seenPerPage: number[][] = [];
     let page = 0;

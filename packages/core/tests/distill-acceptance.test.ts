@@ -22,7 +22,10 @@ describe('distill acceptance corpus', () => {
     mustContain: string[];
   }> = [
     // article-heavy: the paragraph text and the "Next page" link must survive.
-    { name: 'static', mustContain: ['First paragraph of body text', 'Next page'] },
+    {
+      name: 'static',
+      mustContain: ['First paragraph of body text', 'Next page'],
+    },
     // SPA-shell: the client-rendered heading and its action must survive.
     { name: 'spa', mustContain: ['Rendered by client JS', 'Load more'] },
     // nav-heavy: the primary (header) nav's links must survive.
@@ -31,7 +34,10 @@ describe('distill acceptance corpus', () => {
 
   for (const testCase of cases) {
     it(`${testCase.name}: stays within budget and keeps the useful content`, () => {
-      const ir = collectFromDocument(fixtureDocument(testCase.name), collectOptions);
+      const ir = collectFromDocument(
+        fixtureDocument(testCase.name),
+        collectOptions,
+      );
       const result = distill(ir, { tokenBudget: BUDGET });
 
       expect(result.tokenCount).toBeLessThanOrEqual(BUDGET);
@@ -43,7 +49,10 @@ describe('distill acceptance corpus', () => {
 
   it('paging is exhaustive and non-repeating across every fixture', () => {
     for (const testCase of cases) {
-      const ir = collectFromDocument(fixtureDocument(testCase.name), collectOptions);
+      const ir = collectFromDocument(
+        fixtureDocument(testCase.name),
+        collectOptions,
+      );
       const allIds = new Set(
         flattenRegions(ir.regions).map((entry) => entry.region.id),
       );
@@ -52,7 +61,8 @@ describe('distill acceptance corpus', () => {
       let page = 0;
       let hasMore = true;
       while (hasMore) {
-        if (page > 50) throw new Error(`${testCase.name}: paging did not terminate`);
+        if (page > 50)
+          throw new Error(`${testCase.name}: paging did not terminate`);
         // A small budget forces multiple pages even on these small fixtures.
         const result = distill(ir, { tokenBudget: 25, page });
         seen.push(

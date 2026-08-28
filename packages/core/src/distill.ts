@@ -68,8 +68,10 @@ export function flattenRegions(regions: Region[]): FlatRegion[] {
 function renderLine(region: Region): string {
   const actionsText = region.actions
     .map((action) => {
-      if (action.type === 'button') return `[${action.id}]${action.label} (button)`;
-      if (action.type === 'input') return `[${action.id}]${action.label} (input)`;
+      if (action.type === 'button')
+        return `[${action.id}]${action.label} (button)`;
+      if (action.type === 'input')
+        return `[${action.id}]${action.label} (input)`;
       return `[${action.id}]${action.label}`;
     })
     .join(' ');
@@ -159,13 +161,17 @@ function fillPage(
   let fallbackNeeded: number[] | null = null;
 
   for (const candidate of sorted) {
-    if (consumed.has(candidate.region.id) || selected.has(candidate.region.id)) {
+    if (
+      consumed.has(candidate.region.id) ||
+      selected.has(candidate.region.id)
+    ) {
       continue;
     }
 
     const needed: number[] = [];
     for (const parentId of candidate.parentIds) {
-      if (!consumed.has(parentId) && !selected.has(parentId)) needed.push(parentId);
+      if (!consumed.has(parentId) && !selected.has(parentId))
+        needed.push(parentId);
     }
     needed.push(candidate.region.id);
 
