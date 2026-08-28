@@ -50,3 +50,9 @@ export {
   type ThemeTokens,
 } from './theme.js';
 export { fetchAssetBytes, fetchAssetText } from './http.js';
+export {
+  distill,
+  type DistillOptions,
+  type Distillation,
+  type Handle,
+} from './distill.js';
