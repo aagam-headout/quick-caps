@@ -3,7 +3,12 @@ import { Checkbox } from './Checkbox.js';
 import { DropdownTrigger } from './DropdownTrigger.js';
 import { useDropdown } from './use-dropdown.js';
 
-type Option<K extends string> = { key: K; label: string; hint?: string };
+type Option<K extends string> = {
+  key: K;
+  label: string;
+  hint?: string;
+  trailing?: React.ReactNode;
+};
 
 type Props<K extends string> = {
   legend: string;
@@ -46,12 +51,13 @@ export function MultiSelectDropdown<K extends string>({
           aria-label={legend}
           className="pc-enter absolute left-0 right-0 top-[calc(100%+4px)] z-10 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-[4px] shadow-[0_6px_20px_rgba(0,0,0,0.16)]"
         >
-          {options.map(({ key, label, hint }) => (
+          {options.map(({ key, label, hint, trailing }) => (
             <Checkbox
               key={key}
               id={`include-${key}`}
               label={label}
               {...(hint ? { hint } : {})}
+              {...(trailing ? { trailing } : {})}
               checked={values[key]}
               onChange={(checked) => onChange(key, checked)}
             />

@@ -4,6 +4,10 @@ type Props = {
   hint?: string;
   checked: boolean;
   onChange: (checked: boolean) => void;
+  /** A secondary action related to this one setting (e.g. "Preview") shown
+   * at the row's trailing edge. Its own click must not also toggle the
+   * checkbox — see the stopPropagation note where callers build it. */
+  trailing?: React.ReactNode;
 };
 
 /**
@@ -11,7 +15,14 @@ type Props = {
  * behaviour; only the box is drawn. Wrapping the whole row in the label gives a
  * comfortable hit target instead of a 14px square.
  */
-export function Checkbox({ id, label, hint, checked, onChange }: Props) {
+export function Checkbox({
+  id,
+  label,
+  hint,
+  checked,
+  onChange,
+  trailing,
+}: Props) {
   return (
     <label
       htmlFor={id}
@@ -41,18 +52,21 @@ export function Checkbox({ id, label, hint, checked, onChange }: Props) {
           />
         </svg>
       </span>
-      <span className="min-w-0 leading-[1.35]">
-        <span className="block text-[12.5px] text-[var(--text-primary)]">
-          {label}
-        </span>
-        {hint ? (
-          <span
-            id={`${id}-hint`}
-            className="block text-[11px] text-[var(--text-secondary)]"
-          >
-            {hint}
+      <span className="flex min-w-0 flex-1 items-start justify-between gap-2">
+        <span className="min-w-0 leading-[1.35]">
+          <span className="block text-[12.5px] text-[var(--text-primary)]">
+            {label}
           </span>
-        ) : null}
+          {hint ? (
+            <span
+              id={`${id}-hint`}
+              className="block text-[11px] text-[var(--text-secondary)]"
+            >
+              {hint}
+            </span>
+          ) : null}
+        </span>
+        {trailing ? <span className="shrink-0">{trailing}</span> : null}
       </span>
     </label>
   );

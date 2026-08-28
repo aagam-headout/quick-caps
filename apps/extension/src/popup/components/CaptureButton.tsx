@@ -43,7 +43,7 @@ export function CaptureButton({
       type="button"
       onClick={onClick}
       disabled={running}
-      className="flex w-full items-center justify-center gap-[7px] rounded-[var(--radius-control)] bg-[var(--accent)] px-3 py-[9px] text-[13px] font-medium text-white transition-all duration-[var(--duration-fast)] hover:bg-[var(--accent-hover)] active:scale-[0.985] disabled:cursor-default disabled:opacity-70 disabled:active:scale-100"
+      className="flex w-full cursor-pointer items-center justify-center gap-[7px] rounded-[var(--radius-control)] bg-[var(--accent)] px-3 py-[9px] text-[13px] font-medium text-white transition-all duration-[var(--duration-fast)] hover:bg-[var(--accent-hover)] active:scale-[0.985] disabled:cursor-default disabled:opacity-70 disabled:active:scale-100"
     >
       {running ? <Spinner /> : <Download />}
       {running ? 'Capturing…' : 'Capture page'}

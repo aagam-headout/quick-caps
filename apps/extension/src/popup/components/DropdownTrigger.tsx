@@ -32,7 +32,7 @@ export function DropdownTrigger({
       aria-controls={panelId}
       {...(compact ? { 'aria-label': `${legend}: ${summary}` } : {})}
       onClick={onClick}
-      className={`flex items-center gap-[6px] rounded-[var(--radius-control)] border text-left text-[11px] font-medium transition-colors duration-[var(--duration-fast)] ${
+      className={`flex cursor-pointer items-center gap-[6px] rounded-[var(--radius-control)] border text-left text-[11px] font-medium transition-colors duration-[var(--duration-fast)] ${
         emphasis
           ? 'border-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_7%,var(--surface))] text-[var(--accent)] hover:bg-[color-mix(in_srgb,var(--accent)_12%,var(--surface))]'
           : 'border-[var(--border)] bg-[var(--surface-raised)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'

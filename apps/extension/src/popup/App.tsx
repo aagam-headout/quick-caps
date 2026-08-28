@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import type { CaptureSettings } from '@quickcaps/core';
 import { Checkbox } from './components/Checkbox.js';
 import { Section } from './components/Section.js';
@@ -28,13 +28,21 @@ const PAGE_TOGGLES: Toggle[] = [
 ];
 
 const EXTRA_TOGGLES: Toggle[] = [
-  { key: 'screenshot', label: 'Full-page screenshot (PNG)' },
+  {
+    key: 'screenshot',
+    label: 'Full-page screenshot (PNG)',
+    hint: 'Stitched top to bottom, saved alongside the capture',
+  },
   {
     key: 'tokens',
     label: 'Design tokens (JSON)',
-    hint: 'Colours, type scale, spacing',
+    hint: 'Colours, type scale, spacing used on the page',
   },
-  { key: 'metadata', label: 'Metadata' },
+  {
+    key: 'metadata',
+    label: 'Metadata',
+    hint: 'URL, capture time, warnings, and the settings used',
+  },
   {
     key: 'logs',
     label: 'Console + network log',
@@ -52,6 +60,9 @@ const EXTRA_TOGGLES: Toggle[] = [
   },
 ];
 
+/** Behavior toggles, shown in Advanced alongside the text fields — merged
+ * out of a former "Options" dropdown that only added a second vague bucket
+ * next to "Extras" and "Advanced". */
 type OptionKey = 'scrollToLoadLazy' | 'inertSnapshot' | 'embedViewer';
 const OPTION_TOGGLES: { key: OptionKey; label: string; hint: string }[] = [
   {
@@ -62,12 +73,12 @@ const OPTION_TOGGLES: { key: OptionKey; label: string; hint: string }[] = [
   {
     key: 'inertSnapshot',
     label: 'Inert snapshot',
-    hint: 'Archive scripts without letting them run when reopened',
+    hint: 'Strips and blocks scripts so a reopened capture never re-runs analytics or trackers',
   },
   {
     key: 'embedViewer',
     label: 'Embed viewer panel',
-    hint: 'Lets whoever reopens the file browse metadata/tokens/logs/raw sources',
+    hint: 'Adds a button to the archive for browsing its metadata/tokens/logs/perf/raw data',
   },
 ];
 
@@ -234,6 +245,7 @@ export function App() {
     running: previewRunning,
     error: previewError,
   } = usePreview();
+  const [mode, setMode] = useState<'page' | 'element'>('page');
 
   useEffect(() => {
     const root = document.documentElement;
@@ -305,25 +317,46 @@ export function App() {
         </Section>
 
         <MultiSelectDropdown
-          legend="Extras"
-          options={EXTRA_TOGGLES}
+          legend="Also include"
+          options={EXTRA_TOGGLES.map((toggle) =>
+            toggle.key === 'screenshot'
+              ? {
+                  ...toggle,
+                  trailing: (
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        // A trailing button inside the row's <label> would
+                        // otherwise also toggle the checkbox it sits in.
+                        event.preventDefault();
+                        event.stopPropagation();
+                        void preview();
+                      }}
+                      disabled={previewRunning}
+                      className="cursor-pointer rounded-[var(--radius-control)] px-[7px] py-[3px] text-[11px] font-medium text-[var(--accent)] transition-colors duration-[var(--duration-fast)] hover:bg-[color-mix(in_srgb,var(--accent)_10%,transparent)] disabled:cursor-default disabled:opacity-60"
+                    >
+                      {previewRunning ? 'Previewing…' : 'Preview'}
+                    </button>
+                  ),
+                }
+              : toggle,
+          )}
           values={settings.include}
           onChange={setInclude}
         />
 
-        <MultiSelectDropdown
-          legend="Options"
-          options={OPTION_TOGGLES}
-          values={{
-            scrollToLoadLazy: settings.scrollToLoadLazy,
-            inertSnapshot: settings.inertSnapshot,
-            embedViewer: settings.embedViewer,
-          }}
-          onChange={setOption}
-        />
-
         <Section title="Advanced" collapsible>
           <div className="-mx-[6px]">
+            {OPTION_TOGGLES.map(({ key, label, hint }) => (
+              <Checkbox
+                key={key}
+                id={`option-${key}`}
+                label={label}
+                hint={hint}
+                checked={settings[key]}
+                onChange={(checked) => setOption(key, checked)}
+              />
+            ))}
             <TextField
               id="filename-template"
               label="Filename template"
@@ -365,26 +398,58 @@ export function App() {
       />
 
       <div className="flex flex-col gap-[10px]">
-        <CaptureButton running={running} onClick={() => void start()} />
+        <div
+          role="tablist"
+          aria-label="Capture mode"
+          className="flex gap-[2px] rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--surface-raised)] p-[2px]"
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === 'page'}
+            onClick={() => setMode('page')}
+            className={`flex-1 cursor-pointer rounded-[calc(var(--radius-control)-2px)] px-3 py-[6px] text-[12px] font-medium transition-colors duration-[var(--duration-fast)] ${
+              mode === 'page'
+                ? 'bg-[var(--surface)] text-[var(--text-primary)] shadow-[0_1px_2px_rgba(0,0,0,0.08)]'
+                : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+            }`}
+          >
+            Full page
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === 'element'}
+            onClick={() => setMode('element')}
+            className={`flex-1 cursor-pointer rounded-[calc(var(--radius-control)-2px)] px-3 py-[6px] text-[12px] font-medium transition-colors duration-[var(--duration-fast)] ${
+              mode === 'element'
+                ? 'bg-[var(--surface)] text-[var(--text-primary)] shadow-[0_1px_2px_rgba(0,0,0,0.08)]'
+                : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+            }`}
+          >
+            Pick element…
+          </button>
+        </div>
 
-        <div className="flex gap-[8px]">
+        {mode === 'page' ? (
+          <CaptureButton running={running} onClick={() => void start()} />
+        ) : (
           <button
             type="button"
             onClick={() => void pick()}
             disabled={running}
-            className="flex-1 rounded-[var(--radius-control)] border border-[var(--border)] px-3 py-[7px] text-[12px] font-medium text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] disabled:cursor-default disabled:opacity-70"
+            className="flex w-full cursor-pointer items-center justify-center gap-[7px] rounded-[var(--radius-control)] bg-[var(--accent)] px-3 py-[9px] text-[13px] font-medium text-white transition-all duration-[var(--duration-fast)] hover:bg-[var(--accent-hover)] active:scale-[0.985] disabled:cursor-default disabled:opacity-70 disabled:active:scale-100"
           >
-            Pick element…
+            Choose element…
           </button>
-          <button
-            type="button"
-            onClick={() => void preview()}
-            disabled={running || previewRunning}
-            className="flex-1 rounded-[var(--radius-control)] border border-[var(--border)] px-3 py-[7px] text-[12px] font-medium text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] disabled:cursor-default disabled:opacity-70"
-          >
-            {previewRunning ? 'Previewing…' : 'Preview screenshot'}
-          </button>
-        </div>
+        )}
+
+        {mode === 'element' ? (
+          <p className="text-[11px] text-[var(--text-secondary)]">
+            Hover the page to highlight, click to select, then confirm in the
+            bar that appears. Esc cancels.
+          </p>
+        ) : null}
 
         {pickerError ? (
           <p role="alert" className="text-[11.5px] text-[var(--error)]">

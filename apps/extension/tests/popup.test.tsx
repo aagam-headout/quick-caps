@@ -27,6 +27,7 @@ beforeEach(() => {
   (globalThis as unknown as { chrome: unknown }).chrome = {
     runtime: {
       getURL: (path: string) => `chrome-extension://test/${path}`,
+      sendMessage: vi.fn().mockResolvedValue(undefined),
       connect: () => ({
         postMessage: (message: unknown) => posted.push(message),
         disconnect: vi.fn(),
@@ -43,6 +44,9 @@ beforeEach(() => {
     },
     permissions: { contains, request },
     downloads: { open: downloadsOpen },
+    scripting: {
+      executeScript: vi.fn().mockResolvedValue([{ result: undefined }]),
+    },
     storage: {
       sync: {
         get: vi.fn(async (key: string) => ({ [key]: sync[key] })),
@@ -90,7 +94,7 @@ describe('popup', () => {
 
     // The rest live inside dropdowns, closed by default.
     await userEvent.click(
-      await screen.findByRole('button', { name: /extras/i }),
+      await screen.findByRole('button', { name: /also include/i }),
     );
     for (const label of [
       /screenshot/i,
@@ -102,9 +106,9 @@ describe('popup', () => {
       expect(await screen.findByLabelText(label), String(label)).toBeDefined();
     }
 
-    await userEvent.click(
-      await screen.findByRole('button', { name: /options/i }),
-    );
+    // The behavior toggles that used to live in a separate "Options"
+    // dropdown are now Checkboxes inside the "Advanced" section.
+    await userEvent.click(await screen.findByText(/^Advanced$/));
     for (const label of [/lazy content/, /Inert snapshot/]) {
       expect(await screen.findByLabelText(label), String(label)).toBeDefined();
     }
@@ -124,7 +128,7 @@ describe('popup', () => {
   it('persists a toggle change to sync storage', async () => {
     render(<App />);
     await userEvent.click(
-      await screen.findByRole('button', { name: /extras/i }),
+      await screen.findByRole('button', { name: /also include/i }),
     );
     await userEvent.click(await screen.findByLabelText(/screenshot/i));
     await waitFor(() => {
@@ -336,10 +340,10 @@ describe('popup', () => {
     ).toBe(true);
   });
 
-  it('shows a tick for each selected Extras item and toggles it closed', async () => {
+  it('shows a tick for each selected "Also include" item and toggles it closed', async () => {
     render(<App />);
     await userEvent.click(
-      await screen.findByRole('button', { name: /extras/i }),
+      await screen.findByRole('button', { name: /also include/i }),
     );
     expect(await screen.findByLabelText(/Metadata/)).toBeDefined();
     await userEvent.keyboard('{Escape}');
@@ -371,6 +375,53 @@ describe('popup', () => {
     await waitFor(() => {
       expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
     });
+  });
+
+  it('swaps the primary button when switching to Pick element mode', async () => {
+    render(<App />);
+    expect(
+      await screen.findByRole('button', { name: /^capture page$/i }),
+    ).toBeDefined();
+    expect(
+      screen.queryByRole('button', { name: /^choose element/i }),
+    ).toBeNull();
+
+    await userEvent.click(
+      await screen.findByRole('tab', { name: /pick element/i }),
+    );
+    expect(
+      await screen.findByRole('button', { name: /^choose element/i }),
+    ).toBeDefined();
+    expect(
+      screen.queryByRole('button', { name: /^capture page$/i }),
+    ).toBeNull();
+
+    await userEvent.click(
+      await screen.findByRole('tab', { name: /full page/i }),
+    );
+    expect(
+      await screen.findByRole('button', { name: /^capture page$/i }),
+    ).toBeDefined();
+  });
+
+  it('clicking Preview next to the screenshot toggle previews without checking it', async () => {
+    render(<App />);
+    await userEvent.click(
+      await screen.findByRole('button', { name: /also include/i }),
+    );
+    const screenshotToggle = (await screen.findByLabelText(
+      /screenshot/i,
+    )) as HTMLInputElement;
+    expect(screenshotToggle.checked).toBe(false);
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /^preview$/i }),
+    );
+
+    expect(screenshotToggle.checked).toBe(false);
+    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ type: expect.stringContaining('preview') }),
+    );
   });
 
   it('keeps every control keyboard reachable', async () => {
