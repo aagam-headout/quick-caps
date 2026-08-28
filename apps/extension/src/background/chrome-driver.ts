@@ -5,6 +5,11 @@ import type {
   Viewport,
 } from '@quickcaps/core';
 import { fetchAssetBytes } from '@quickcaps/core';
+import {
+  applyScroll,
+  measureViewport,
+  type PageMetrics,
+} from './page-metrics.js';
 
 export type StitchRequest = {
   frames: { dataUrl: string; offsetY: number }[];
@@ -27,6 +32,8 @@ export type ChromeDriverDeps = {
   maxFrames?: number;
   /** Ceiling on how far down the page captureFrames will scroll. */
   maxScrollHeightPx?: number;
+  /** Ceiling on any one chrome.* call this driver waits on. */
+  stepTimeoutMs?: number;
 };
 
 /** Fallback step when the page reports a zero-height viewport. */
@@ -58,6 +65,33 @@ const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
+ * Ceiling on a single chrome.* call.
+ *
+ * captureVisibleTab and executeScript normally reject when they cannot do
+ * their job, but not always: a tab whose window is minimised, occluded, or
+ * sitting on a modal dialog can leave the promise pending for good. One of
+ * those hung the whole worker, which then refused every later capture with "A
+ * capture is already running" until the extension was reloaded.
+ */
+const DEFAULT_STEP_TIMEOUT_MS = 30_000;
+
+/** Rejects rather than waiting on a chrome.* call that never settles. */
+function withTimeout<T>(
+  work: Promise<T>,
+  timeoutMs: number,
+  what: string,
+): Promise<T> {
+  if (timeoutMs <= 0) return work;
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`${what} did not respond within ${timeoutMs}ms`)),
+      timeoutMs,
+    );
+    work.then(resolve, reject).finally(() => clearTimeout(timer));
+  });
+}
+
+/**
  * PageDriver over Chrome's extension APIs. Every core function already proven
  * against the fake driver runs against this one unchanged - that was the point
  * of putting the interface in first.
@@ -68,12 +102,24 @@ export class ChromeDriver implements PageDriver {
     private readonly deps: ChromeDriverDeps = {},
   ) {}
 
+  /** Any chrome.* call, bounded - see withTimeout. */
+  private step<T>(work: Promise<T>, what: string): Promise<T> {
+    return withTimeout(
+      work,
+      this.deps.stepTimeoutMs ?? DEFAULT_STEP_TIMEOUT_MS,
+      what,
+    );
+  }
+
   async evaluate<T>(fn: () => T): Promise<T> {
-    const frames = await chrome.scripting.executeScript({
-      target: { tabId: this.tabId },
-      world: 'ISOLATED',
-      func: fn as () => unknown,
-    });
+    const frames = await this.step(
+      chrome.scripting.executeScript({
+        target: { tabId: this.tabId },
+        world: 'ISOLATED',
+        func: fn as () => unknown,
+      }),
+      'The page',
+    );
     const first = frames[0];
     if (!first) throw new Error(`no result from tab ${this.tabId}`);
     return first.result as T;
@@ -84,78 +130,23 @@ export class ChromeDriver implements PageDriver {
   }
 
   async viewport(): Promise<Viewport> {
-    const frames = await chrome.scripting.executeScript({
-      target: { tabId: this.tabId },
-      world: 'ISOLATED',
-      func: (attr: string) => {
-        let root = document.querySelector(`[${attr}]`) as HTMLElement | null;
-        if (!root) {
-          const docEl = document.documentElement;
-          // <html>/<body> scrolling normally - documentElement already
-          // reports the real height, nothing to find.
-          if (docEl.scrollHeight <= docEl.clientHeight + 1) {
-            // App-shell layout: <body> pinned at 100vh with overflow hidden,
-            // some element scrolling instead - documentElement.scrollHeight
-            // can't see that content, so walk candidates for the actual
-            // scroll container (largest scrollHeight that overflows itself).
-            // <body> itself is a candidate too - querySelectorAll('*') on it
-            // only returns descendants, so scan it separately, or app-shell
-            // pages where <body> is the scroller (not an inner div) fall
-            // straight through to the documentElement fallback and report a
-            // viewport-sized document.
-            // "Biggest scrollHeight wins" alone picks up unrelated scrollers
-            // (a sidebar nav list, a hidden dropdown, a long off-screen
-            // panel) that outscore the real content pane - none of them are
-            // what's on screen, so scrolling them leaves the visible page
-            // static and every captured frame identical. Require the
-            // candidate to actually cover most of the viewport, so it's the
-            // pane the user is looking at.
-            let best: HTMLElement | null = null;
-            let bestHeight = 0;
-            for (const el of [
-              document.body,
-              ...document.body.querySelectorAll<HTMLElement>('*'),
-            ]) {
-              const style = getComputedStyle(el);
-              if (!/(auto|scroll)/.test(style.overflowY)) continue;
-              if (el.scrollHeight <= el.clientHeight + 1) continue;
-              const rect = el.getBoundingClientRect();
-              if (
-                rect.width < window.innerWidth * 0.5 ||
-                rect.height < window.innerHeight * 0.5
-              ) {
-                continue;
-              }
-              if (el.scrollHeight > bestHeight) {
-                best = el;
-                bestHeight = el.scrollHeight;
-              }
-            }
-            root = best;
-            // scrollTo() runs as a separate executeScript call with no
-            // shared JS state, so tag the element it needs to re-find.
-            if (root) root.setAttribute(attr, '');
-          }
-        }
-        return {
-          width: window.innerWidth,
-          height: window.innerHeight,
-          documentWidth: root
-            ? root.scrollWidth
-            : document.documentElement.scrollWidth,
-          documentHeight: root
-            ? root.scrollHeight
-            : document.documentElement.scrollHeight,
-          scrollX: root ? root.scrollLeft : window.scrollX,
-          scrollY: root ? root.scrollTop : window.scrollY,
-          devicePixelRatio: window.devicePixelRatio,
-        };
-      },
-      args: [SCROLL_ROOT_ATTR],
-    });
+    return this.metrics();
+  }
+
+  /** viewport() plus the scroll port's size, which only captureFrames needs. */
+  private async metrics(): Promise<PageMetrics> {
+    const frames = await this.step(
+      chrome.scripting.executeScript({
+        target: { tabId: this.tabId },
+        world: 'ISOLATED',
+        func: measureViewport,
+        args: [SCROLL_ROOT_ATTR],
+      }),
+      'Measuring the page',
+    );
     const first = frames[0];
     if (!first) throw new Error(`no result from tab ${this.tabId}`);
-    const view = first.result as Viewport | undefined;
+    const view = first.result as PageMetrics | undefined;
     // An injection that ran but produced nothing (the page navigated
     // mid-measurement) would otherwise surface as a TypeError on a property
     // read three calls later.
@@ -177,24 +168,41 @@ export class ChromeDriver implements PageDriver {
       scrollX: Number.isFinite(view.scrollX) ? view.scrollX : 0,
       scrollY: Number.isFinite(view.scrollY) ? view.scrollY : 0,
       devicePixelRatio: finite(view.devicePixelRatio, 1),
+      scrollPortWidth: finite(view.scrollPortWidth, finite(view.width, 0)),
+      scrollPortHeight: finite(view.scrollPortHeight, finite(view.height, 0)),
     };
   }
 
   async scrollTo(x: number, y: number): Promise<void> {
-    await chrome.scripting.executeScript({
-      target: { tabId: this.tabId },
-      world: 'ISOLATED',
-      func: (px: number, py: number, attr: string) => {
-        const root = document.querySelector(`[${attr}]`) as HTMLElement | null;
-        if (root) {
-          root.scrollLeft = px;
-          root.scrollTop = py;
-        } else {
-          window.scrollTo(px, py);
-        }
-      },
-      args: [x, y, SCROLL_ROOT_ATTR],
-    });
+    await this.scrollToReached(x, y);
+  }
+
+  /**
+   * Scrolls and returns where the page actually landed.
+   *
+   * captureFrames files each frame at the offset the page reached, not the one
+   * it asked for: a page that refuses to scroll (or stops short) would
+   * otherwise have the same unscrolled frame stitched in at several different
+   * offsets, repeating its content down the image.
+   */
+  private async scrollToReached(
+    x: number,
+    y: number,
+  ): Promise<{ x: number; y: number }> {
+    const frames = await this.step(
+      chrome.scripting.executeScript({
+        target: { tabId: this.tabId },
+        world: 'ISOLATED',
+        func: applyScroll,
+        args: [x, y, SCROLL_ROOT_ATTR],
+      }),
+      'Scrolling the page',
+    );
+    const reached = frames[0]?.result as
+      { x?: unknown; y?: unknown } | undefined;
+    const finite = (value: unknown, fallback: number): number =>
+      typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+    return { x: finite(reached?.x, x), y: finite(reached?.y, y) };
   }
 
   /**
@@ -227,7 +235,7 @@ export class ChromeDriver implements PageDriver {
    */
   private async captureWindowId(): Promise<number | undefined> {
     try {
-      const tab = await chrome.tabs.get(this.tabId);
+      const tab = await this.step(chrome.tabs.get(this.tabId), 'The tab');
       // Only refuse on an explicit false: the field is absent in tests and in
       // some older Chrome builds, and guessing "inactive" there would block a
       // capture that would have worked.
@@ -255,10 +263,12 @@ export class ChromeDriver implements PageDriver {
     let lastError: unknown = new Error('the screenshot could not be taken');
     for (let attempt = 0; attempt <= CAPTURE_RETRIES; attempt++) {
       try {
-        const dataUrl =
+        const dataUrl = await this.step(
           windowId === undefined
-            ? await chrome.tabs.captureVisibleTab({ format: 'png' })
-            : await chrome.tabs.captureVisibleTab(windowId, { format: 'png' });
+            ? chrome.tabs.captureVisibleTab({ format: 'png' })
+            : chrome.tabs.captureVisibleTab(windowId, { format: 'png' }),
+          'The screenshot',
+        );
         if (typeof dataUrl === 'string' && dataUrl.length > 0) return dataUrl;
         lastError = new Error('Chrome returned an empty screenshot frame');
       } catch (error) {
@@ -281,14 +291,20 @@ export class ChromeDriver implements PageDriver {
     const maxFrames = this.deps.maxFrames ?? 40;
     const maxScrollHeightPx =
       this.deps.maxScrollHeightPx ?? DEFAULT_MAX_SCROLL_HEIGHT_PX;
-    const view = await this.viewport();
+    const view = await this.metrics();
     const origin = { x: view.scrollX, y: view.scrollY };
     const frames: StitchRequest['frames'] = [];
 
     // A zero viewport height would make the loop below never advance, pinning
     // the worker forever. Guaranteeing forward progress matters more than the
     // step being exactly right.
-    const step = view.height > 0 ? view.height : MIN_STEP_PX;
+    const visible = Math.min(
+      view.height > 0 ? view.height : MIN_STEP_PX,
+      view.scrollPortHeight > 0 ? view.scrollPortHeight : MIN_STEP_PX,
+    );
+    // Stepping by the window height past a scroll port shorter than the window
+    // would skip the content in between.
+    const step = visible > 0 ? visible : MIN_STEP_PX;
     const height = Math.min(
       Math.max(view.documentHeight, step),
       maxScrollHeightPx,
@@ -297,23 +313,29 @@ export class ChromeDriver implements PageDriver {
     // was asked for. Recording the requested offset instead of this one draws
     // the last frame too low: the bottom of every page whose height is not an
     // exact multiple of the viewport came out duplicated and shifted.
-    const maxOffsetY = Math.max(0, view.documentHeight - view.height);
+    const maxOffsetY = Math.max(0, view.documentHeight - visible);
     const windowId = await this.captureWindowId();
 
     let lastError: unknown;
     let coveredTo = 0;
+    let lastOffsetY = -1;
     try {
       for (
         let requestedY = 0;
         requestedY < height && frames.length < maxFrames;
         requestedY += step
       ) {
-        const offsetY = Math.min(requestedY, maxOffsetY);
-        // Clamping can land twice on the same place; a duplicate frame is
-        // pure cost.
-        if (frames.length > 0 && offsetY <= frames[frames.length - 1]!.offsetY)
-          break;
-        await this.scrollTo(0, offsetY);
+        // Where the page actually went, which is not always where it was
+        // asked to go - see scrollToReached.
+        const reached = await this.scrollToReached(
+          0,
+          Math.min(requestedY, maxOffsetY),
+        );
+        const offsetY = reached.y;
+        // The page stopped moving: every further frame would be this same
+        // picture stitched in lower down.
+        if (frames.length > 0 && offsetY <= lastOffsetY) break;
+        lastOffsetY = offsetY;
         if (delay > 0) await sleep(delay);
         try {
           frames.push({
@@ -352,7 +374,12 @@ export class ChromeDriver implements PageDriver {
 
     return {
       frames,
-      width: view.documentWidth,
+      // Every frame is a picture of the window, so the window's width is the
+      // width there is. Sizing to the document instead cut the right edge off
+      // whenever the scroll root was an inner pane (its scrollWidth excludes
+      // the sidebar beside it), and left an empty band on a page wider than
+      // the window - captureVisibleTab cannot see past the window either way.
+      width: view.width > 0 ? view.width : view.documentWidth,
       // Report the height actually covered, so the canvas is not sized for
       // content that was never captured once the frame cap applied.
       height: Math.min(height, coveredTo),

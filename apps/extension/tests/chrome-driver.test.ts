@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   installChromeMock,
+  stubScrollingPage,
   stubViewport,
   type ChromeMock,
 } from './chrome-mock.js';
@@ -299,6 +300,21 @@ describe('ChromeDriver.captureFrames guards', () => {
     expect(request.frames.map((frame) => frame.offsetY)).toEqual([0, 1000]);
   });
 
+  it('gives up on a captureVisibleTab that never settles', async () => {
+    // A minimised or occluded window can leave the promise pending for good,
+    // which wedged the worker: every capture afterwards was refused as
+    // "already running" until the extension was reloaded.
+    stubViewport(chromeMock, { height: 500, documentHeight: 500 });
+    chromeMock.tabs.captureVisibleTab.mockReturnValue(new Promise(() => {}));
+
+    await expect(
+      new ChromeDriver(7, {
+        frameDelayMs: 0,
+        stepTimeoutMs: 10,
+      }).captureFrames(),
+    ).rejects.toThrow('did not respond');
+  });
+
   it('reports a readable reason when no frame could be captured', async () => {
     stubViewport(chromeMock, { height: 500, documentHeight: 500 });
     chromeMock.tabs.captureVisibleTab.mockRejectedValue(
@@ -326,6 +342,81 @@ describe('ChromeDriver.captureFrames guards', () => {
     await expect(new ChromeDriver(7).viewport()).rejects.toThrow(
       'Could not measure the page',
     );
+  });
+
+  it('files each frame at the offset the page actually reached', async () => {
+    // A pane that stops 300px short of what was asked for: filing frames at
+    // the requested offsets would draw the same picture twice, once too low.
+    stubScrollingPage(chromeMock, {
+      viewport: { height: 500, documentHeight: 1500 },
+      maxScrollY: 700,
+    });
+    chromeMock.tabs.captureVisibleTab.mockResolvedValue(
+      'data:image/png;base64,A',
+    );
+
+    const request = await new ChromeDriver(7, {
+      frameDelayMs: 0,
+    }).captureFrames();
+
+    expect(request.frames.map((frame) => frame.offsetY)).toEqual([0, 500, 700]);
+  });
+
+  it('stops once scrolling no longer moves the page', async () => {
+    // The app-shell failure: the page reports a tall document but nothing
+    // scrolls, so every further frame is the same unscrolled picture.
+    stubScrollingPage(chromeMock, {
+      viewport: { height: 500, documentHeight: 4000 },
+      maxScrollY: 0,
+    });
+    chromeMock.tabs.captureVisibleTab.mockResolvedValue(
+      'data:image/png;base64,A',
+    );
+
+    const request = await new ChromeDriver(7, {
+      frameDelayMs: 0,
+    }).captureFrames();
+
+    expect(request.frames.map((frame) => frame.offsetY)).toEqual([0]);
+    expect(request.height).toBe(500);
+  });
+
+  it('steps by the scroll port when it is shorter than the window', async () => {
+    stubScrollingPage(chromeMock, {
+      viewport: { height: 800, documentHeight: 1200, scrollPortHeight: 400 },
+      maxScrollY: 800,
+    });
+    chromeMock.tabs.captureVisibleTab.mockResolvedValue(
+      'data:image/png;base64,A',
+    );
+
+    const request = await new ChromeDriver(7, {
+      frameDelayMs: 0,
+    }).captureFrames();
+
+    // Stepping by the 800px window would have skipped 400..800 entirely.
+    expect(request.frames.map((frame) => frame.offsetY)).toEqual([0, 400, 800]);
+  });
+
+  it('sizes the canvas to the window, not to the document', async () => {
+    // Both directions are wrong: a wider document leaves an empty band, and a
+    // narrower one (an inner scroll pane next to a sidebar) crops the frames.
+    stubViewport(chromeMock, { width: 1000, documentWidth: 1600 });
+    chromeMock.tabs.captureVisibleTab.mockResolvedValue(
+      'data:image/png;base64,A',
+    );
+
+    const request = await new ChromeDriver(7, {
+      frameDelayMs: 0,
+    }).captureFrames();
+
+    expect(request.width).toBe(1000);
+
+    stubViewport(chromeMock, { width: 1000, documentWidth: 740 });
+    const narrow = await new ChromeDriver(7, {
+      frameDelayMs: 0,
+    }).captureFrames();
+    expect(narrow.width).toBe(1000);
   });
 
   it('stops at the frame cap on a very tall page', async () => {
