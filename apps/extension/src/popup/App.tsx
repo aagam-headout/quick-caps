@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import type { CaptureSettings } from '@quickcaps/core';
 import { Checkbox } from './components/Checkbox.js';
 import { Section } from './components/Section.js';
-import { TextField } from './components/TextField.js';
 import { SingleSelectDropdown } from './components/SingleSelectDropdown.js';
 import { Progress } from './components/Progress.js';
 import { CaptureButton } from './components/CaptureButton.js';
@@ -372,22 +371,6 @@ export function App() {
                 onChange={(checked) => setOption(key, checked)}
               />
             ))}
-            <TextField
-              id="filename-template"
-              label="Filename template"
-              hint="Tokens: {host} {date} {time} {timestamp}"
-              placeholder="{host}-{timestamp}"
-              value={settings.filenameTemplate}
-              onChange={(value) => update({ filenameTemplate: value })}
-            />
-            <TextField
-              id="exclude-selector"
-              label="Exclude selector"
-              hint="CSS selector for elements to drop before capture"
-              placeholder=".cookie-banner, #chat-widget"
-              value={settings.excludeSelector}
-              onChange={(value) => update({ excludeSelector: value })}
-            />
           </div>
         </Section>
       </div>
