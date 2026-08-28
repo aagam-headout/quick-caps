@@ -11,7 +11,7 @@ import type {
 
 const here = dirname(fileURLToPath(import.meta.url));
 
-export type FixtureName = 'static' | 'spa' | 'gallery';
+export type FixtureName = 'static' | 'spa' | 'gallery' | 'nav-heavy';
 
 export function fixtureHtml(name: FixtureName): string {
   return readFileSync(join(here, 'fixtures', `${name}.html`), 'utf8');

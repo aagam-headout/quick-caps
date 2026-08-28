@@ -134,6 +134,18 @@ const DEFAULT_BUDGET = 500;
  * id is ever rendered on two pages; ancestors are exempt from the SCORE
  * gate (a low-scoring ancestor still shows up for a high-scoring child)
  * but not from the consumed-tracking that keeps paging exhaustive.
+ *
+ * A candidate's marginal cost usually shrinks on a later page as ancestors
+ * get consumed elsewhere, but its *own* irreducible floor — itself plus its
+ * still-unconsumed ancestors, rendered alone on an otherwise-empty page —
+ * does not shrink below that floor. If that floor is already over budget
+ * (e.g. a container whose own line inlines many actions), skipping it
+ * forever would starve it: it would never be consumed, `hasMore` would
+ * never resolve to false, and pagination would never become exhaustive. So
+ * if a page would otherwise select nothing at all, the highest-scored
+ * remaining candidate is force-selected onto its own page — over budget if
+ * it must be — trading the budget ceiling for forward progress, which is
+ * the only way to keep the "no id withheld forever" guarantee.
  */
 function fillPage(
   sorted: FlatRegion[],
@@ -144,6 +156,7 @@ function fillPage(
   const selected = new Set<number>();
   let text = '';
   let tokenCount = 0;
+  let fallbackNeeded: number[] | null = null;
 
   for (const candidate of sorted) {
     if (consumed.has(candidate.region.id) || selected.has(candidate.region.id)) {
@@ -156,6 +169,8 @@ function fillPage(
     }
     needed.push(candidate.region.id);
 
+    if (fallbackNeeded === null) fallbackNeeded = needed;
+
     const trial = new Set(selected);
     for (const id of needed) trial.add(id);
     const trialText = renderRegions(flatDocOrder, trial);
@@ -167,13 +182,20 @@ function fillPage(
     // candidate blank out an entire page, even the top-scored one, on a
     // small budget. Skipping keeps scanning for a cheaper, lower-scored
     // candidate that still fits; anything skipped remains a candidate for a
-    // later page, where its marginal cost can only shrink as ancestors get
-    // consumed elsewhere, so paging still terminates and stays exhaustive.
+    // later page, where it may fit once its ancestors are consumed
+    // elsewhere — and if it never does, the fallback below still surfaces
+    // it eventually rather than withholding it forever.
     if (trialCount > budget) continue;
 
     for (const id of needed) selected.add(id);
     text = trialText;
     tokenCount = trialCount;
+  }
+
+  if (selected.size === 0 && fallbackNeeded !== null) {
+    for (const id of fallbackNeeded) selected.add(id);
+    text = renderRegions(flatDocOrder, selected);
+    tokenCount = countTokens(text);
   }
 
   for (const id of selected) consumed.add(id);

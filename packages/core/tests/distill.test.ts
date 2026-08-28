@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildRegions } from '../src/regions.js';
 import { flattenRegions, scoreOf, renderRegions, distill } from '../src/distill.js';
-import { fixtureDocument, type FixtureName } from './fake-driver.js';
+import { fixtureDocument } from './fake-driver.js';
 import { collectFromDocument } from '../src/collect.js';
 import { defaultSettings } from '../src/settings.js';
 
@@ -112,14 +112,8 @@ describe('distill', () => {
     for (const id of idsInText) expect(result.handles[id]).toBeTruthy();
   });
 
-  // Skipped pending Task 6, which adds the `nav-heavy` fixture this test
-  // depends on (tests/fixtures/nav-heavy.html does not exist yet, so
-  // 'nav-heavy' isn't a member of FixtureName yet either — cast until then).
-  it.skip('paginates deterministically with no id repeated across pages', () => {
-    const ir = collectFromDocument(
-      fixtureDocument('nav-heavy' as FixtureName),
-      collectOptions,
-    );
+  it('paginates deterministically with no id repeated across pages', () => {
+    const ir = collectFromDocument(fixtureDocument('nav-heavy'), collectOptions);
     const budget = 30;
     const seenPerPage: number[][] = [];
     let page = 0;
