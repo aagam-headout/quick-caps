@@ -18,8 +18,12 @@ jobs:
       - run: pnpm exec playwright install chromium
       - run: pnpm -w format:check
       - run: pnpm -w lint
-      - run: pnpm -w typecheck
+      # Must run before typecheck: quickcaps-core's exports.types points at
+      # ./dist/index.d.ts, which doesn't exist on a fresh checkout —
+      # `pnpm -w typecheck` resolves quickcaps-core's types the same way any
+      # TS consumer would, and fails without dist/ already built.
       - run: pnpm --filter quickcaps-core build && pnpm --filter quickcaps-cli build
+      - run: pnpm -w typecheck
       - run: pnpm -w test -- --coverage
       - run: pnpm -w build
       # Reads dist/, so it has to follow the build.

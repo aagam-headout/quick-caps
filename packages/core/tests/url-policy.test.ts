@@ -55,10 +55,54 @@ describe('assertFetchableUrl', () => {
   });
 
   it('allows IPv6 loopback but rejects unique-local by literal address', async () => {
-    await expect(
-      assertFetchableUrl('http://[::1]/'),
-    ).resolves.toBeUndefined();
+    await expect(assertFetchableUrl('http://[::1]/')).resolves.toBeUndefined();
     await expect(assertFetchableUrl('http://[fc00::1]/')).rejects.toThrow();
+  });
+
+  it('rejects an IPv4-mapped IPv6 cloud-metadata address after URL normalization to hex groups', async () => {
+    // new URL('http://[::ffff:169.254.169.254]/').hostname normalizes the
+    // dotted-decimal literal to hex groups (::ffff:a9fe:a9fe) before
+    // assertFetchableUrl ever sees it — a regex expecting only the dotted
+    // form would never match this, letting the cloud metadata address
+    // through. This is the literal-IP path (no resolver involved) so it
+    // proves the fix operates on what assertFetchableUrl actually receives.
+    await expect(
+      assertFetchableUrl('http://[::ffff:169.254.169.254]/'),
+    ).rejects.toThrow(/private|internal/i);
+  });
+
+  it('rejects an injected resolver returning an IPv4-mapped IPv6 address in hex form', async () => {
+    const fakeResolve = vi.fn(async () => [
+      { address: '::ffff:a9fe:a9fe', family: 6 as const },
+    ]);
+    await expect(
+      assertFetchableUrl('https://totally-fake-host.test/', {
+        resolve: fakeResolve,
+      }),
+    ).rejects.toThrow(/private|internal/i);
+  });
+
+  it('rejects the full fe80::/10 link-local range, not just literal fe80: prefixes', async () => {
+    await expect(assertFetchableUrl('http://[febf::1]/')).rejects.toThrow();
+  });
+
+  it('rejects the deprecated fec0::/10 IPv6 site-local range', async () => {
+    await expect(assertFetchableUrl('http://[fec0::1]/')).rejects.toThrow();
+  });
+
+  it('rejects the 100.64.0.0/10 CGNAT range', async () => {
+    await expect(assertFetchableUrl('http://100.64.0.1/')).rejects.toThrow();
+    await expect(assertFetchableUrl('http://100.100.0.1/')).rejects.toThrow();
+    await expect(
+      assertFetchableUrl('http://100.127.255.254/'),
+    ).rejects.toThrow();
+    // Just outside the range on either side — must remain allowed.
+    await expect(
+      assertFetchableUrl('http://100.63.255.255/'),
+    ).resolves.toBeUndefined();
+    await expect(
+      assertFetchableUrl('http://100.128.0.1/'),
+    ).resolves.toBeUndefined();
   });
 
   it('allows a caller-supplied resolver to be injected for deterministic testing', async () => {
