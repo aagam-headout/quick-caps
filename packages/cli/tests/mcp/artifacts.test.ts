@@ -129,4 +129,36 @@ describe('ensureArtifactRoot', () => {
     await expect(ensureArtifactRoot(root)).resolves.toBeUndefined();
     await rm(root, { recursive: true, force: true });
   });
+
+  it('refuses to adopt a pre-existing directory that already has other files — never plants the sentinel there', async () => {
+    // Reproduces the misconfigured QUICKCAPS_MCP_ARTIFACT_ROOT scenario:
+    // pointing the artifact root at a directory the user already has real
+    // files in (e.g. ~/Documents) must never make that directory eligible
+    // for the sweep's bulk deletion, on this call or any future one.
+    const root = await mkdtemp(join(tmpdir(), 'quickcaps-ensure-'));
+    const victimFile = join(root, 'important.txt');
+    await writeFile(victimFile, 'do not delete me');
+    const oldTime = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    await utimes(victimFile, oldTime, oldTime);
+
+    await ensureArtifactRoot(root);
+
+    // The sentinel must NOT have been planted — this directory pre-existed
+    // with foreign content, so it's never "ours" to sweep.
+    await expect(
+      stat(join(root, '.quickcaps-mcp-artifacts')),
+    ).rejects.toThrow();
+
+    // Sweeping now (as pc_capture would, right after ensure) must still be
+    // a no-op, and must stay a no-op on every future call too — not just
+    // delayed by one.
+    const firstSweep = await sweepArtifactRoot(root, 60 * 60 * 1000);
+    expect(firstSweep).toEqual([]);
+    await ensureArtifactRoot(root);
+    const secondSweep = await sweepArtifactRoot(root, 60 * 60 * 1000);
+    expect(secondSweep).toEqual([]);
+    await expect(stat(victimFile)).resolves.toBeDefined();
+
+    await rm(root, { recursive: true, force: true });
+  });
 });

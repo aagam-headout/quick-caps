@@ -31,8 +31,40 @@ export function resolveRetentionMs(
   return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_RETENTION_MS;
 }
 
+/** Marks `root` as ours only when doing so can't silently adopt a directory
+ * someone else already put files in — e.g. a misconfigured
+ * `QUICKCAPS_MCP_ARTIFACT_ROOT` pointing at `~/Documents`. The sentinel is
+ * planted when `root` is freshly created, already empty, or already ours
+ * (idempotent). If `root` pre-exists with other content and no sentinel,
+ * it is left unmarked — permanently ineligible for `sweepArtifactRoot`,
+ * on this call and every future one, even though `pc_capture` can still
+ * write into it. */
 export async function ensureArtifactRoot(root: string): Promise<void> {
-  await mkdir(root, { recursive: true });
+  let freshlyCreated = true;
+  try {
+    // Non-recursive first: distinguishes "didn't exist, we just made it"
+    // (safe to claim unconditionally) from "already existed" (needs the
+    // foreign-content check below) without a separate stat/readdir race.
+    await mkdir(root);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === 'EEXIST') {
+      freshlyCreated = false;
+    } else if (code === 'ENOENT') {
+      // Missing parent directories — recursive create still means "we made
+      // the whole chain fresh," same as the freshlyCreated case above.
+      await mkdir(root, { recursive: true });
+    } else {
+      throw error;
+    }
+  }
+
+  if (!freshlyCreated) {
+    const entries = await readdir(root);
+    const foreignContent = entries.some((entry) => entry !== SENTINEL_FILE);
+    if (foreignContent) return;
+  }
+
   try {
     await writeFile(join(root, SENTINEL_FILE), '', { flag: 'wx' });
   } catch (error) {
