@@ -19,6 +19,7 @@ jobs:
       - run: pnpm -w format:check
       - run: pnpm -w lint
       - run: pnpm -w typecheck
+      - run: pnpm --filter quickcaps-core build && pnpm --filter quickcaps-cli build
       - run: pnpm -w test -- --coverage
       - run: pnpm -w build
       # Reads dist/, so it has to follow the build.
