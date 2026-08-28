@@ -131,17 +131,16 @@ export function buildMcpServer(): McpServer {
         'Archive the current page to disk. Defaults to the MCP artifact directory, not the process working directory.',
       inputSchema: captureInputSchema,
     },
-    async (args) => {
-      const root = resolveArtifactRoot();
-      await ensureArtifactRoot(root);
-      await sweepArtifactRoot(root, resolveRetentionMs());
-      return toToolResult(() =>
-        runCapture(
+    async (args) =>
+      toToolResult(async () => {
+        const root = resolveArtifactRoot();
+        await ensureArtifactRoot(root);
+        await sweepArtifactRoot(root, resolveRetentionMs());
+        return runCapture(
           { ...(args.zip !== undefined && { zip: args.zip }), outDir: args.outDir ?? root },
           cwd,
-        ),
-      );
-    },
+        );
+      }),
   );
 
   return server;

@@ -23,10 +23,18 @@ vi.mock('../../src/commands/scrape.js', () => ({
 vi.mock('../../src/commands/capture.js', () => ({
   runCapture: vi.fn(async (args: { outDir?: string }) => `Wrote ${args.outDir}/x.html (10 bytes)`),
 }));
+vi.mock('../../src/mcp/artifacts.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/mcp/artifacts.js')>();
+  return {
+    ...actual,
+    ensureArtifactRoot: vi.fn(actual.ensureArtifactRoot),
+  };
+});
 
 const { buildMcpServer } = await import('../../src/mcp/server.js');
 const { runOpen } = await import('../../src/commands/open.js');
 const { runCapture } = await import('../../src/commands/capture.js');
+const { ensureArtifactRoot } = await import('../../src/mcp/artifacts.js');
 
 async function connectedClient() {
   const server = buildMcpServer();
@@ -73,6 +81,15 @@ describe('buildMcpServer', () => {
     expect(args.outDir).not.toBe(process.cwd());
     expect(args.outDir).toContain('quickcaps-mcp-artifacts');
     expect(result.content).toContainEqual(expect.objectContaining({ type: 'text' }));
+  });
+
+  it('surfaces an artifact root failure as isError instead of a protocol error', async () => {
+    vi.mocked(ensureArtifactRoot).mockRejectedValueOnce(new Error('EACCES: permission denied'));
+
+    const client = await connectedClient();
+    const result = await client.callTool({ name: 'pc_capture', arguments: {} });
+    expect(result.isError).toBe(true);
+    expect(result.content).toEqual([{ type: 'text', text: 'EACCES: permission denied' }]);
   });
 
   it('surfaces a thrown CliError as isError instead of a protocol error', async () => {
