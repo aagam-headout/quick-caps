@@ -267,9 +267,13 @@ async function runCapture(params: {
       });
     }
 
-    const frames = settings.include.screenshot
-      ? (await driver.captureFrames()).frames
-      : undefined;
+    // captureFrames scrolls and screenshots the whole document, unaware of
+    // any DOM pruning a selective capture already did — skip the work
+    // entirely rather than throw away a full-page screenshot downstream.
+    const frames =
+      settings.include.screenshot && !settings.selectionSelector.trim()
+        ? (await driver.captureFrames()).frames
+        : undefined;
 
     await session.save({ phase: 'bundling', tabId, startedAt });
     const result = await offscreen.capture({

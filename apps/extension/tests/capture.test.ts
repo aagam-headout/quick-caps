@@ -138,6 +138,49 @@ describe('runCapture', () => {
     expect(result.warnings.some((w) => w.phase === 'screenshot')).toBe(true);
   });
 
+  it('skips the screenshot for a selective capture, with a warning', async () => {
+    const d = deps();
+    const result = await runCapture(
+      {
+        ...input,
+        settings: {
+          ...defaultSettings,
+          selectionSelector: '#card',
+          include: { ...defaultSettings.include, screenshot: true },
+        },
+        frames: [{ dataUrl: 'data:image/png;base64,A', offsetY: 0 }],
+      },
+      d,
+    );
+    expect(d.stitch).not.toHaveBeenCalled();
+    expect(
+      result.warnings.some(
+        (w) => w.phase === 'screenshot' && w.reason.includes('selective'),
+      ),
+    ).toBe(true);
+  });
+
+  it('skips raw sources for a selective capture, with a warning', async () => {
+    const d = deps();
+    const result = await runCapture(
+      {
+        ...input,
+        settings: {
+          ...defaultSettings,
+          selectionSelector: '#card',
+          include: { ...defaultSettings.include, rawSources: true },
+        },
+      },
+      d,
+    );
+    expect(d.fetchText).not.toHaveBeenCalled();
+    expect(
+      result.warnings.some(
+        (w) => w.phase === 'assets' && w.reason.includes('selective'),
+      ),
+    ).toBe(true);
+  });
+
   it('fetches raw sources only when that toggle is on', async () => {
     const d = deps();
     await runCapture(
