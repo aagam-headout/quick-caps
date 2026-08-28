@@ -1,6 +1,8 @@
 import type { PageIR, Region } from './ir.js';
 import { countTokens } from './tokenize.js';
 
+export type { Region };
+
 /** Named, tunable weights — the acceptance corpus (Task 6) validates these
  * empirically; nothing here is meant to be argued about in the abstract. */
 export const SCORE_WEIGHTS = {
@@ -53,11 +55,22 @@ export type FlatRegion = {
  * distill.ts does over Region — everything downstream operates on this
  * flat list.
  */
-export function flattenRegions(regions: Region[]): FlatRegion[] {
+export function flattenRegions(
+  regions: Region[],
+  scoreFn: (region: Region, baseScore: number) => number = (
+    _region,
+    baseScore,
+  ) => baseScore,
+): FlatRegion[] {
   const out: FlatRegion[] = [];
   const walk = (nodes: Region[], depth: number, parentIds: number[]): void => {
     for (const region of nodes) {
-      out.push({ region, depth, parentIds, score: scoreOf(region) });
+      out.push({
+        region,
+        depth,
+        parentIds,
+        score: scoreFn(region, scoreOf(region)),
+      });
       walk(region.children, depth + 1, [...parentIds, region.id]);
     }
   };
@@ -239,16 +252,20 @@ function actionHandle(
 }
 
 /**
- * Turns a PageIR into a budget-capped, numbered-handle text tree. Pure
- * function over PageIR.regions — no second DOM traversal, no host API.
- * Deterministic: the same PageIR and opts always produce the same output,
- * which is what makes repeated `next` calls exhaustive and non-repeating.
+ * Turns a PageIR into a budget-capped, numbered-handle text tree, using
+ * `scoreFn` to rank regions instead of the default role/density/action
+ * score. `distill()` is this with the identity score function — Phase C1's
+ * `find` command is the other caller, ranking by query match instead.
  */
-export function distill(ir: PageIR, opts: DistillOptions = {}): Distillation {
+export function distillWithScoring(
+  ir: PageIR,
+  scoreFn: (region: Region, baseScore: number) => number,
+  opts: DistillOptions = {},
+): Distillation {
   const budget = opts.tokenBudget ?? DEFAULT_BUDGET;
   const targetPage = opts.page ?? 0;
 
-  const flatDocOrder = flattenRegions(ir.regions);
+  const flatDocOrder = flattenRegions(ir.regions, scoreFn);
   const sorted = [...flatDocOrder].sort(
     (a, b) => b.score - a.score || a.region.id - b.region.id,
   );
@@ -283,4 +300,14 @@ export function distill(ir: PageIR, opts: DistillOptions = {}): Distillation {
     overBudget: result.tokenCount > budget,
     handles,
   };
+}
+
+/**
+ * Turns a PageIR into a budget-capped, numbered-handle text tree. Pure
+ * function over PageIR.regions — no second DOM traversal, no host API.
+ * Deterministic: the same PageIR and opts always produce the same output,
+ * which is what makes repeated `next` calls exhaustive and non-repeating.
+ */
+export function distill(ir: PageIR, opts: DistillOptions = {}): Distillation {
+  return distillWithScoring(ir, (_region, baseScore) => baseScore, opts);
 }

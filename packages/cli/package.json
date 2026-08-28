@@ -7,9 +7,14 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "bin": {
+    "pc": "./bin/pc.mjs"
+  },
   "dependencies": {
     "@quickcaps/core": "workspace:*",
+    "esbuild": "^0.24.0",
     "linkedom": "^0.18.5",
-    "playwright": "^1.48.0"
+    "playwright": "^1.48.0",
+    "tsx": "^4.19.0"
   }
 }

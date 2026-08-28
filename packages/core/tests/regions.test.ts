@@ -132,4 +132,28 @@ describe('buildRegions', () => {
     const all = [...regionIds, ...actionIds];
     expect(new Set(all).size).toBe(all.length);
   });
+
+  it('records a domPath that locates the element from document.body', () => {
+    const doc = fixtureDocument('static');
+    const regions = flatten(buildRegions(doc, options));
+    const article = regions.find((r) => r.tag === 'article')!;
+
+    let el: Element | null = doc.body;
+    for (const index of article.domPath) el = el?.children[index] ?? null;
+    expect(el?.tagName.toLowerCase()).toBe('article');
+  });
+
+  it('gives a wrapper-collapsed child a correct path despite the collapse', () => {
+    // The static fixture's <main> wraps a single <article> with no own text,
+    // so <main> itself is a wrapper and is collapsed out of the Region tree —
+    // but <article>'s domPath must still walk through the real <main> element
+    // in the live DOM, not skip it.
+    const doc = fixtureDocument('static');
+    const regions = flatten(buildRegions(doc, options));
+    const article = regions.find((r) => r.tag === 'article')!;
+
+    let el: Element | null = doc.body;
+    for (const index of article.domPath) el = el?.children[index] ?? null;
+    expect(el?.parentElement?.tagName.toLowerCase()).toBe('main');
+  });
 });

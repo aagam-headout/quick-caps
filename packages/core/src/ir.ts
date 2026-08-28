@@ -94,6 +94,11 @@ export type Region = {
   textDensity: number;
   actions: ActionRef[];
   children: Region[];
+  /** Child-index chain from document.body to this element — e.g. [1, 0, 2]
+   * means body.children[1].children[0].children[2]. Read fresh from the
+   * live DOM, independent of wrapper collapsing, so `read <n>` can relocate
+   * the exact node in a re-parsed PageIR.html. */
+  domPath: number[];
 };
 
 export type PageIR = {

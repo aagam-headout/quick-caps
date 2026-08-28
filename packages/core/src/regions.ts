@@ -73,6 +73,28 @@ function boxOf(el: Element): Region['box'] {
   };
 }
 
+/**
+ * Child-index chain from document.body to `el`, read directly off the live
+ * DOM. Bounded by el's own depth, not a second full-document pass. Kept
+ * separate from build()'s recursion because wrapper collapsing means
+ * build() sometimes recurses straight into a collapsed wrapper's only
+ * child with no call frame at the wrapper's own level — accumulating the
+ * path through that recursion would silently drop the wrapper's segment.
+ * Reading it fresh from parentElement instead means collapsing never
+ * affects correctness, only which elements get their own Region.
+ */
+function pathFromBody(el: Element): number[] {
+  const path: number[] = [];
+  let current: Element | null = el;
+  while (current && current.parentElement) {
+    const siblings = Array.from(current.parentElement.children);
+    path.unshift(siblings.indexOf(current));
+    if (current.parentElement === current.ownerDocument.body) break;
+    current = current.parentElement;
+  }
+  return path;
+}
+
 function labelFor(el: Element): string {
   const aria = el.getAttribute('aria-label');
   if (aria) return aria.trim();
@@ -161,6 +183,7 @@ export function buildRegions(doc: Document, options: RegionOptions): Region[] {
           area > 0 ? Number(((textLength * 1000) / area).toFixed(3)) : 0,
         actions: actionsIn(el),
         children,
+        domPath: pathFromBody(el),
       },
     ];
   };

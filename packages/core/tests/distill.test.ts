@@ -5,6 +5,7 @@ import {
   scoreOf,
   renderRegions,
   distill,
+  distillWithScoring,
   type FlatRegion,
 } from '../src/distill.js';
 import type { Region } from '../src/ir.js';
@@ -102,6 +103,7 @@ describe('renderRegions', () => {
       textDensity: 0,
       actions: [],
       children: [],
+      domPath: [],
     };
     const flat: FlatRegion[] = [
       { region, depth: 1, parentIds: [], score: scoreOf(region) },
@@ -224,5 +226,38 @@ describe('distill', () => {
     const withDefaults = distill(ir, {});
     const explicit = distill(ir, { tokenBudget: 500, page: 0 });
     expect(withDefaults.text).toBe(explicit.text);
+  });
+});
+
+describe('distillWithScoring', () => {
+  it('lets a custom score function override the default ranking', () => {
+    const ir = collectFromDocument(fixtureDocument('static'), collectOptions);
+    const article = ir.regions
+      .flatMap(function walk(r): typeof ir.regions {
+        return [r, ...r.children.flatMap(walk)];
+      })
+      .find((r) => r.tag === 'article')!;
+
+    // A score function that only ever returns 0 for every region except
+    // one it recognizes by id must select nothing but that region (plus
+    // its mandatory ancestors) even though the default ranking would have
+    // picked something else at this budget.
+    const result = distillWithScoring(
+      ir,
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      (region, base) => (region.id === article.id ? 1_000_000 : 0),
+      { tokenBudget: 500 },
+    );
+    expect(result.handles[article.id]).toBeTruthy();
+  });
+
+  it('distill() is equivalent to distillWithScoring with an identity score fn', () => {
+    const ir = collectFromDocument(fixtureDocument('static'), collectOptions);
+    const a = distill(ir, { tokenBudget: 500 });
+    const b = distillWithScoring(ir, (_region, base) => base, {
+      tokenBudget: 500,
+    });
+    expect(a.text).toBe(b.text);
+    expect(a.handles).toEqual(b.handles);
   });
 });

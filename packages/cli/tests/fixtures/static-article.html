@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Static Article Fixture</title>
+  </head>
+  <body>
+    <header>
+      <nav>
+        <a href="/">Home</a>
+        <a href="/about">About</a>
+      </nav>
+    </header>
+    <main>
+      <article>
+        <h1>A Real Article</h1>
+        <p>
+          This paragraph exists to give the static-first driver real body text
+          to work with — enough characters that the empty-shell heuristic does
+          not fire, so pc open resolves this page with StaticDriver alone, no
+          browser launch required at all.
+        </p>
+      </article>
+    </main>
+  </body>
+</html>

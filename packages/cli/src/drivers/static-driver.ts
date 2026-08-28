@@ -18,7 +18,10 @@ import {
  */
 export class StaticDriver implements PageDriver {
   private readonly window: Window & typeof globalThis;
-  private readonly document: Document;
+  /** Public so collect-via-static.ts can call collectFromDocument directly
+   * against this in-memory document — no serialization boundary exists
+   * within the same Node process, unlike PlaywrightDriver's page. */
+  readonly document: Document;
   private scroll = { x: 0, y: 0 };
   readonly url: string | undefined;
 

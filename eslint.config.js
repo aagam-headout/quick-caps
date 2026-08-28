@@ -29,6 +29,17 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
+    // Plain-JS bin scripts run directly by Node (no TypeScript, no build
+    // step) — they need Node globals that js.configs.recommended doesn't
+    // assume by default.
+    files: ['**/bin/*.mjs'],
+    languageOptions: {
+      globals: {
+        process: 'readonly',
+      },
+    },
+  },
+  {
     // The core boundary. packages/core must run in any host — a browser
     // extension, a Node CLI — so it may not reach for a host global or a
     // Node built-in. It receives its DOM and its driver as parameters.
