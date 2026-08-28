@@ -14,12 +14,22 @@ const collectOptions = {
   now: () => new Date('2026-08-27T10:00:00.000Z'),
 };
 
-const BUDGET = 500;
+const DEFAULT_SPEC_BUDGET = 500;
+
+// A budget that actually constrains at least one fixture: at 500 (the spec's
+// default), every fixture in this corpus renders in full with `hasMore:
+// false` — nothing is ever discarded, so a scoring regression that discards
+// the useful content while staying under budget could never fail these
+// assertions. 70 was chosen empirically (values 40-200 probed) as the
+// smallest budget where `spa` and `nav-heavy` both still have `hasMore:
+// true` — real selection pressure — while every fixture's required phrases
+// still survive.
+const BINDING_BUDGET = 70;
 
 describe('distill acceptance corpus', () => {
   const cases: Array<{
     name: FixtureName;
-    mustContain: string[];
+    mustContain: (string | RegExp)[];
   }> = [
     // article-heavy: the paragraph text and the "Next page" link must survive.
     {
@@ -28,24 +38,53 @@ describe('distill acceptance corpus', () => {
     },
     // SPA-shell: the client-rendered heading and its action must survive.
     { name: 'spa', mustContain: ['Rendered by client JS', 'Load more'] },
-    // nav-heavy: the primary (header) nav's links must survive.
-    { name: 'nav-heavy', mustContain: ['Home', 'Pricing'] },
+    // nav-heavy: the primary (header) nav's *action handles* must survive —
+    // checked in handle form (`[<n>]Home`), not just the bare word, since
+    // the fixture's individual link regions also carry that text as their
+    // own snippet (rendered independently of the nav action), which would
+    // satisfy a bare-substring check even if the nav region and its actions
+    // were completely dropped from distillation.
+    { name: 'nav-heavy', mustContain: [/\[\d+\]Home\b/, /\[\d+\]Pricing\b/] },
   ];
 
   for (const testCase of cases) {
-    it(`${testCase.name}: stays within budget and keeps the useful content`, () => {
+    it(`${testCase.name}: stays within the spec-default budget and keeps the useful content`, () => {
       const ir = collectFromDocument(
         fixtureDocument(testCase.name),
         collectOptions,
       );
-      const result = distill(ir, { tokenBudget: BUDGET });
+      const result = distill(ir, { tokenBudget: DEFAULT_SPEC_BUDGET });
 
-      expect(result.tokenCount).toBeLessThanOrEqual(BUDGET);
+      expect(result.tokenCount).toBeLessThanOrEqual(DEFAULT_SPEC_BUDGET);
       for (const phrase of testCase.mustContain) {
-        expect(result.text).toContain(phrase);
+        expect(result.text).toMatch(phrase);
+      }
+    });
+
+    it(`${testCase.name}: keeps the useful content under a binding budget that forces selection pressure`, () => {
+      const ir = collectFromDocument(
+        fixtureDocument(testCase.name),
+        collectOptions,
+      );
+      const result = distill(ir, { tokenBudget: BINDING_BUDGET });
+
+      expect(result.tokenCount).toBeLessThanOrEqual(BINDING_BUDGET);
+      for (const phrase of testCase.mustContain) {
+        expect(result.text).toMatch(phrase);
       }
     });
   }
+
+  it('the binding budget actually constrains at least one fixture (sanity check on the corpus itself)', () => {
+    const constrained = cases.some((testCase) => {
+      const ir = collectFromDocument(
+        fixtureDocument(testCase.name),
+        collectOptions,
+      );
+      return distill(ir, { tokenBudget: BINDING_BUDGET }).hasMore;
+    });
+    expect(constrained).toBe(true);
+  });
 
   it('paging is exhaustive and non-repeating across every fixture', () => {
     for (const testCase of cases) {

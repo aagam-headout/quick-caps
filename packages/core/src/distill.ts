@@ -65,6 +65,16 @@ export function flattenRegions(regions: Region[]): FlatRegion[] {
   return out;
 }
 
+/** Matches `ownTextSnippet`'s truncation style in regions.ts, just at a
+ * tighter cap: render-time snippets are capped further than storage. */
+const RENDER_SNIPPET_CAP = 120;
+
+function renderSnippet(snippet: string): string {
+  return snippet.length > RENDER_SNIPPET_CAP
+    ? `${snippet.slice(0, RENDER_SNIPPET_CAP - 1)}…`
+    : snippet;
+}
+
 function renderLine(region: Region): string {
   const actionsText = region.actions
     .map((action) => {
@@ -78,11 +88,12 @@ function renderLine(region: Region): string {
 
   const head = `[${region.id}] ${region.role}`;
   const hasSnippet = region.snippet.length > 0;
+  const snippet = renderSnippet(region.snippet);
 
   if (!hasSnippet && !actionsText) return head;
   if (!hasSnippet) return `${head}: ${actionsText}`;
-  if (!actionsText) return `${head}: "${region.snippet}"`;
-  return `${head}: "${region.snippet}" ${actionsText}`;
+  if (!actionsText) return `${head}: "${snippet}"`;
+  return `${head}: "${snippet}" ${actionsText}`;
 }
 
 /**
@@ -113,6 +124,7 @@ export type Handle = {
   id: number;
   kind: 'region' | 'link' | 'button' | 'input';
   href?: string;
+  label?: string;
 };
 
 export type Distillation = {
@@ -121,6 +133,11 @@ export type Distillation = {
   page: number;
   /** True iff a further `next` page would render something non-empty. */
   hasMore: boolean;
+  /** True iff this page's tokenCount exceeds the requested budget — only
+   * possible via fillPage's starvation fallback (see its doc comment): a
+   * single candidate (plus mandatory ancestors) was force-selected onto an
+   * otherwise-empty page even though it alone exceeds the budget. */
+  overBudget: boolean;
   handles: Record<number, Handle>;
 };
 
@@ -212,8 +229,13 @@ function handleFor(region: Region): Handle {
   return { id: region.id, kind: 'region' };
 }
 
-function actionHandle(id: number, kind: Handle['kind'], href?: string): Handle {
-  return href !== undefined ? { id, kind, href } : { id, kind };
+function actionHandle(
+  id: number,
+  kind: Handle['kind'],
+  label: string,
+  href?: string,
+): Handle {
+  return href !== undefined ? { id, kind, href, label } : { id, kind, label };
 }
 
 /**
@@ -244,7 +266,12 @@ export function distill(ir: PageIR, opts: DistillOptions = {}): Distillation {
     if (!result.ids.has(entry.region.id)) continue;
     handles[entry.region.id] = handleFor(entry.region);
     for (const action of entry.region.actions) {
-      handles[action.id] = actionHandle(action.id, action.type, action.href);
+      handles[action.id] = actionHandle(
+        action.id,
+        action.type,
+        action.label,
+        action.href,
+      );
     }
   }
 
@@ -253,6 +280,7 @@ export function distill(ir: PageIR, opts: DistillOptions = {}): Distillation {
     tokenCount: result.tokenCount,
     page: targetPage,
     hasMore,
+    overBudget: result.tokenCount > budget,
     handles,
   };
 }

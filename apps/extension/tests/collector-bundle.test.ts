@@ -53,4 +53,15 @@ describe('built collector artifact', () => {
     // bundled and injection would fail at runtime.
     expect(code.length).toBeGreaterThan(500_000);
   });
+
+  it('does not pull in an unused heavyweight dependency (e.g. a tokenizer BPE table)', () => {
+    // Verified build size at time of writing is ~907 kB (single-file-core
+    // dominates). A prior regression had `@quickcaps/core`'s barrel export
+    // re-exporting `distill` (unused by the extension), which transitively
+    // pulled in `gpt-tokenizer`'s vocab table and roughly doubled this file
+    // to ~1.89 MB. This ceiling — current size plus ~20% headroom — is
+    // there to catch that class of regression again, not to pin the exact
+    // byte count.
+    expect(code.length).toBeLessThan(1_100_000);
+  });
 });

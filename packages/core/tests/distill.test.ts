@@ -5,7 +5,9 @@ import {
   scoreOf,
   renderRegions,
   distill,
+  type FlatRegion,
 } from '../src/distill.js';
+import type { Region } from '../src/ir.js';
 import { fixtureDocument } from './fake-driver.js';
 import { collectFromDocument } from '../src/collect.js';
 import { defaultSettings } from '../src/settings.js';
@@ -87,6 +89,27 @@ describe('renderRegions', () => {
     const text = renderRegions(flat, new Set());
     expect(text).toBe('');
   });
+
+  it('truncates a long snippet to 120 chars, ellipsized', () => {
+    const longSnippet = 'a'.repeat(150);
+    const region: Region = {
+      id: 999,
+      role: 'generic',
+      tag: 'div',
+      box: { x: 0, y: 0, w: 100, h: 100 },
+      textLength: longSnippet.length,
+      snippet: longSnippet,
+      textDensity: 0,
+      actions: [],
+      children: [],
+    };
+    const flat: FlatRegion[] = [
+      { region, depth: 1, parentIds: [], score: scoreOf(region) },
+    ];
+    const text = renderRegions(flat, new Set([region.id]));
+    expect(text).toContain(`"${'a'.repeat(119)}…"`);
+    expect(text).not.toContain(longSnippet);
+  });
 });
 
 const collectOptions = {
@@ -129,6 +152,27 @@ describe('distill', () => {
     for (const id of idsInText) expect(result.handles[id]).toBeTruthy();
   });
 
+  it("carries the ActionRef's label on an action handle", () => {
+    const ir = collectFromDocument(fixtureDocument('static'), collectOptions);
+    const result = distill(ir, { tokenBudget: 500 });
+    const flat = flattenRegions(ir.regions);
+    const link = flat
+      .flatMap((entry) => entry.region.actions)
+      .find((action) => action.type === 'link')!;
+    expect(result.handles[link.id]).toMatchObject({
+      kind: 'link',
+      label: link.label,
+      href: link.href,
+    });
+  });
+
+  it('leaves label undefined for a region handle', () => {
+    const ir = collectFromDocument(fixtureDocument('static'), collectOptions);
+    const result = distill(ir, { tokenBudget: 500 });
+    const mainId = ir.regions.find((r) => r.tag === 'main')!.id;
+    expect(result.handles[mainId]!.label).toBeUndefined();
+  });
+
   it('paginates deterministically with no id repeated across pages', () => {
     const ir = collectFromDocument(
       fixtureDocument('nav-heavy'),
@@ -146,6 +190,33 @@ describe('distill', () => {
     }
     const all = seenPerPage.flat();
     expect(new Set(all).size).toBe(all.length);
+  });
+
+  it('marks overBudget when the starvation fallback force-selects an over-budget candidate', () => {
+    // nav-heavy, page 1: page 0 (budget=1) consumes the highest-scored
+    // region (`main`); by page 1 the next-highest remaining candidate is
+    // the header's `nav`, whose own line plus its six action-links and its
+    // `header` ancestor is unavoidably over a budget of 1 token. With
+    // nothing else fitting, fillPage's fallback force-selects exactly that
+    // set rather than leaving the page empty.
+    const ir = collectFromDocument(
+      fixtureDocument('nav-heavy'),
+      collectOptions,
+    );
+    const result = distill(ir, { tokenBudget: 1, page: 1 });
+
+    expect(result.overBudget).toBe(true);
+    expect(result.tokenCount).toBeGreaterThan(1);
+
+    const header = ir.regions.find((r) => r.tag === 'header')!;
+    const nav = header.children.find((r) => r.tag === 'nav')!;
+    const expectedIds = new Set([
+      header.id,
+      nav.id,
+      ...nav.actions.map((a) => a.id),
+    ]);
+    const selectedIds = new Set(Object.keys(result.handles).map(Number));
+    expect(selectedIds).toEqual(expectedIds);
   });
 
   it('defaults to a 500 token budget and page 0', () => {
