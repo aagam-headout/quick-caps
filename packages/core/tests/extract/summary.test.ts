@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   domainAvailability,
   formatAvailability,
+  OBSERVATION_DOMAINS,
 } from '../../src/extract/summary.js';
 import type {
   ContentReport,
@@ -9,7 +10,10 @@ import type {
   DesignReport,
   EntityReport,
   LinkReport,
+  NetworkReport,
+  StackReport,
   StructuredReport,
+  VitalsReport,
 } from '../../src/extract/types.js';
 
 const structured: StructuredReport = {
@@ -117,5 +121,138 @@ describe('formatAvailability', () => {
 
   it('renders nothing for a report with no domains', () => {
     expect(formatAvailability({ warnings: [] })).toBe('');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The observation domains
+// ---------------------------------------------------------------------------
+
+function network(recorded: boolean, requestCount = 0): NetworkReport {
+  return {
+    recorded,
+    requests: Array.from({ length: requestCount }, () => ({
+      at: 0,
+      method: 'GET',
+      url: 'https://api.example.com/a',
+      status: 200,
+      resourceType: 'xhr',
+      requestHeaders: {},
+      responseHeaders: {},
+      durationMs: 1,
+      transferSizeBytes: 1,
+      body: { kept: false, reason: 'binary-type' as const },
+    })),
+    byHost: [],
+    skippedByReason: {
+      'binary-type': 0,
+      'over-cap': 0,
+      evicted: 0,
+      unreadable: 0,
+    },
+    totals: {
+      requestCount,
+      bodiesKept: 0,
+      bodyBytes: 0,
+      bodyCapBytes: 2 * 1024 * 1024,
+      transferSizeBytes: 0,
+    },
+    containsUnredactedCredentials: false,
+  };
+}
+
+function stack(recorded: boolean): StackReport {
+  return {
+    recorded,
+    technologies: recorded
+      ? [
+          {
+            category: 'framework',
+            name: 'React',
+            evidence: 'global-name',
+            matched: '__REACT_DEVTOOLS_GLOBAL_HOOK__',
+          },
+        ]
+      : [],
+    thirdPartyHosts: [],
+    cookies: { cookies: [], includesHttpOnly: false },
+    consentBanner: { present: false },
+  };
+}
+
+function vitals(recorded: boolean): VitalsReport {
+  return {
+    recorded,
+    largestContentfulPaintMs: null,
+    cumulativeLayoutShift: null,
+    interactionToNextPaintMs: null,
+    ttfbMs: null,
+    firstContentfulPaintMs: null,
+    perf: null,
+    unsupportedEntryTypes: [],
+  };
+}
+
+describe('OBSERVATION_DOMAINS', () => {
+  it('names exactly the three domains that can come back not-recorded', () => {
+    expect([...OBSERVATION_DOMAINS]).toEqual(['network', 'stack', 'vitals']);
+  });
+});
+
+describe('domainAvailability — observation domains', () => {
+  it('marks an unarmed domain not-recorded with no count to offer', () => {
+    expect(
+      domainAvailability({
+        network: network(false),
+        stack: stack(false),
+        vitals: vitals(false),
+      }),
+    ).toEqual([
+      { domain: 'network', count: null, notRecorded: true },
+      { domain: 'stack', count: null, notRecorded: true },
+      { domain: 'vitals', count: null, notRecorded: true },
+    ]);
+  });
+
+  /** The distinction the flag exists for: an armed host that saw nothing
+   * counts zero, which is a finding; an unarmed one has no count at all. */
+  it('counts an armed-but-quiet domain rather than calling it not-recorded', () => {
+    expect(domainAvailability({ network: network(true) })).toEqual([
+      { domain: 'network', count: 0 },
+    ]);
+    expect(domainAvailability({ network: network(true, 47) })).toEqual([
+      { domain: 'network', count: 47 },
+    ]);
+  });
+
+  it('treats vitals as a whole-page summary, like content and design', () => {
+    expect(domainAvailability({ vitals: vitals(true) })).toEqual([
+      { domain: 'vitals', count: null },
+    ]);
+  });
+});
+
+describe('formatAvailability — observation domains', () => {
+  it('prints not-recorded as one hyphenated token, not a count', () => {
+    expect(
+      formatAvailability({
+        links,
+        network: network(false),
+        stack: stack(false),
+        vitals: vitals(false),
+      }),
+    ).toBe(
+      'links(1) network(not-recorded) stack(not-recorded) vitals(not-recorded)',
+    );
+  });
+
+  it('prints an armed domain with its count, zero included', () => {
+    expect(
+      formatAvailability({
+        network: network(true),
+        stack: stack(true),
+        vitals: vitals(true),
+      }),
+    ).toBe('network(0) stack(1) vitals');
   });
 });

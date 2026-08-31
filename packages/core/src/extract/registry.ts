@@ -12,6 +12,9 @@ import { extractEntities } from './entities.js';
 import { extractContent } from './content.js';
 import { extractDesign } from './design.js';
 import { extractLinks } from './links.js';
+import { extractNetwork } from './network.js';
+import { extractStack } from './stack.js';
+import { extractVitals } from './vitals.js';
 
 /** Canonical domain order — the order reports and the availability summary
  * are rendered in, so output is stable whatever order the caller asked in. */
@@ -21,6 +24,9 @@ export const EXTRACT_DOMAINS = [
   'content',
   'design',
   'links',
+  'network',
+  'stack',
+  'vitals',
 ] as const satisfies readonly ExtractDomain[];
 
 const extractors: ExtractorMap = {
@@ -29,6 +35,9 @@ const extractors: ExtractorMap = {
   content: extractContent,
   design: extractDesign,
   links: extractLinks,
+  network: extractNetwork,
+  stack: extractStack,
+  vitals: extractVitals,
 };
 
 /**
@@ -119,6 +128,26 @@ export function extractData(
   if (requested.has('links')) {
     const links = guarded('links', () => extractors.links(contextFor('links')));
     if (links !== undefined) report.links = links;
+  }
+  // The observation domains run on the same terms as the rest: they read
+  // ir.recording/ir.perf rather than ctx.doc, and an unarmed session gets a
+  // report saying not-recorded rather than an absent key — absence here still
+  // means the extractor failed.
+  if (requested.has('network')) {
+    const network = guarded('network', () =>
+      extractors.network(contextFor('network')),
+    );
+    if (network !== undefined) report.network = network;
+  }
+  if (requested.has('stack')) {
+    const stack = guarded('stack', () => extractors.stack(contextFor('stack')));
+    if (stack !== undefined) report.stack = stack;
+  }
+  if (requested.has('vitals')) {
+    const vitals = guarded('vitals', () =>
+      extractors.vitals(contextFor('vitals')),
+    );
+    if (vitals !== undefined) report.vitals = vitals;
   }
 
   report.warnings = warnings;

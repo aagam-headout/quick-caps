@@ -8,11 +8,14 @@ import type {
   JsonLdNode,
   LinkReport,
   MicrodataItem,
+  NetworkReport,
   PaginationTarget,
   Price,
   Provenance,
   RdfaItem,
+  StackReport,
   StructuredReport,
+  VitalsReport,
   Confidence,
 } from 'quick-caps-core/extract';
 import { EXTRACT_DOMAINS } from 'quick-caps-core/extract';
@@ -417,6 +420,131 @@ function designRows(report: DesignReport): Row[] {
 }
 
 // ---------------------------------------------------------------------------
+// network, stack, vitals
+// ---------------------------------------------------------------------------
+
+/** Bytes as a human reads them. The caps are quoted in kB and MB in the spec
+ * and in `--help`, so the report has to speak the same units. */
+function bytes(value: number): string {
+  if (value >= 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+  if (value >= 1024) return `${Math.round(value / 1024)} kB`;
+  return `${value} B`;
+}
+
+function networkRows(report: NetworkReport): Row[] {
+  if (report.totals.requestCount === 0) return [];
+  const rows: Row[] = [
+    {
+      label: 'total',
+      value: `${plural(report.totals.requestCount, 'request')}`,
+    },
+  ];
+
+  const skipped = Object.entries(report.skippedByReason).filter(
+    ([, count]) => count > 0,
+  );
+  rows.push({
+    label: 'bodies',
+    value: `${report.totals.bodiesKept} kept${
+      skipped.length === 0
+        ? ''
+        : `, ${skipped.reduce((sum, [, count]) => sum + count, 0)} skipped (${skipped
+            .map(([reason, count]) => `${reason} ${count}`)
+            .join(', ')})`
+    }`,
+  });
+  rows.push({
+    label: 'bytes',
+    value: `${bytes(report.totals.bodyBytes)} / ${bytes(report.totals.bodyCapBytes)} cap`,
+  });
+
+  pushRows(
+    rows,
+    'host',
+    report.byHost.map((host) => ({
+      value: `${host.host} ${host.requestCount} (${host.statusClasses.join('/')})`,
+    })),
+  );
+
+  // Stated rather than implied: a caller pasting these requests anywhere has
+  // to know they still carry live credentials.
+  if (report.containsUnredactedCredentials) {
+    rows.push({ label: '', bare: true, value: 'recorded WITHOUT redaction' });
+  }
+  return rows;
+}
+
+function stackRows(report: StackReport): Row[] {
+  const rows: Row[] = [];
+  pushRows(
+    rows,
+    'tech',
+    report.technologies.map((tech) => ({
+      value: `${tech.category}: ${tech.name} (${tech.evidence})`,
+    })),
+  );
+  pushRows(
+    rows,
+    'third-party',
+    report.thirdPartyHosts.map((host) => ({
+      value: `${host.host} ${host.requestCount} — ${host.classification}`,
+    })),
+  );
+  if (report.cookies.cookies.length > 0) {
+    const third = report.cookies.cookies.filter(
+      (cookie) => !cookie.firstParty,
+    ).length;
+    // The partiality is part of the number: an inventory that cannot see
+    // HttpOnly cookies must not present its subset as a whole.
+    const partial = report.cookies.includesHttpOnly
+      ? ''
+      : ' (document.cookie only — no HttpOnly)';
+    rows.push({
+      label: 'cookies',
+      value: `${report.cookies.cookies.length}, ${third} third-party${partial}`,
+    });
+  }
+  if (report.consentBanner.present) {
+    rows.push({
+      label: 'consent',
+      value: report.consentBanner.matched ?? 'banner present',
+    });
+  }
+  return rows;
+}
+
+function vitalsRows(report: VitalsReport): Row[] {
+  const metrics: [string, number | null, string][] = [
+    ['lcp', report.largestContentfulPaintMs, 'ms'],
+    ['cls', report.cumulativeLayoutShift, ''],
+    ['inp', report.interactionToNextPaintMs, 'ms'],
+    ['ttfb', report.ttfbMs, 'ms'],
+    ['fcp', report.firstContentfulPaintMs, 'ms'],
+  ];
+  const rows: Row[] = metrics
+    .filter((metric): metric is [string, number, string] => metric[1] !== null)
+    .map(([label, value, unit]) => ({ label, value: `${value}${unit}` }));
+
+  if (report.perf !== null) {
+    rows.push({
+      label: 'resources',
+      value: `${report.perf.resourceCount}${
+        report.perf.transferSizeBytes === null
+          ? ''
+          : `, ${bytes(report.perf.transferSizeBytes)}`
+      }`,
+    });
+  }
+  if (report.unsupportedEntryTypes.length > 0) {
+    rows.push({
+      label: 'unsupported',
+      value: report.unsupportedEntryTypes.join(', '),
+    });
+  }
+  return rows;
+}
+
+// ---------------------------------------------------------------------------
 // links
 // ---------------------------------------------------------------------------
 
@@ -463,6 +591,33 @@ function domainRows(report: Partial<DataReport>, domain: ExtractDomain): Row[] {
       return report.design === undefined ? [] : designRows(report.design);
     case 'links':
       return report.links === undefined ? [] : linkRows(report.links);
+    case 'network':
+      return report.network === undefined ? [] : networkRows(report.network);
+    case 'stack':
+      return report.stack === undefined ? [] : stackRows(report.stack);
+    case 'vitals':
+      return report.vitals === undefined ? [] : vitalsRows(report.vitals);
+  }
+}
+
+/**
+ * True when the domain's observation was never armed. A third state beside
+ * absent and empty, because "nobody was watching" is a different answer from
+ * "nothing happened" and points the caller at a different fix.
+ */
+function notRecorded(
+  report: Partial<DataReport>,
+  domain: ExtractDomain,
+): boolean {
+  switch (domain) {
+    case 'network':
+      return report.network?.recorded === false;
+    case 'stack':
+      return report.stack?.recorded === false;
+    case 'vitals':
+      return report.vitals?.recorded === false;
+    default:
+      return false;
   }
 }
 
@@ -483,6 +638,10 @@ export function renderDataReport(
     if (report[domain] === undefined) {
       // Absent means the extractor failed outright; the warnings say why.
       blocks.push(`${domain}\n  (unavailable)`);
+      continue;
+    }
+    if (notRecorded(report, domain)) {
+      blocks.push(`${domain}\n  (not recorded — re-open with --record)`);
       continue;
     }
     const rows = domainRows(report, domain);

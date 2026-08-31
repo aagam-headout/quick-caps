@@ -13,10 +13,20 @@ import { readSession, writeSession, type Session } from './session.js';
  * A no-op, returning the session unchanged, if it's already
  * playwright-backed — re-collecting a page that's already been rendered
  * would just be a slower way to get the same PageIR.
+ *
+ * `record: true` is the one case where an already-playwright session is still
+ * re-collected: observation has to be armed *before* the page loads, so a
+ * recording cannot be added to a load that already happened. The caller pays
+ * a re-numbered handle map for it, which is why it is opt-in.
  */
-export async function ensurePlaywrightSession(cwd: string): Promise<Session> {
+export async function ensurePlaywrightSession(
+  cwd: string,
+  opts: { record?: boolean } = {},
+): Promise<Session> {
   const session = await readSession(cwd);
-  if (session.driver === 'playwright') return session;
+  const needsRecording =
+    opts.record === true && session.ir.recording === undefined;
+  if (session.driver === 'playwright' && !needsRecording) return session;
 
   // Re-derive session state from the freshly-collected `ir` rather than
   // inheriting the old session's paging/handle state: region/action ids

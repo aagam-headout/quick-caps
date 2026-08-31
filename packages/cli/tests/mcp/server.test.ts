@@ -97,6 +97,18 @@ describe('buildMcpServer', () => {
     ]);
   });
 
+  it('passes pc_open its record flag through, which forces a browser session', async () => {
+    const client = await connectedClient();
+    await client.callTool({
+      name: 'pc_open',
+      arguments: { url: 'https://example.com', record: true },
+    });
+    expect(runOpen).toHaveBeenCalledWith(
+      { url: 'https://example.com', static: undefined, record: true },
+      expect.any(String),
+    );
+  });
+
   it('routes pc_data to runData, defaulting domains to the availability summary', async () => {
     const { runData } = await import('../../src/commands/data.js');
     const client = await connectedClient();
@@ -116,6 +128,19 @@ describe('buildMcpServer', () => {
     });
     expect(runData).toHaveBeenCalledWith(
       { domains: ['links'], url: 'https://example.com', json: true },
+      expect.any(String),
+    );
+  });
+
+  it('passes pc_data the three observation domains through', async () => {
+    const { runData } = await import('../../src/commands/data.js');
+    const client = await connectedClient();
+    await client.callTool({
+      name: 'pc_data',
+      arguments: { domains: ['network', 'stack', 'vitals'] },
+    });
+    expect(runData).toHaveBeenCalledWith(
+      { domains: ['network', 'stack', 'vitals'], json: true },
       expect.any(String),
     );
   });

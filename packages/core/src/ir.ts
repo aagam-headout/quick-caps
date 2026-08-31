@@ -1,4 +1,5 @@
 import type { PerfReport } from './perf.js';
+import type { Recording } from './observe/types.js';
 
 export type WarningPhase =
   | 'collect'
@@ -115,5 +116,9 @@ export type PageIR = {
   styleTally: StyleTally;
   logs?: LogEntry[];
   perf?: PerfReport;
+  /** Present only when the host was armed to watch the network. Absent means
+   * nobody was watching — a different answer from "nothing happened", and the
+   * reports derived from this field are required to say which. */
+  recording?: Recording;
   warnings: Warning[];
 };

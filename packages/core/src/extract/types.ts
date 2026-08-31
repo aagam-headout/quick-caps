@@ -1,4 +1,6 @@
 import type { PageIR, Warning } from '../ir.js';
+import type { PerfReport } from '../perf.js';
+import type { BodySkipReason, RecordedRequest } from '../observe/types.js';
 
 /** Where a value came from. Ordered loosely from declared to guessed, which
  * is also the tiering order below. */
@@ -34,7 +36,14 @@ export const CONFIDENCE_BY_PROVENANCE: Record<Provenance, Confidence> = {
 };
 
 export type ExtractDomain =
-  'structured' | 'entities' | 'content' | 'design' | 'links';
+  | 'structured'
+  | 'entities'
+  | 'content'
+  | 'design'
+  | 'links'
+  | 'network'
+  | 'stack'
+  | 'vitals';
 
 export type ExtractContext = {
   doc: Document;
@@ -334,6 +343,170 @@ export type LinkReport = {
 };
 
 // ---------------------------------------------------------------------------
+// The observation domains — network, stack, vitals
+//
+// These three read `ir.recording` / `ir.logs` / `ir.perf` instead of `ctx.doc`:
+// what a page asked the network for, what it is built out of, and how fast it
+// was do not survive in a serialized DOM, so only a host that was watching can
+// answer them. That makes "nobody was watching" a possible answer, and the
+// shared `recorded` flag below is how each report says so — distinctly from an
+// empty report, which is the honest answer to "nothing happened".
+// ---------------------------------------------------------------------------
+
+/**
+ * The common head of every observation-derived report. Not a base class and
+ * not optional: an agent that cannot distinguish an unarmed session from a
+ * quiet page will draw the wrong conclusion from both.
+ */
+export type ObservationReport = {
+  /** False when the observation this domain derives from was never armed.
+   * Every other field is then at its empty value and means nothing. */
+  recorded: boolean;
+};
+
+// --- network ---------------------------------------------------------------
+
+/** Per-host rollup over the recorded requests: the API surface behind a page,
+ * which is the thing no amount of DOM reading reveals. */
+export type NetworkHostSummary = {
+  host: string;
+  requestCount: number;
+  /** Summed transfer size across requests to this host, counting only the
+   * ones where the host could measure it. */
+  transferSizeBytes: number;
+  /** Status classes seen, as '2xx'/'3xx'/'4xx'/'5xx', ascending. A request
+   * that never got a response contributes 'none'. */
+  statusClasses: string[];
+};
+
+export type NetworkTotals = {
+  requestCount: number;
+  bodiesKept: number;
+  /** Kept body bytes as observed — what the session caps were spent on. */
+  bodyBytes: number;
+  /** The per-session cap those bytes are measured against, carried in the
+   * report so a reader never has to know the constant to read the number. */
+  bodyCapBytes: number;
+  /** Summed transfer size across every request that reported one. */
+  transferSizeBytes: number;
+};
+
+export type NetworkReport = ObservationReport & {
+  /** Every recorded response, in observation order. A redirect chain appears
+   * as one entry per hop. */
+  requests: RecordedRequest[];
+  byHost: NetworkHostSummary[];
+  /** How many bodies were skipped, per reason. Always carries every reason as
+   * a key, zero included, so a reader can tell "no evictions" from "eviction
+   * not accounted for". */
+  skippedByReason: Record<BodySkipReason, number>;
+  totals: NetworkTotals;
+  /** True when the recording was written without redaction, i.e. the caller
+   * opted out. A consumer pasting these requests anywhere needs to know. */
+  containsUnredactedCredentials: boolean;
+};
+
+// --- stack -----------------------------------------------------------------
+
+export type StackCategory =
+  | 'framework'
+  | 'analytics'
+  | 'tag-manager'
+  | 'ad-network'
+  | 'cdn'
+  | 'ab-testing'
+  | 'chat-widget'
+  | 'payment';
+
+/** What gave a technology away. Kept alongside the name for the same reason
+ * `Extracted` keeps `matched`: a reviewer can judge a detection without
+ * re-reading the page. */
+export type StackEvidence =
+  'script-url' | 'global-name' | 'asset-host' | 'cookie' | 'response-header';
+
+export type DetectedTechnology = {
+  category: StackCategory;
+  name: string;
+  evidence: StackEvidence;
+  /** The literal script URL, global name, host, cookie, or header value the
+   * signature matched. */
+  matched: string;
+};
+
+/** How a third-party host was classified. 'unknown' rather than a guess: an
+ * unrecognized host is a fact, and calling it functional would be an
+ * assertion nothing supports. */
+export type HostClassification =
+  'tracker' | 'advertising' | 'cdn' | 'functional' | 'unknown';
+
+export type ThirdPartyHost = {
+  host: string;
+  requestCount: number;
+  classification: HostClassification;
+};
+
+export type CookieRecord = {
+  name: string;
+  domain: string;
+  /** ISO expiry. Absent for a session cookie, which is a different thing from
+   * one that expires at an unknown time. */
+  expires?: string;
+  /** Against the page origin, not against the cookie's own domain. */
+  firstParty: boolean;
+  /** Absent when the host could not see the flag at all — see
+   * `CookieInventory.includesHttpOnly`. */
+  httpOnly?: boolean;
+  secure?: boolean;
+  sameSite?: 'strict' | 'lax' | 'none';
+};
+
+export type CookieInventory = {
+  cookies: CookieRecord[];
+  /**
+   * False when the host could only read `document.cookie`, which by
+   * definition cannot see an `HttpOnly` cookie — the extension's case, and a
+   * permanent asymmetry with the CLI reading Playwright's context. The
+   * inventory is then partial by construction and says so here rather than
+   * presenting a subset as a whole.
+   */
+  includesHttpOnly: boolean;
+};
+
+export type ConsentBanner = {
+  present: boolean;
+  /** The signature that matched — a known CMP name, or the selector that hit.
+   * Absent when nothing matched. */
+  matched?: string;
+};
+
+export type StackReport = ObservationReport & {
+  technologies: DetectedTechnology[];
+  thirdPartyHosts: ThirdPartyHost[];
+  cookies: CookieInventory;
+  consentBanner: ConsentBanner;
+};
+
+// --- vitals ----------------------------------------------------------------
+
+export type VitalsReport = ObservationReport & {
+  /** The five field metrics, null where the browser never reported one — an
+   * INP of null means no interaction happened, not an INP of zero. */
+  largestContentfulPaintMs: number | null;
+  cumulativeLayoutShift: number | null;
+  interactionToNextPaintMs: number | null;
+  ttfbMs: number | null;
+  firstContentfulPaintMs: number | null;
+  /** The navigation and resource summary `buildPerfReport` already produces,
+   * carried whole rather than re-flattened: this domain adds observation over
+   * time, it does not replace the one-shot snapshot. */
+  perf: PerfReport | null;
+  /** PerformanceObserver entry types the browser did not support, named here
+   * rather than thrown — an absent metric with no explanation is the gap this
+   * field exists to close. */
+  unsupportedEntryTypes: string[];
+};
+
+// ---------------------------------------------------------------------------
 
 export type DataReport = {
   structured: StructuredReport;
@@ -341,6 +514,9 @@ export type DataReport = {
   content: ContentReport;
   design: DesignReport;
   links: LinkReport;
+  network: NetworkReport;
+  stack: StackReport;
+  vitals: VitalsReport;
   /** Not a domain: extractor failures and degradations, phase 'extract'.
    * Lives here because extractData returns a Partial<DataReport> and a
    * failed domain's absence alone cannot say why it is absent. */
@@ -359,4 +535,7 @@ export type ExtractorMap = {
   content: (ctx: ExtractorContext) => ContentReport;
   design: (ctx: ExtractorContext) => DesignReport;
   links: (ctx: ExtractorContext) => LinkReport;
+  network: (ctx: ExtractorContext) => NetworkReport;
+  stack: (ctx: ExtractorContext) => StackReport;
+  vitals: (ctx: ExtractorContext) => VitalsReport;
 };

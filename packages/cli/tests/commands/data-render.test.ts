@@ -4,7 +4,10 @@ import type {
   DesignReport,
   EntityReport,
   LinkReport,
+  NetworkReport,
+  StackReport,
   StructuredReport,
+  VitalsReport,
 } from 'quick-caps-core/extract';
 import { renderDataReport } from '../../src/commands/data-render.js';
 
@@ -261,5 +264,169 @@ describe('renderDataReport', () => {
     expect(output.trimEnd().endsWith('warning: design: extractor failed')).toBe(
       true,
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The observation domains
+// ---------------------------------------------------------------------------
+
+function emptyNetwork(recorded: boolean): NetworkReport {
+  return {
+    recorded,
+    requests: [],
+    byHost: [],
+    skippedByReason: {
+      'binary-type': 0,
+      'over-cap': 0,
+      evicted: 0,
+      unreadable: 0,
+    },
+    totals: {
+      requestCount: 0,
+      bodiesKept: 0,
+      bodyBytes: 0,
+      bodyCapBytes: 2 * 1024 * 1024,
+      transferSizeBytes: 0,
+    },
+    containsUnredactedCredentials: false,
+  };
+}
+
+function emptyStack(recorded: boolean): StackReport {
+  return {
+    recorded,
+    technologies: [],
+    thirdPartyHosts: [],
+    cookies: { cookies: [], includesHttpOnly: false },
+    consentBanner: { present: false },
+  };
+}
+
+function emptyVitals(recorded: boolean): VitalsReport {
+  return {
+    recorded,
+    largestContentfulPaintMs: null,
+    cumulativeLayoutShift: null,
+    interactionToNextPaintMs: null,
+    ttfbMs: null,
+    firstContentfulPaintMs: null,
+    perf: null,
+    unsupportedEntryTypes: [],
+  };
+}
+
+describe('renderDataReport — observation domains', () => {
+  /** Three states, three renderings. `(unavailable)` already meant "the
+   * extractor failed" and `(empty)` "nothing was found"; not-recorded is the
+   * third answer and has to be visibly distinct from both. */
+  it('renders not-recorded distinctly from empty and from unavailable', () => {
+    const notRecorded = renderDataReport(
+      {
+        network: emptyNetwork(false),
+        stack: emptyStack(false),
+        vitals: emptyVitals(false),
+        warnings: [],
+      },
+      ['network', 'stack', 'vitals'],
+    );
+    expect(notRecorded).toContain(
+      'network\n  (not recorded — re-open with --record)',
+    );
+    expect(notRecorded).toContain(
+      'stack\n  (not recorded — re-open with --record)',
+    );
+    expect(notRecorded).not.toContain('(empty)');
+
+    const armedButQuiet = renderDataReport(
+      { network: emptyNetwork(true), warnings: [] },
+      ['network'],
+    );
+    expect(armedButQuiet).toBe('network\n  (empty)');
+
+    const failed = renderDataReport({ warnings: [] }, ['network']);
+    expect(failed).toBe('network\n  (unavailable)');
+  });
+
+  it('renders a recording with its totals against the cap it was measured on', () => {
+    const network = emptyNetwork(true);
+    network.totals = {
+      requestCount: 47,
+      bodiesKept: 12,
+      bodyBytes: 310 * 1024,
+      bodyCapBytes: 2 * 1024 * 1024,
+      transferSizeBytes: 900_000,
+    };
+    network.skippedByReason = {
+      'binary-type': 30,
+      'over-cap': 5,
+      evicted: 0,
+      unreadable: 0,
+    };
+    network.byHost = [
+      {
+        host: 'api.example.com',
+        requestCount: 12,
+        transferSizeBytes: 40_000,
+        statusClasses: ['2xx', '4xx'],
+      },
+    ];
+
+    const output = renderDataReport({ network, warnings: [] }, ['network']);
+
+    expect(output).toMatch(/total\s+47 requests/);
+    expect(output).toMatch(
+      /bodies\s+12 kept, 35 skipped \(binary-type 30, over-cap 5\)/,
+    );
+    expect(output).toMatch(/bytes\s+310 kB \/ 2\.0 MB cap/);
+    expect(output).toMatch(/host\s+api\.example\.com 12 \(2xx\/4xx\)/);
+  });
+
+  it('says out loud when a recording was kept without redaction', () => {
+    const network = emptyNetwork(true);
+    network.totals = { ...network.totals, requestCount: 1 };
+    network.containsUnredactedCredentials = true;
+
+    expect(renderDataReport({ network, warnings: [] }, ['network'])).toContain(
+      'recorded WITHOUT redaction',
+    );
+  });
+
+  it('marks a cookie inventory that could not see HttpOnly as partial', () => {
+    const stack = emptyStack(true);
+    stack.cookies = {
+      includesHttpOnly: false,
+      cookies: [
+        { name: 'sid', domain: 'example.com', firstParty: true },
+        { name: '_ga', domain: '.analytics.test', firstParty: false },
+      ],
+    };
+    stack.technologies = [
+      {
+        category: 'analytics',
+        name: 'Google Analytics',
+        evidence: 'script-url',
+        matched: 'https://www.googletagmanager.com/gtag/js',
+      },
+    ];
+
+    const output = renderDataReport({ stack, warnings: [] }, ['stack']);
+
+    expect(output).toMatch(/tech\s+analytics: Google Analytics \(script-url\)/);
+    expect(output).toMatch(/cookies\s+2, 1 third-party \(document\.cookie/);
+  });
+
+  it('omits a vitals metric the browser never reported rather than printing zero', () => {
+    const vitals = emptyVitals(true);
+    vitals.largestContentfulPaintMs = 1840;
+    vitals.cumulativeLayoutShift = 0.04;
+    vitals.unsupportedEntryTypes = ['interaction'];
+
+    const output = renderDataReport({ vitals, warnings: [] }, ['vitals']);
+
+    expect(output).toMatch(/lcp\s+1840ms/);
+    expect(output).toMatch(/cls\s+0\.04/);
+    expect(output).not.toContain('inp');
+    expect(output).toMatch(/unsupported\s+interaction/);
   });
 });

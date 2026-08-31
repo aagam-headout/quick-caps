@@ -4,6 +4,7 @@ import { collectFromDocument } from '../../src/collect.js';
 import { defaultSettings } from '../../src/settings.js';
 import { fixtureDocument } from '../fake-driver.js';
 import type { ExtractContext } from '../../src/extract/types.js';
+import { RECORDING_TOTAL_BODY_CAP_BYTES } from '../../src/observe/types.js';
 
 /**
  * Every extractor is mocked as a spy *wrapping the real one*, so these tests
@@ -36,6 +37,21 @@ vi.mock('../../src/extract/links.js', async (importOriginal) => {
     await importOriginal<typeof import('../../src/extract/links.js')>();
   return { extractLinks: vi.fn(actual.extractLinks) };
 });
+vi.mock('../../src/extract/network.js', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../../src/extract/network.js')>();
+  return { extractNetwork: vi.fn(actual.extractNetwork) };
+});
+vi.mock('../../src/extract/stack.js', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../../src/extract/stack.js')>();
+  return { extractStack: vi.fn(actual.extractStack) };
+});
+vi.mock('../../src/extract/vitals.js', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../../src/extract/vitals.js')>();
+  return { extractVitals: vi.fn(actual.extractVitals) };
+});
 
 const { extractData, EXTRACT_DOMAINS } =
   await import('../../src/extract/registry.js');
@@ -44,6 +60,9 @@ const { extractEntities } = await import('../../src/extract/entities.js');
 const { extractContent } = await import('../../src/extract/content.js');
 const { extractDesign } = await import('../../src/extract/design.js');
 const { extractLinks } = await import('../../src/extract/links.js');
+const { extractNetwork } = await import('../../src/extract/network.js');
+const { extractStack } = await import('../../src/extract/stack.js');
+const { extractVitals } = await import('../../src/extract/vitals.js');
 
 /**
  * A document with nothing for any extractor to find. The shared `static`
@@ -82,13 +101,16 @@ beforeEach(() => {
 });
 
 describe('EXTRACT_DOMAINS', () => {
-  it('names all five domains', () => {
+  it('names all eight domains', () => {
     expect([...EXTRACT_DOMAINS].sort()).toEqual([
       'content',
       'design',
       'entities',
       'links',
+      'network',
+      'stack',
       'structured',
+      'vitals',
     ]);
   });
 });
@@ -102,6 +124,9 @@ describe('extractData', () => {
     expect(extractEntities).not.toHaveBeenCalled();
     expect(extractContent).not.toHaveBeenCalled();
     expect(extractDesign).not.toHaveBeenCalled();
+    expect(extractNetwork).not.toHaveBeenCalled();
+    expect(extractStack).not.toHaveBeenCalled();
+    expect(extractVitals).not.toHaveBeenCalled();
     expect(report.links).toBeDefined();
     expect(report.content).toBeUndefined();
   });
@@ -195,5 +220,122 @@ describe('extractData', () => {
     expect(received?.doc).toBe(ctx.doc);
     expect(received?.ir).toBe(ctx.ir);
     expect(typeof received?.warn).toBe('function');
+  });
+});
+
+/**
+ * The three observation domains read `ir.recording`/`ir.perf` rather than the
+ * document, which gives them one answer the document-derived five cannot
+ * have: nobody was watching. These assert that answer is distinct from an
+ * empty one — the whole point of the flag.
+ */
+describe('extractData — observation domains', () => {
+  function armedContext(): ExtractContext {
+    const ctx = bareContext();
+    return {
+      ...ctx,
+      ir: {
+        ...ctx.ir,
+        recording: {
+          startedAt: '2026-08-31T10:00:00.000Z',
+          redacted: true,
+          bodyBytes: 0,
+          requests: [],
+        },
+        perf: {
+          ttfbMs: 12,
+          domContentLoadedMs: 100,
+          loadMs: 200,
+          firstPaintMs: 50,
+          firstContentfulPaintMs: 60,
+          largestContentfulPaintMs: 90,
+          transferSizeBytes: 1024,
+          resourceCount: 1,
+          resourceCountByKind: { script: 1 },
+        },
+      },
+    };
+  }
+
+  it('runs each of the three only when requested', () => {
+    extractData(bareContext(), ['network', 'stack', 'vitals']);
+
+    expect(extractNetwork).toHaveBeenCalledOnce();
+    expect(extractStack).toHaveBeenCalledOnce();
+    expect(extractVitals).toHaveBeenCalledOnce();
+    expect(extractLinks).not.toHaveBeenCalled();
+  });
+
+  it('reports not-recorded, not empty, when the observation was never armed', () => {
+    const report = extractData(bareContext(), ['network', 'stack', 'vitals']);
+
+    expect(report.network?.recorded).toBe(false);
+    expect(report.stack?.recorded).toBe(false);
+    expect(report.vitals?.recorded).toBe(false);
+    // Not-recorded is still a present, well-formed report: an absent key
+    // continues to mean the extractor failed.
+    expect(report.network).toBeDefined();
+    expect(report.warnings).toEqual([]);
+  });
+
+  it('reports recorded-and-empty when the host was armed but saw nothing', () => {
+    const report = extractData(armedContext(), ['network', 'stack', 'vitals']);
+
+    expect(report.network?.recorded).toBe(true);
+    expect(report.stack?.recorded).toBe(true);
+    expect(report.vitals?.recorded).toBe(true);
+    expect(report.network?.requests).toEqual([]);
+    expect(report.stack?.technologies).toEqual([]);
+  });
+
+  it('returns well-formed empty reports carrying the cap and every skip reason', () => {
+    const report = extractData(armedContext(), ['network']);
+
+    expect(report.network?.totals.bodyCapBytes).toBe(
+      RECORDING_TOTAL_BODY_CAP_BYTES,
+    );
+    expect(Object.keys(report.network?.skippedByReason ?? {}).sort()).toEqual([
+      'binary-type',
+      'evicted',
+      'over-cap',
+      'unreadable',
+    ]);
+    expect(
+      Object.values(report.network?.skippedByReason ?? {}).every(
+        (count) => count === 0,
+      ),
+    ).toBe(true);
+  });
+
+  it('says out loud when a recording was written without redaction', () => {
+    const armed = armedContext();
+    const report = extractData(
+      {
+        ...armed,
+        ir: {
+          ...armed.ir,
+          recording: { ...armed.ir.recording!, redacted: false },
+        },
+      },
+      ['network'],
+    );
+
+    expect(report.network?.containsUnredactedCredentials).toBe(true);
+    expect(
+      extractData(armedContext(), ['network']).network
+        ?.containsUnredactedCredentials,
+    ).toBe(false);
+  });
+
+  it('loses only its own domain when an observation extractor throws', () => {
+    vi.mocked(extractNetwork).mockImplementationOnce(() => {
+      throw new Error('unreadable recording');
+    });
+
+    const report = extractData(armedContext(), ['network', 'vitals']);
+
+    expect(report.network).toBeUndefined();
+    expect(report.vitals).toBeDefined();
+    expect(report.warnings?.[0]?.reason).toContain('network');
   });
 });

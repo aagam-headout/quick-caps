@@ -12,6 +12,12 @@ export const openInputSchema = {
     .describe(
       'Skip the browser and fetch statically (fast path for non-SPA pages).',
     ),
+  record: z
+    .boolean()
+    .optional()
+    .describe(
+      'Arm observation for the network/stack/vitals domains of pc_data. Forces a real browser session — a static fetch witnesses nothing — which re-numbers every handle. Cannot be combined with static.',
+    ),
 };
 
 export const doInputSchema = {
@@ -60,6 +66,12 @@ export const captureInputSchema = {
     .boolean()
     .optional()
     .describe('Write a zip archive instead of a single HTML file.'),
+  record: z
+    .boolean()
+    .optional()
+    .describe(
+      'Arm observation for this capture. Re-collects the page through a real browser, since a recording has to be armed before the load it observes.',
+    ),
   outDir: z
     .string()
     .optional()
@@ -70,10 +82,21 @@ export const captureInputSchema = {
 
 export const dataInputSchema = {
   domains: z
-    .array(z.enum(['structured', 'entities', 'content', 'design', 'links']))
+    .array(
+      z.enum([
+        'structured',
+        'entities',
+        'content',
+        'design',
+        'links',
+        'network',
+        'stack',
+        'vitals',
+      ]),
+    )
     .optional()
     .describe(
-      'Domains to extract. Omit for a cheap availability summary naming which domains found something, and how much.',
+      'Domains to extract. Omit for a cheap availability summary naming which domains found something, and how much. network/stack/vitals need a session opened with record: true, and report not-recorded otherwise.',
     ),
   url: z
     .string()

@@ -22,6 +22,19 @@ describe('open schema', () => {
     });
     expect(() => z.object(openInputSchema).parse({})).toThrow();
   });
+
+  it('accepts an optional record boolean', () => {
+    expect(
+      z
+        .object(openInputSchema)
+        .parse({ url: 'https://example.com', record: true }),
+    ).toEqual({ url: 'https://example.com', record: true });
+    expect(() =>
+      z
+        .object(openInputSchema)
+        .parse({ url: 'https://example.com', record: 'yes' }),
+    ).toThrow();
+  });
 });
 
 describe('do schema', () => {
@@ -73,6 +86,12 @@ describe('scrape schema', () => {
 });
 
 describe('capture schema', () => {
+  it('accepts an optional record boolean', () => {
+    expect(z.object(captureInputSchema).parse({ record: true })).toEqual({
+      record: true,
+    });
+  });
+
   it('zip and outDir are both optional', () => {
     expect(z.object(captureInputSchema).parse({})).toEqual({});
     expect(
@@ -95,7 +114,15 @@ describe('data schema', () => {
     ).toEqual({ url: 'https://example.com' });
   });
 
-  it('rejects a domain that is not one of the five', () => {
+  it('accepts the three observation domains', () => {
+    expect(
+      z
+        .object(dataInputSchema)
+        .parse({ domains: ['network', 'stack', 'vitals'] }),
+    ).toEqual({ domains: ['network', 'stack', 'vitals'] });
+  });
+
+  it('rejects a domain that is not one of the eight', () => {
     expect(() =>
       z.object(dataInputSchema).parse({ domains: ['prices'] }),
     ).toThrow();

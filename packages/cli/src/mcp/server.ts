@@ -52,6 +52,7 @@ export function buildMcpServer(): McpServer {
           {
             url: args.url,
             ...(args.static !== undefined && { static: args.static }),
+            ...(args.record !== undefined && { record: args.record }),
           },
           cwd,
         ),
@@ -137,7 +138,7 @@ export function buildMcpServer(): McpServer {
     {
       title: 'Extract page data',
       description:
-        'Report the data the current page contains: declared structured data, entities, content quality, design system, link graph. Omit domains for an availability summary first.',
+        'Report the data the current page contains: declared structured data, entities, content quality, design system, link graph, plus recorded network traffic, third-party stack, and web vitals on a session opened with record. Omit domains for an availability summary first.',
       inputSchema: dataInputSchema,
     },
     async (args) =>
@@ -173,6 +174,7 @@ export function buildMcpServer(): McpServer {
         return runCapture(
           {
             ...(args.zip !== undefined && { zip: args.zip }),
+            ...(args.record !== undefined && { record: args.record }),
             outDir: args.outDir ?? root,
           },
           cwd,

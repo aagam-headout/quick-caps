@@ -84,15 +84,28 @@ export async function collectViaPlaywrightFor(url: string): Promise<PageIR> {
  * Static-first with escalation (spec §4): fetch via StaticDriver, and only
  * if it looks like an empty shell — and the caller hasn't opted out with
  * `static: true` — discard it and re-collect through a real browser.
+ *
+ * `record: true` skips the static attempt entirely. A static fetch witnesses
+ * nothing — there is no page to watch, so there is nothing for a recording to
+ * observe — which makes this the one option that decides the driver outright
+ * rather than voting on it.
  */
 export async function openUrl(
   url: string,
-  opts: { static?: boolean } = {},
+  opts: { static?: boolean; record?: boolean } = {},
 ): Promise<OpenResult> {
   try {
     await assertFetchableUrl(url);
   } catch (error) {
     throw new CliError(error instanceof Error ? error.message : String(error));
+  }
+
+  if (opts.record === true) {
+    // Not even fetched statically first: the static IR would be discarded
+    // whatever it looked like, and paying for a request to throw it away is
+    // worse than skipping it.
+    const ir = await collectViaPlaywrightFor(url);
+    return { ir, driver: 'playwright' };
   }
 
   const staticIr = await collectViaStatic(url);

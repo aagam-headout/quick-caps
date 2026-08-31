@@ -69,6 +69,10 @@
     "./theme": {
       "types": "./dist/theme.d.ts",
       "default": "./dist/theme.js"
+    },
+    "./observe": {
+      "types": "./dist/observe/index.d.ts",
+      "default": "./dist/observe/index.js"
     }
   },
   "files": [

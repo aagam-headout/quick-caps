@@ -136,6 +136,50 @@ describe('runData', () => {
     expect(human).toMatch(/^warning: design: .*computed styles/m);
   });
 
+  /**
+   * The distinction the observation domains exist to preserve: a session
+   * nobody armed has no recording to report, and saying "empty" would tell
+   * the caller the page made no requests — a claim nothing supports.
+   */
+  it('reports network as not-recorded on an unarmed session, not as empty', async () => {
+    await runOpen({ url: baseUrl, static: true }, cwd);
+
+    const human = await runData({ domains: ['network'] }, cwd);
+    expect(human).toMatch(/^network$/m);
+    expect(human).toContain('(not recorded — re-open with --record)');
+    expect(human).not.toContain('(empty)');
+    expect(human).not.toContain('(unavailable)');
+  });
+
+  it('says the same thing in the machine form, as a flag on the report', async () => {
+    await runOpen({ url: baseUrl, static: true }, cwd);
+    const report = JSON.parse(
+      await runData(
+        { domains: ['network', 'stack', 'vitals'], json: true },
+        cwd,
+      ),
+    );
+
+    expect(report.network.recorded).toBe(false);
+    expect(report.stack.recorded).toBe(false);
+    expect(report.vitals.recorded).toBe(false);
+    // Present and well-formed, not absent: absence still means the extractor
+    // failed, and the warnings would say so.
+    expect(report.network.requests).toEqual([]);
+    expect(report.warnings).not.toContainEqual(
+      expect.objectContaining({ reason: expect.stringContaining('network') }),
+    );
+  });
+
+  it('names the three domains in the availability summary as not-recorded', async () => {
+    await runOpen({ url: baseUrl, static: true }, cwd);
+    const output = await runData({ domains: [] }, cwd);
+
+    expect(output).toContain('network(not-recorded)');
+    expect(output).toContain('stack(not-recorded)');
+    expect(output).toContain('vitals(not-recorded)');
+  });
+
   it('keeps warnings out of the availability summary line', async () => {
     await runOpen({ url: baseUrl, static: true }, cwd);
     const output = await runData({ domains: [] }, cwd);

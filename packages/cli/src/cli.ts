@@ -42,9 +42,11 @@ export async function dispatch(
   switch (command) {
     case 'open': {
       const staticFlag = rest.includes('--static');
+      const record = rest.includes('--record');
       const url = rest.find((arg) => !arg.startsWith('--'));
-      if (!url) throw new CliError('Usage: pc open <url> [--static]');
-      return runOpen({ url, static: staticFlag }, cwd);
+      if (!url)
+        throw new CliError('Usage: pc open <url> [--static] [--record]');
+      return runOpen({ url, static: staticFlag, record }, cwd);
     }
     case 'next':
       return runNext(cwd);
@@ -92,11 +94,14 @@ export async function dispatch(
     case 'capture': {
       const args: CaptureArgs = {};
       if (rest.includes('--zip')) args.zip = true;
+      if (rest.includes('--record')) args.record = true;
       const outIndex = rest.indexOf('--out');
       if (outIndex !== -1) {
         const outDir = rest[outIndex + 1];
         if (!outDir)
-          throw new CliError('Usage: pc capture [--zip] [--out <dir>]');
+          throw new CliError(
+            'Usage: pc capture [--zip] [--record] [--out <dir>]',
+          );
         args.outDir = outDir;
       }
       return runCapture(args, cwd);
