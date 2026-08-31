@@ -290,9 +290,9 @@ function matchingPreset(include: Include): string {
 }
 
 export function App() {
-  const { settings, update } = useSettings();
+  const { settings, update, ready: settingsReady } = useSettings();
   const { start, progress, result, error, running } = useCapture();
-  const { entries } = useHistory();
+  const { entries, ready: historyReady } = useHistory();
   const { pick, error: pickerError } = usePicker();
   const {
     preview,
@@ -300,6 +300,10 @@ export function App() {
     error: previewError,
   } = usePreview();
   const [mode, setMode] = useState<CaptureMode>('page');
+  // A preset picked while the current selection is already custom-tuned
+  // would otherwise silently discard that tuning. Held here until the user
+  // confirms, rather than applied on the same click that picked it.
+  const [pendingPreset, setPendingPreset] = useState<string | null>(null);
 
   // Accordion: at most one of the three sections open at a time, so opening
   // one for a better look at it doesn't leave the others' checkboxes
@@ -324,11 +328,34 @@ export function App() {
 
   const setInclude = (key: keyof Include, value: boolean): void => {
     update({ include: { ...settings.include, [key]: value } });
+    setPendingPreset(null);
   };
 
   const setOption = (key: OptionKey, value: boolean): void => {
     update({ [key]: value });
   };
+
+  // Settings load from chrome.storage.sync asynchronously; rendering the
+  // real form before that resolves would show defaultSettings for a moment,
+  // not the user's own saved choices. A skeleton says "loading", not "this
+  // is what you have".
+  if (!settingsReady) {
+    return (
+      <main
+        aria-busy="true"
+        aria-label="Loading"
+        className="flex flex-col gap-[var(--space-4)] p-[var(--space-4)]"
+      >
+        <div className="flex items-center justify-between gap-2">
+          <div className="h-[18px] w-[90px] animate-pulse rounded-[4px] bg-[var(--surface-raised)]" />
+          <div className="h-[22px] w-[70px] animate-pulse rounded-[var(--radius-control)] bg-[var(--surface-raised)]" />
+        </div>
+        <div className="h-[34px] animate-pulse rounded-[var(--radius-control)] bg-[var(--surface-raised)]" />
+        <div className="h-[132px] animate-pulse rounded-[var(--radius-card)] bg-[var(--surface-raised)]" />
+        <div className="h-[38px] animate-pulse rounded-[var(--radius-control)] bg-[var(--surface-raised)]" />
+      </main>
+    );
+  }
 
   return (
     <main className="flex flex-col gap-[var(--space-4)] p-[var(--space-4)]">
@@ -365,9 +392,43 @@ export function App() {
         options={PRESETS.map(({ value, label }) => ({ value, label }))}
         onChange={(value) => {
           const preset = PRESETS.find((candidate) => candidate.value === value);
-          if (preset) update({ include: preset.include });
+          if (!preset) return;
+          // Only custom-tuned selections need the extra step - swapping
+          // between presets that already match one exactly loses nothing.
+          if (isCustom) setPendingPreset(value);
+          else update({ include: preset.include });
         }}
       />
+
+      {pendingPreset ? (
+        <div className="pc-enter flex items-center gap-[8px] rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--surface-raised)] px-[8px] py-[6px] text-[11px] text-[var(--text-secondary)]">
+          <span className="flex-1">
+            Switch to "
+            {PRESETS.find((preset) => preset.value === pendingPreset)?.label}
+            "? This replaces your custom selection.
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              const preset = PRESETS.find(
+                (candidate) => candidate.value === pendingPreset,
+              );
+              if (preset) update({ include: preset.include });
+              setPendingPreset(null);
+            }}
+            className="shrink-0 cursor-pointer rounded-[4px] bg-[var(--accent)] px-[8px] py-[3px] text-[10.5px] font-medium text-white transition-colors duration-[var(--duration-fast)] hover:bg-[var(--accent-hover)]"
+          >
+            Switch
+          </button>
+          <button
+            type="button"
+            onClick={() => setPendingPreset(null)}
+            className="shrink-0 cursor-pointer text-[10.5px] font-medium text-[var(--text-secondary)] transition-colors duration-[var(--duration-fast)] hover:text-[var(--text-primary)]"
+          >
+            Cancel
+          </button>
+        </div>
+      ) : null}
 
       <div className="flex flex-col gap-[var(--space-3)]">
         <Section
@@ -603,7 +664,7 @@ export function App() {
       </div>
 
       <div className="flex flex-col gap-[var(--space-3)] border-t border-[var(--border)] pt-[var(--space-3)]">
-        <RecentList entries={entries} />
+        <RecentList entries={entries} ready={historyReady} />
       </div>
     </main>
   );

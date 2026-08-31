@@ -16,6 +16,7 @@ let local: Record<string, unknown>;
 let contains: ReturnType<typeof vi.fn>;
 let request: ReturnType<typeof vi.fn>;
 let downloadsOpen: ReturnType<typeof vi.fn>;
+let downloadsShow: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   listeners = [];
@@ -26,6 +27,7 @@ beforeEach(() => {
   contains = vi.fn().mockResolvedValue(true);
   request = vi.fn().mockResolvedValue(true);
   downloadsOpen = vi.fn();
+  downloadsShow = vi.fn();
 
   (globalThis as unknown as { chrome: unknown }).chrome = {
     runtime: {
@@ -46,7 +48,7 @@ beforeEach(() => {
       query: vi.fn().mockResolvedValue([{ id: 5, url: 'https://example.com' }]),
     },
     permissions: { contains, request },
-    downloads: { open: downloadsOpen },
+    downloads: { open: downloadsOpen, show: downloadsShow },
     scripting: {
       executeScript: vi.fn().mockResolvedValue([{ result: undefined }]),
     },
@@ -337,7 +339,7 @@ describe('popup', () => {
     expect(downloadsOpen).toHaveBeenCalledWith(42);
   });
 
-  it('disables a recent entry with no known downloadId', async () => {
+  it('disables a recent entry with no known downloadId and explains why', async () => {
     local['history'] = [
       {
         url: 'https://example.com/a',
@@ -349,13 +351,48 @@ describe('popup', () => {
     ];
     render(<App />);
     await userEvent.click(await screen.findByText(/recent/i));
+    const row = await screen.findByRole('button', {
+      name: /open example\.com-20260827-100000\.html/i,
+    });
+    expect(row.hasAttribute('disabled')).toBe(true);
+    expect(row.getAttribute('title')).toMatch(/no longer has this download/i);
+  });
+
+  it('opens the Quick-Caps folder from the newest entry with a live downloadId', async () => {
+    local['history'] = [
+      {
+        url: 'https://example.com/a',
+        filename: 'example.com-20260827-100000.html',
+        byteLength: 2048,
+        warningCount: 0,
+        at: Date.UTC(2026, 7, 27, 10, 0, 0),
+        downloadId: 42,
+      },
+    ];
+    render(<App />);
+    await userEvent.click(await screen.findByText(/recent/i));
+    await userEvent.click(
+      await screen.findByRole('button', { name: /open quick-caps folder/i }),
+    );
+    expect(downloadsShow).toHaveBeenCalledWith(42);
+  });
+
+  it('has no folder link when nothing in Recent has a live downloadId', async () => {
+    local['history'] = [
+      {
+        url: 'https://example.com/a',
+        filename: 'example.com-20260827-100000.html',
+        byteLength: 2048,
+        warningCount: 0,
+        at: Date.UTC(2026, 7, 27, 10, 0, 0),
+      },
+    ];
+    render(<App />);
+    await userEvent.click(await screen.findByText(/recent/i));
+    await screen.findByText('example.com-20260827-100000.html');
     expect(
-      (
-        await screen.findByRole('button', {
-          name: /open example\.com-20260827-100000\.html/i,
-        })
-      ).hasAttribute('disabled'),
-    ).toBe(true);
+      screen.queryByRole('button', { name: /open quick-caps folder/i }),
+    ).toBeNull();
   });
 
   it('shows a tick for each selected "Also include" item and expands/collapses as an accordion', async () => {
@@ -386,6 +423,75 @@ describe('popup', () => {
     expect(
       await screen.findByRole('button', { name: /^preset\s*everything/i }),
     ).toBeDefined();
+  });
+
+  it('confirms before a preset overwrites a custom selection', async () => {
+    render(<App />);
+    // Hand-tune a toggle so the selection stops matching any preset.
+    await userEvent.click(await screen.findByText(/^Also include/));
+    await userEvent.click(await screen.findByLabelText(/screenshot/i));
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /^preset/i }),
+    );
+    await userEvent.click(await screen.findByLabelText(/^everything$/i));
+
+    // Not applied yet - a confirm strip stands in the way first.
+    expect(
+      (
+        (await screen.findByLabelText(
+          /design tokens/i,
+        )) as HTMLInputElement
+      ).checked,
+    ).toBe(false);
+    const switchButton = await screen.findByRole('button', {
+      name: /^switch$/i,
+    });
+    await userEvent.click(switchButton);
+
+    await waitFor(() => {
+      expect(
+        (sync['settings'] as { include: { screenshot: boolean } }).include
+          .screenshot,
+      ).toBe(true);
+    });
+    expect(screen.queryByRole('button', { name: /^switch$/i })).toBeNull();
+  });
+
+  it('cancelling a preset confirm leaves the custom selection untouched', async () => {
+    render(<App />);
+    await userEvent.click(await screen.findByText(/^Also include/));
+    await userEvent.click(await screen.findByLabelText(/screenshot/i));
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /^preset/i }),
+    );
+    await userEvent.click(await screen.findByLabelText(/^everything$/i));
+    await userEvent.click(
+      await screen.findByRole('button', { name: /^cancel$/i }),
+    );
+
+    expect(screen.queryByRole('button', { name: /^switch$/i })).toBeNull();
+    expect(
+      (sync['settings'] as { include: { screenshot: boolean } }).include
+        .screenshot,
+    ).toBe(true);
+  });
+
+  it('applies a preset immediately when the selection already matches one', async () => {
+    render(<App />);
+    await userEvent.click(
+      await screen.findByRole('button', { name: /^preset/i }),
+    );
+    await userEvent.click(await screen.findByLabelText(/^everything$/i));
+
+    expect(screen.queryByRole('button', { name: /^switch$/i })).toBeNull();
+    await waitFor(() => {
+      expect(
+        (sync['settings'] as { include: { screenshot: boolean } }).include
+          .screenshot,
+      ).toBe(true);
+    });
   });
 
   it('applies an explicit theme choice to the document root', async () => {

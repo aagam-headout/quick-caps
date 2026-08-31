@@ -65,6 +65,10 @@
     "./perf": {
       "types": "./dist/perf.d.ts",
       "default": "./dist/perf.js"
+    },
+    "./theme": {
+      "types": "./dist/theme.d.ts",
+      "default": "./dist/theme.js"
     }
   },
   "files": [
