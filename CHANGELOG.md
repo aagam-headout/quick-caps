@@ -47,6 +47,49 @@ Page data extraction: what a page _contains_, alongside what it looks like.
   layout engine, presenting an unmeasured value as a measurement. The field
   is omitted instead, with one warning for the page.
 
+Observation: what only a witness can answer.
+
+- New `--record` on `pc open` and `pc capture` arms observation before the
+  page loads, because a load cannot be watched retroactively. It requires a
+  real browser, since a static fetch witnesses nothing, and refuses
+  `--static` rather than silently resolving two flags that ask for opposite
+  drivers. Three further `pc data` domains read what it recorded:
+  - `network` — every request in observation order with its metadata and,
+    where policy kept one, its response body; a per-host summary that ranks
+    hosts the page actually talks to ahead of asset and pixel hosts; and skip
+    accounting that balances against the request count, so a body cannot
+    quietly vanish from it.
+  - `stack` — framework, analytics, tag manager, ad network, CDN, A/B tool,
+    chat widget and payment provider, from script URLs, markup, globals,
+    response headers and cookies; a third-party host inventory classified
+    from those same detections; a cookie inventory; and consent-banner
+    presence.
+  - `vitals` — LCP, CLS, INP, TTFB and FCP with a rating each, over the
+    navigation and resource summary already collected. An unobserved metric
+    is reported absent rather than as zero: a CLS of 0 is a perfect score and
+    an absent CLS is no data, and conflating them would make the domain
+    untrustworthy. INP is absent on an automated load, which performs no
+    interaction to measure.
+- Response bodies are kept only for text-ish types, under a per-body and a
+  per-session cap with oldest-first eviction, and every skipped body records
+  why. A gap a caller can see is a fact; a gap it cannot see is a lie.
+- Credentials are redacted at record time rather than on the way out, so
+  nothing unredacted ever reaches the session file on the default path —
+  `Authorization`, `Cookie`, `Set-Cookie`, token headers, URL userinfo, and
+  token-bearing query parameters, the last being the case most often missed.
+  `--no-redact` makes full fidelity an explicit choice. Cookie redaction
+  replaces the value and keeps the attributes, because an inventory wants the
+  name, domain, expiry and flags, none of which is the secret.
+- The extension observes vitals and reports `stack` into `data.json`, and its
+  recorder now sees `XMLHttpRequest` as well as `fetch` — which also fixes
+  the existing console and network log, previously blind to XHR. It captures
+  no response bodies and asks for no new permission; its cookie inventory is
+  reported partial, because `HttpOnly` cookies are invisible to a host
+  limited to `document.cookie`.
+- Fixed: the extension shipped a tokenizer's 2.4 MB rank table, because the
+  extraction layer reached the distiller for region flattening and pulled it
+  along transitively. The offscreen bundle went from 2,080 kB to 45 kB.
+
 ## 0.1.0
 
 Initial release.
