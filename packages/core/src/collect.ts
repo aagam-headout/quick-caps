@@ -114,7 +114,24 @@ export function collectFromDocument(
     };
   }
 
-  const base = doc.querySelector('base')?.getAttribute('href') ?? pageUrl;
+  // A <base href> may itself be relative — <base href="/shop/"> is common — so
+  // it is resolved against the page url before being used as one. Falling back
+  // to the page url matches what the browser does with a base it cannot parse,
+  // and keeps one bad attribute from corrupting every asset url below.
+  const declaredBase = doc.querySelector('base[href]')?.getAttribute('href');
+  let base = pageUrl;
+  if (declaredBase) {
+    try {
+      base = new URL(declaredBase, pageUrl).href;
+    } catch {
+      warnings.push({
+        phase: 'collect',
+        url: declaredBase,
+        reason: 'base href could not be parsed',
+        detail: 'asset urls were resolved against the page url instead',
+      });
+    }
+  }
 
   const assets = new Map<string, AssetRef>();
   const addAsset = (
