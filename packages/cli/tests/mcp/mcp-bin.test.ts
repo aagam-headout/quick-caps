@@ -86,6 +86,7 @@ describe('pc mcp (end-to-end over stdio)', () => {
       expect(tools.map((t) => t.name).sort()).toEqual(
         [
           'pc_capture',
+          'pc_crawl',
           'pc_data',
           'pc_do',
           'pc_find',

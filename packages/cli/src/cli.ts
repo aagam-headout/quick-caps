@@ -7,11 +7,61 @@ import { runLayout } from './commands/layout.js';
 import { runTokens } from './commands/tokens.js';
 import { runScrape } from './commands/scrape.js';
 import { runData } from './commands/data.js';
+import { runCrawl, CRAWL_DOMAINS, type CrawlArgs } from './commands/crawl.js';
 import { runCapture, type CaptureArgs } from './commands/capture.js';
 import { startMcpServer } from './mcp/server.js';
 import { EXTRACT_DOMAINS } from 'quick-caps-core/extract';
 import { HELP_TEXT } from './help.js';
 import { CliError } from './errors.js';
+
+/** The word after a flag, when it is a value rather than the next flag. Used
+ * by `crawl`, whose flags take arguments where every earlier command's are
+ * boolean or positional. */
+function valueAfter(argv: string[], flag: string): string | undefined {
+  const index = argv.indexOf(flag);
+  if (index === -1) return undefined;
+  const value = argv[index + 1];
+  return value === undefined || value.startsWith('--') ? undefined : value;
+}
+
+/** A numeric flag value, refused loudly rather than silently becoming NaN: a
+ * `--limit lots` that parsed to NaN would compare false against every page
+ * count and crawl until the frontier ran dry. */
+function numberAfter(argv: string[], flag: string): number | undefined {
+  if (!argv.includes(flag)) return undefined;
+  const raw = valueAfter(argv, flag);
+  const value = Number(raw);
+  if (raw === undefined || !Number.isFinite(value) || value < 0) {
+    throw new CliError(`${flag} needs a number, got: ${raw ?? '(nothing)'}`);
+  }
+  return value;
+}
+
+/** Flags on `crawl` that consume the word after them. Named so the seed URL
+ * can be found positionally without mistaking `2` in `--limit 2` for it. */
+const CRAWL_VALUE_FLAGS = [
+  '--name',
+  '--limit',
+  '--depth',
+  '--rate',
+  '--concurrency',
+  '--resume',
+  '--report',
+];
+
+/** The first bare word that is not some flag's value. */
+function positional(argv: string[], valueFlags: string[]): string | undefined {
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === undefined) continue;
+    if (arg.startsWith('--')) {
+      if (valueFlags.includes(arg)) index += 1;
+      continue;
+    }
+    return arg;
+  }
+  return undefined;
+}
 
 /**
  * Pure argv-to-output dispatch, no process.exit/console — kept separate
@@ -101,6 +151,51 @@ export async function dispatch(
         cwd,
       );
     }
+    case 'crawl': {
+      // --report and --resume are modes, not flags on a crawl: each takes the
+      // store's name where a crawl takes a url, so they are read first and
+      // the domain/budget flags below never apply to them.
+      if (rest.includes('--report')) {
+        const name = valueAfter(rest, '--report');
+        return runCrawl(
+          {
+            report: true,
+            ...(name !== undefined && { name }),
+            json: rest.includes('--json'),
+          },
+          cwd,
+        );
+      }
+      const resume = valueAfter(rest, '--resume');
+      const args: CrawlArgs = {
+        domains: CRAWL_DOMAINS.filter(
+          (domain) => rest.includes('--all') || rest.includes(`--${domain}`),
+        ),
+      };
+      if (resume !== undefined) {
+        args.resume = resume;
+      } else {
+        const url = positional(rest, CRAWL_VALUE_FLAGS);
+        if (!url)
+          throw new CliError(
+            'Usage: pc crawl <url> [--limit N] [--depth N] [--name <name>] [--structured] [--entities] [--content] [--design] [--links] [--all] [--rate N] [--concurrency N] [--ignore-robots], or pc crawl --resume <name>, or pc crawl --report [<name>]',
+          );
+        args.url = url;
+      }
+      const name = valueAfter(rest, '--name');
+      if (name !== undefined) args.name = name;
+      const limit = numberAfter(rest, '--limit');
+      if (limit !== undefined) args.limit = limit;
+      const depth = numberAfter(rest, '--depth');
+      if (depth !== undefined) args.depth = depth;
+      const rate = numberAfter(rest, '--rate');
+      if (rate !== undefined) args.rate = rate;
+      const concurrency = numberAfter(rest, '--concurrency');
+      if (concurrency !== undefined) args.concurrency = concurrency;
+      if (rest.includes('--ignore-robots')) args.ignoreRobots = true;
+      if (rest.includes('--json')) args.json = true;
+      return runCrawl(args, cwd);
+    }
     case 'capture': {
       const args: CaptureArgs = {};
       if (rest.includes('--zip')) args.zip = true;
@@ -121,7 +216,7 @@ export async function dispatch(
       return '';
     default:
       throw new CliError(
-        `Unknown command: ${command}. Expected one of: open, do, read, find, next, layout, tokens, scrape, data, capture, mcp — run 'pc --help' for usage.`,
+        `Unknown command: ${command}. Expected one of: open, do, read, find, next, layout, tokens, scrape, data, crawl, capture, mcp — run 'pc --help' for usage.`,
       );
   }
 }

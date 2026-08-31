@@ -69,6 +69,7 @@ describe('buildMcpServer', () => {
     expect(names).toEqual(
       [
         'pc_capture',
+        'pc_crawl',
         'pc_data',
         'pc_do',
         'pc_find',

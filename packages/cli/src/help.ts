@@ -40,6 +40,19 @@ Commands:
                                 report as one line of JSON. With no domain
                                 flag, prints which domains found something and
                                 how much. With a url, opens it first.
+  pc crawl <url> [--limit N] [--depth N] [--name <name>] [--structured]
+           [--entities] [--content] [--design] [--links] [--all] [--rate N]
+           [--concurrency N] [--ignore-robots]
+  pc crawl --resume <name>
+  pc crawl --report [<name>] [--json]
+                                Walk a site and extract from every page into a
+                                resumable crawl store, one JSON Lines record
+                                per page. Same-origin links and pagination,
+                                depth-capped; robots.txt honoured and one
+                                request per second per host unless --rate,
+                                --concurrency, or --ignore-robots says
+                                otherwise. --resume continues an interrupted
+                                crawl; --report summarizes one.
   pc capture [--zip] [--record] [--out <dir>]
                                 Write a self-contained archive of the page.
   pc mcp                        Serve every command above as an MCP tool over
@@ -71,6 +84,16 @@ Notes:
   data never upgrades a static session, precisely so it keeps the handles
   you already have. Fields needing computed styles are skipped instead, and
   the report names them.
+
+  crawl is static by default and has no --record: a browser plus a settle
+  window per page across hundreds of pages is a different tool, so the
+  network, stack, and vitals domains are not offered here.
+
+  A crawl writes .quick-caps/crawls/<name>/ — records.jsonl plus a state file
+  holding the frontier, the seen set, and the counters. JSON Lines because a
+  crawl killed at page 180 of 200 must leave 180 valid records; a page that
+  failed is a record with its error, and a URL robots disallowed is a record
+  with that reason. --report streams that store rather than loading it.
 
   next replaces the current handles rather than adding to them: act on the
   numbers from the most recent output, not an earlier slice.
