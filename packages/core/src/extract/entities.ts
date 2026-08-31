@@ -36,16 +36,37 @@ function mark<T>(value: T, source: Provenance, matched?: string): Extracted<T> {
 }
 
 /**
- * The spec's conflict rule: an entity found from several sources reports the
- * best source and does not merge. Applied per field rather than per value,
- * because a page that declares one price and also writes a different one in
- * prose is not describing two prices — the prose is the stale copy.
+ * The spec's conflict rule — an entity found from several sources reports the
+ * best source and never merges — applied per semantic ROLE within a field
+ * rather than per field. A declared value is only the last word on the thing
+ * it describes: a JSON-LD sale price says what is charged and says nothing
+ * about the struck-through original beside it, so gating the whole field on it
+ * would delete a fact the page stated outright. Every field routes through
+ * here; a field whose values have no role to tell apart passes one constant
+ * role and gets exactly the old per-field behaviour.
  */
-function bestTier<T>(candidates: Extracted<T>[]): Extracted<T>[] {
-  if (candidates.length === 0) return [];
-  const best = Math.min(...candidates.map((c) => RANK[c.confidence]));
-  return candidates.filter((c) => RANK[c.confidence] === best);
+function bestTierByRole<T>(
+  candidates: Extracted<T>[],
+  roleOf: (value: T) => string,
+): Extracted<T>[] {
+  const best = new Map<string, number>();
+  for (const candidate of candidates) {
+    const role = roleOf(candidate.value);
+    const rank = RANK[candidate.confidence];
+    if (rank < (best.get(role) ?? Number.POSITIVE_INFINITY)) {
+      best.set(role, rank);
+    }
+  }
+  // Filtered rather than grouped, so document order survives across roles and
+  // a page's own ordering of a discount pair reaches the report intact.
+  return candidates.filter(
+    (candidate) =>
+      RANK[candidate.confidence] === best.get(roleOf(candidate.value)),
+  );
 }
+
+const bestTier = <T>(candidates: Extracted<T>[]): Extracted<T>[] =>
+  bestTierByRole(candidates, () => '');
 
 function dedupe<T>(
   candidates: Extracted<T>[],
@@ -155,6 +176,36 @@ const CURRENCY_CODES = [
   'AED',
   'KRW',
 ];
+
+const PRICE_TEXT = new RegExp(
+  String.raw`(?:([$€£¥₹₽₩]|\b(?:${CURRENCY_CODES.join('|')})\b)\s?(\d[\d.,\s']*\d|\d)|(\d[\d.,\s']*\d|\d)\s?([$€£¥₹₽₩]|\b(?:${CURRENCY_CODES.join('|')})\b))`,
+  'gi',
+);
+
+/** The Price one PRICE_TEXT match describes, or null when the digits were not
+ * an amount after all. Shared by the semantic and text tiers, which read the
+ * same money out of the page and differ only in what the markup around it
+ * means. */
+function priceFromMatch(match: RegExpMatchArray): Price | null {
+  const marker = (match[1] ?? match[4] ?? '').trim();
+  const amount = parseAmount(match[2] ?? match[3] ?? '');
+  if (amount === null) return null;
+  const currency =
+    SYMBOL_CURRENCY[marker] ??
+    (CURRENCY_CODES.includes(marker.toUpperCase())
+      ? marker.toUpperCase()
+      : undefined);
+  return { amount, ...(currency ? { currency } : {}) };
+}
+
+/** The first price in a run of text. */
+function firstPrice(text: string): Price | null {
+  for (const match of text.matchAll(PRICE_TEXT)) {
+    const price = priceFromMatch(match);
+    if (price) return price;
+  }
+  return null;
+}
 
 /**
  * A human-written amount to a number. The decimal separator is decided by the
@@ -407,6 +458,37 @@ function lowerKeyed(record: Record<string, unknown>): Record<string, unknown> {
 
 const RATING_KEYS = ['ratingvalue', 'bestrating', 'reviewcount', 'ratingcount'];
 
+/** priceType values naming the pre-discount price. schema.org spells it as a
+ * URL, merchant feeds as a bare word. */
+const LIST_PRICE_TYPE = /list ?price|msrp|strikethrough|regular/i;
+
+/**
+ * The prices one declared node states, each with the discount role its shape
+ * gives it. schema.org has three spellings of a pair and this is where they
+ * become roles: a priceSpecification typed as a list price, an explicit
+ * listPrice, or highPrice and lowPrice together. Either bound alone is a range
+ * end rather than a discount, so it carries no role.
+ */
+function declaredPrices(
+  lower: Record<string, unknown>,
+): Array<[number, Price['kind'] | undefined]> {
+  const priceType = lower['pricetype'];
+  const listed =
+    typeof priceType === 'string' && LIST_PRICE_TYPE.test(priceType);
+  const high = parseNumber(lower['highprice']);
+  const low = parseNumber(lower['lowprice']);
+  const bothBounds = high !== null && low !== null;
+
+  const prices: Array<[number, Price['kind'] | undefined]> = [];
+  const own = parseNumber(lower['price']);
+  if (own !== null) prices.push([own, listed ? 'original' : undefined]);
+  const list = parseNumber(lower['listprice']);
+  if (list !== null) prices.push([list, 'original']);
+  if (high !== null) prices.push([high, bothBounds ? 'original' : undefined]);
+  if (low !== null) prices.push([low, bothBounds ? 'current' : undefined]);
+  return prices;
+}
+
 /**
  * Reads one declared node and everything nested under it. Currency descends
  * because schema.org routinely puts `priceCurrency` on an Offer and `price` on
@@ -436,13 +518,17 @@ function walkDeclared(
       ? declaredCurrency.trim().toUpperCase()
       : currency;
 
-  for (const key of ['price', 'lowprice', 'highprice']) {
-    const amount = parseNumber(lower[key]);
-    if (amount !== null) {
-      into.prices.push(
-        mark({ amount, ...(inherited ? { currency: inherited } : {}) }, source),
-      );
-    }
+  for (const [amount, kind] of declaredPrices(lower)) {
+    into.prices.push(
+      mark(
+        {
+          amount,
+          ...(inherited ? { currency: inherited } : {}),
+          ...(kind ? { kind } : {}),
+        },
+        source,
+      ),
+    );
   }
 
   const availability = lower['availability'];
@@ -704,6 +790,26 @@ function readLooseItemprops(doc: Document, into: Candidates): void {
   }
 }
 
+/** Tags whose meaning IS the discount role: <del>/<s>/<strike> is the price no
+ * longer charged, <ins> the one that replaced it. That is marked-up semantics
+ * rather than a guess about prose, so it reports medium — and the element with
+ * no price inside it is an ordinary edit mark, not money. */
+const PRICE_ROLE_TAGS: Array<[string, NonNullable<Price['kind']>]> = [
+  ['del', 'original'],
+  ['s', 'original'],
+  ['strike', 'original'],
+  ['ins', 'current'],
+];
+
+function readPriceRoles(doc: Document, into: Candidates): void {
+  for (const [tag, kind] of PRICE_ROLE_TAGS) {
+    for (const el of elements(doc, tag)) {
+      const price = firstPrice(collapse(el.textContent ?? ''));
+      if (price) into.prices.push(mark({ ...price, kind }, 'semantic-markup'));
+    }
+  }
+}
+
 function readSemantic(
   ctx: ExtractorContext,
   into: Candidates,
@@ -756,6 +862,7 @@ function readSemantic(
   }
 
   readLooseItemprops(doc, into);
+  readPriceRoles(doc, into);
 }
 
 // ---------------------------------------------------------------------------
@@ -766,9 +873,45 @@ const NEXT_TEXT = /^(next|next page|older|older posts?|»|›|→|>)$/i;
 const PREV_TEXT = /^(prev|previous|previous page|newer|newer posts?|«|‹|←|<)$/i;
 const MORE_TEXT = /\b(load|show|view|see)\s+more\b/i;
 
+/**
+ * The document's href base, derived exactly as `links` derives it: a <base
+ * href> may itself be relative, so it resolves against the page url first, and
+ * an unparseable page url leaves hrefs as written.
+ */
+function resolutionBase(ctx: ExtractorContext): string | null {
+  const pageUrl = ctx.ir.metadata.url;
+  const declared = ctx.doc.querySelector('base[href]')?.getAttribute('href');
+  try {
+    return declared ? new URL(declared, pageUrl).href : new URL(pageUrl).href;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Pagination hrefs are absolutized because `links` reports absolute urls for
+ * the same page, and a consumer joining the two reports must not have to guess
+ * which convention it is holding. An href that will not resolve is kept as
+ * written rather than dropped: unlike a link in the crawl frontier, a pager
+ * target is a fact about the page whether or not it parses.
+ */
+function absolutize(href: string, base: string | null): string {
+  if (base === null) return href;
+  try {
+    return new URL(href, base).href;
+  } catch {
+    return href;
+  }
+}
+
 function readPagination(ctx: ExtractorContext, into: Candidates): void {
   const { doc } = ctx;
   const body = doc.body ?? null;
+  const base = resolutionBase(ctx);
+  const hrefOf = (el: Element): string | undefined => {
+    const raw = el.getAttribute('href')?.trim();
+    return raw ? absolutize(raw, base) : undefined;
+  };
 
   for (const el of elements(doc, 'link[rel], a[rel]')) {
     const rel = (el.getAttribute('rel') ?? '').toLowerCase().split(/\s+/);
@@ -778,7 +921,7 @@ function readPagination(ctx: ExtractorContext, into: Candidates): void {
         ? 'prev'
         : undefined;
     if (!kind) continue;
-    const href = el.getAttribute('href')?.trim();
+    const href = hrefOf(el);
     const label = collapse(el.textContent ?? '');
     into.pagination.push(
       mark(
@@ -811,7 +954,7 @@ function readPagination(ctx: ExtractorContext, into: Candidates): void {
         mark(
           {
             kind: 'numbered',
-            href: link.getAttribute('href')?.trim() ?? '',
+            href: hrefOf(link) ?? '',
             label,
             domPath: domPathOf(link, body),
           },
@@ -826,7 +969,7 @@ function readPagination(ctx: ExtractorContext, into: Candidates): void {
     const aria = collapse(el.getAttribute('aria-label') ?? '');
     const text = label || aria;
     if (!text) continue;
-    const href = el.getAttribute('href')?.trim();
+    const href = hrefOf(el);
     const kind: PaginationTarget['kind'] | undefined = MORE_TEXT.test(text)
       ? 'load-more'
       : NEXT_TEXT.test(text)
@@ -850,35 +993,17 @@ function readPagination(ctx: ExtractorContext, into: Candidates): void {
   }
 }
 
-/** One target reported once, at its best confidence. Identity is the kind plus
- * where it goes, so `<a rel=next>` and a "Next" link to the same page are the
- * same target rather than two. */
-function resolvePagination(
-  candidates: Extracted<PaginationTarget>[],
-): Extracted<PaginationTarget>[] {
-  const byTarget = new Map<string, Extracted<PaginationTarget>>();
-  for (const candidate of candidates) {
-    const { kind, href, domPath } = candidate.value;
-    const key = `${kind}|${href ?? `@${domPath?.join('.') ?? ''}`}`;
-    const existing = byTarget.get(key);
-    if (
-      existing === undefined ||
-      RANK[candidate.confidence] < RANK[existing.confidence]
-    ) {
-      byTarget.set(key, candidate);
-    }
-  }
-  return [...byTarget.values()];
-}
+/** A pagination target's role is where it goes — or, for a control that goes
+ * nowhere, the control itself. Two spellings of "next page" are one target, so
+ * `<a rel=next>` beating a "Next" link is the same tiering every other field
+ * gets rather than a rule of its own. */
+const paginationRole = (target: PaginationTarget): string =>
+  `${target.kind}|${target.href ?? `@${target.domPath?.join('.') ?? ''}`}`;
 
 // ---------------------------------------------------------------------------
 // text-heuristic tier ('low')
 // ---------------------------------------------------------------------------
 
-const PRICE_TEXT = new RegExp(
-  String.raw`(?:([$€£¥₹₽₩]|\b(?:${CURRENCY_CODES.join('|')})\b)\s?(\d[\d.,\s']*\d|\d)|(\d[\d.,\s']*\d|\d)\s?([$€£¥₹₽₩]|\b(?:${CURRENCY_CODES.join('|')})\b))`,
-  'gi',
-);
 const AVAILABILITY_TEXT: Array<[RegExp, Availability]> = [
   [/\b(out of stock|sold out|unavailable)\b/i, 'out-of-stock'],
   [/\b(pre-?order)\b/i, 'preorder'],
@@ -939,21 +1064,10 @@ function isPhoneLike(match: string): boolean {
 function readText(ctx: ExtractorContext, into: Candidates): void {
   for (const text of ownTexts(ctx.doc)) {
     for (const match of text.matchAll(PRICE_TEXT)) {
-      const marker = (match[1] ?? match[4] ?? '').trim();
-      const amount = parseAmount(match[2] ?? match[3] ?? '');
-      if (amount === null) continue;
-      const currency =
-        SYMBOL_CURRENCY[marker] ??
-        (CURRENCY_CODES.includes(marker.toUpperCase())
-          ? marker.toUpperCase()
-          : undefined);
-      into.prices.push(
-        mark(
-          { amount, ...(currency ? { currency } : {}) },
-          'text-heuristic',
-          match[0].trim(),
-        ),
-      );
+      const price = priceFromMatch(match);
+      if (price) {
+        into.prices.push(mark(price, 'text-heuristic', match[0].trim()));
+      }
     }
 
     for (const [pattern, value] of AVAILABILITY_TEXT) {
@@ -1019,6 +1133,27 @@ function firstOf<T>(candidates: Extracted<T>[]): Extracted<T> | undefined {
   return bestTier(candidates)[0];
 }
 
+/**
+ * Prices grouped into discount roles. A bare price only becomes 'current' when
+ * the page expressed a pair somewhere — then it is the price charged, and a
+ * declared one can take that role from the <ins> that spelled it out. With no
+ * pair on the page kind stays absent, because labelling a lone price 'current'
+ * would imply a discount nobody offered.
+ */
+function withPriceRoles(candidates: Extracted<Price>[]): Extracted<Price>[] {
+  if (!candidates.some((candidate) => candidate.value.kind !== undefined)) {
+    return candidates;
+  }
+  return candidates.map((candidate) =>
+    candidate.value.kind === undefined
+      ? {
+          ...candidate,
+          value: { ...candidate.value, kind: 'current' as const },
+        }
+      : candidate,
+  );
+}
+
 function datesFrom(candidates: Candidates): EntityDates {
   const dates: EntityDates = {};
   for (const field of [
@@ -1038,10 +1173,14 @@ function datesFrom(candidates: Candidates): EntityDates {
  * that pass first, so this one never re-parses JSON-LD.
  *
  * Every field is collected from all three tiers and then filtered to the best
- * tier that found anything, which is where the spec's "highest confidence wins,
- * never merge" rule lives. Collecting the low tier even when a declared value
- * exists costs one text scan and keeps the tiering in one place instead of
- * spread through every reader as an early return.
+ * tier that found anything *per role*, which is where the spec's "highest
+ * confidence wins, never merge" rule lives — see bestTierByRole for why the
+ * gate is per role and not per field. Collecting the low tier even when a
+ * declared value exists costs one text scan and keeps the tiering in one place
+ * instead of spread through every reader as an early return.
+ *
+ * Dates need no role function: their roles are the four candidate arrays, so
+ * gating each array is already gating per role.
  */
 export const extractEntities: ExtractorMap['entities'] = (
   ctx: ExtractorContext,
@@ -1068,8 +1207,11 @@ export const extractEntities: ExtractorMap['entities'] = (
   const availability = firstOf(candidates.availability);
   return {
     prices: dedupe(
-      bestTier(candidates.prices),
-      (price) => `${price.amount}|${price.currency ?? ''}`,
+      bestTierByRole(
+        withPriceRoles(candidates.prices),
+        (price) => price.kind ?? '',
+      ),
+      (price) => `${price.amount}|${price.currency ?? ''}|${price.kind ?? ''}`,
     ),
     ...(availability ? { availability } : {}),
     dates: datesFrom(candidates),
@@ -1088,11 +1230,16 @@ export const extractEntities: ExtractorMap['entities'] = (
       addresses: dedupe(bestTier(candidates.addresses), (address) =>
         JSON.stringify(address),
       ),
+      // Platform is the role here: a declared Twitter account is not a claim
+      // about the LinkedIn one linked in the footer.
       socials: dedupe(
-        bestTier(candidates.socials),
+        bestTierByRole(candidates.socials, (social) => social.platform),
         (social) => `${social.platform}|${social.handle.toLowerCase()}`,
       ),
     },
-    pagination: resolvePagination(candidates.pagination),
+    pagination: dedupe(
+      bestTierByRole(candidates.pagination, paginationRole),
+      paginationRole,
+    ),
   };
 };

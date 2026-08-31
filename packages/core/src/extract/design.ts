@@ -3,6 +3,7 @@ import { normalizeLength } from '../tokens.js';
 import type {
   Breakpoint,
   ComponentPattern,
+  ComponentVariant,
   DeclaredFont,
   ExtractorContext,
   ExtractorMap,
@@ -35,6 +36,21 @@ const MIN_CONTAINER_WIDTH = 480;
 /** Ranked like buildTokens ranks tokens: a long tail of two-instance shapes is
  * not a design system, and an uncapped list is unreadable on a real page. */
 const MAX_PATTERNS = 50;
+
+/** A kind is reported once this many instances stand behind it, across every
+ * variant — the same bar as before, raised one level. Applying it per signature
+ * made the feature's own goal ("4 button variants") unreportable, because
+ * variants are distinct signatures by design and a page with one primary and
+ * one secondary button counted 1 for each and reported neither. */
+const MIN_INSTANCES = 2;
+
+/** Utility-class walls and per-instance hashes that outlive normalizeClassToken
+ * can push a single kind into hundreds of one-off shapes. The cap costs the
+ * tail: variants past it are invisible individually, and because `count` is the
+ * total across every variant that qualified, a capped kind's `count` exceeds the
+ * sum of the variants listed. That is the honest direction to be wrong in — the
+ * family's weight is real, only the enumeration is truncated. */
+const MAX_VARIANTS = 8;
 
 const MAX_EXAMPLES = 3;
 
@@ -136,7 +152,7 @@ function normalizeClassToken(token: string): string {
  *   signal that says so.
  *
  * Variants stay distinct on purpose: `btn-primary` and `btn-secondary` are two
- * entries of kind `button`, which is what "4 button variants" means.
+ * variants nested under kind `button`, which is what "4 button variants" means.
  */
 function signatureFor(el: Element): string {
   const tag = el.tagName.toLowerCase();
@@ -170,6 +186,18 @@ function signatureFor(el: Element): string {
     (shape ? `>${shape}` : '')
   );
 }
+
+/** The families kindFor names outright. Anything else is its tag name, which is
+ * not evidence of a shared component — see `inventory`. Listed separately
+ * because a recognized kind can equal its tag (`button`, `input`), so
+ * `kind !== tag` alone cannot tell recognition from fallback. */
+const RECOGNIZED_KINDS = new Set([
+  'button',
+  'card',
+  'heading',
+  'input',
+  'link',
+]);
 
 /** Coarse family, from the strongest signal available: an explicit role beats
  * the tag, and the tag beats a class name. Unrecognized shapes report their tag
@@ -212,11 +240,31 @@ function pathFromBody(el: Element): number[] {
   return path;
 }
 
+/**
+ * Instances grouped by kind, variants nested inside it, and the repetition
+ * threshold applied to the kind.
+ *
+ * The one asymmetry: a fallback kind is a bare tag name, and a tag name says
+ * nothing about two elements belonging to one component. `div.sidebar` and
+ * `div.promo-banner` are not two variants of a `div` — reading them that way
+ * would let a kind-level threshold admit exactly the layout noise the old
+ * per-signature threshold suppressed. So a recognized family gets the
+ * variant-set reading (two one-off button variants are two button variants),
+ * while a fallback kind keeps the old evidence bar: the shape itself must
+ * repeat. The cost is that a genuine one-off pair inside an unnamed family goes
+ * unreported, which is the same thing the threshold has always traded away.
+ */
 function inventory(doc: Document): ComponentPattern[] {
+  type Draft = {
+    kind: string;
+    recognized: boolean;
+    variants: Map<string, ComponentVariant>;
+  };
+
   const root = doc.body ?? doc.documentElement;
   if (!root) return [];
 
-  const groups = new Map<string, ComponentPattern>();
+  const drafts = new Map<string, Draft>();
   for (const el of root.querySelectorAll('*')) {
     const tag = el.tagName.toLowerCase();
     const identified =
@@ -225,26 +273,51 @@ function inventory(doc: Document): ComponentPattern[] {
       COMPONENT_TAGS.has(tag);
     if (!identified) continue;
 
+    const kind = kindFor(el);
+    let draft = drafts.get(kind);
+    if (!draft) {
+      draft = { kind, recognized: false, variants: new Map() };
+      drafts.set(kind, draft);
+    }
+    // Accumulated rather than set once: one kind can be reached from several
+    // tags (`<button>` and `div role="button"`), and recognition by any of them
+    // is recognition of the family.
+    draft.recognized ||= kind !== tag || RECOGNIZED_KINDS.has(kind);
+
     const signature = signatureFor(el);
-    const group = groups.get(signature);
-    if (group) {
-      group.count += 1;
-      if (group.examples.length < MAX_EXAMPLES) {
-        group.examples.push(pathFromBody(el));
+    const variant = draft.variants.get(signature);
+    if (variant) {
+      variant.count += 1;
+      if (variant.examples.length < MAX_EXAMPLES) {
+        variant.examples.push(pathFromBody(el));
       }
     } else {
-      groups.set(signature, {
+      draft.variants.set(signature, {
         signature,
-        kind: kindFor(el),
         count: 1,
         examples: [pathFromBody(el)],
       });
     }
   }
 
-  return [...groups.values()]
-    .filter((pattern) => pattern.count >= 2)
-    .sort((a, b) => b.count - a.count || a.signature.localeCompare(b.signature))
+  const patterns: ComponentPattern[] = [];
+  for (const draft of drafts.values()) {
+    const variants = [...draft.variants.values()]
+      .filter((variant) => draft.recognized || variant.count >= MIN_INSTANCES)
+      .sort(
+        (a, b) => b.count - a.count || a.signature.localeCompare(b.signature),
+      );
+    const count = variants.reduce((total, variant) => total + variant.count, 0);
+    if (count < MIN_INSTANCES) continue;
+    patterns.push({
+      kind: draft.kind,
+      count,
+      variants: variants.slice(0, MAX_VARIANTS),
+    });
+  }
+
+  return patterns
+    .sort((a, b) => b.count - a.count || a.kind.localeCompare(b.kind))
     .slice(0, MAX_PATTERNS);
 }
 

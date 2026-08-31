@@ -120,6 +120,11 @@ export type Price = {
   /** ISO 4217 where the page declared one; absent when only a bare number or
    * an unrecognized symbol was found. */
   currency?: string;
+  /** Which side of a discount this is, where the page expressed one — a
+   * <del>/<ins> pair or a schema.org priceSpecification. Absent when the page
+   * states a single price, which must not be reported as 'current': that
+   * would imply a discount nobody offered. */
+  kind?: 'original' | 'current';
 };
 
 export type Availability =
@@ -241,14 +246,26 @@ export type ContentReport = {
 // design — design-system depth
 // ---------------------------------------------------------------------------
 
-export type ComponentPattern = {
+export type ComponentVariant = {
   /** The normalized tag/role/class shape instances were grouped by. */
   signature: string;
-  /** Coarse family the signature was recognized as, e.g. 'button', 'card'. */
-  kind: string;
   count: number;
   /** Child-index chains to a few instances, so a caller can go look. */
   examples: number[][];
+};
+
+/**
+ * Instances grouped by family, then by shape within it. Variants nest rather
+ * than sitting flat because a design system's value is in the set: a page with
+ * one .btn-primary and one .btn-secondary has two button variants, and a
+ * flat list with a repetition threshold reports neither.
+ */
+export type ComponentPattern = {
+  /** Coarse family the signatures were recognized as, e.g. 'button', 'card'. */
+  kind: string;
+  /** Instances across every variant, so the threshold applies to the family. */
+  count: number;
+  variants: ComponentVariant[];
 };
 
 export type DeclaredFont = {

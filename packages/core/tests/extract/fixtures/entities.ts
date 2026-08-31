@@ -161,3 +161,54 @@ export const ITEMPROP_ONLY = `<!doctype html><html><body>
 export const RATING_IN_PROSE = `<!doctype html><html><body>
 <main><p>Rated 4.2 out of 5 stars by 1,204 reviews.</p></main>
 </body></html>`;
+
+/** The case a per-field gate loses: a struck-through original beside the price
+ * actually charged, where the charged one is also declared. */
+export const SALE_PAIR = `<!doctype html><html><body>
+<main><h1>Widget</h1>
+<p class="price"><del>$79.00</del> <ins>$49.99</ins></p>
+</main></body></html>`;
+
+export const SALE_OFFER_NODE: JsonLdNode = {
+  '@type': 'Product',
+  name: 'Widget',
+  offers: { '@type': 'Offer', price: '49.99', priceCurrency: 'USD' },
+};
+
+/** schema.org's own discount spelling: the list price in a priceSpecification
+ * beside the price charged. */
+export const PRICE_SPEC_NODE: JsonLdNode = {
+  '@type': 'Product',
+  offers: {
+    '@type': 'Offer',
+    price: 49.99,
+    priceCurrency: 'USD',
+    priceSpecification: {
+      '@type': 'UnitPriceSpecification',
+      price: 79,
+      priceType: 'https://schema.org/ListPrice',
+    },
+  },
+};
+
+/** An Offer carrying both bounds of the pair itself. */
+export const HIGH_LOW_NODE: JsonLdNode = {
+  '@type': 'AggregateOffer',
+  highPrice: '79.00',
+  lowPrice: '49.99',
+  priceCurrency: 'USD',
+};
+
+/** A LinkedIn account linked in the footer while JSON-LD declares only the
+ * Twitter one — two platforms, so two roles. */
+export const LINKED_SOCIAL = `<!doctype html><html><body>
+<footer><a href="https://www.linkedin.com/company/example/">LinkedIn</a></footer>
+</body></html>`;
+
+/** A relative <base href>, which resolves against the page url before any
+ * pagination href resolves against it. */
+export const BASED_PAGINATION = `<!doctype html><html><head>
+<base href="/list/">
+<link rel="next" href="?page=3">
+<link rel="prev" href="http://">
+</head><body><p>Page 2</p></body></html>`;

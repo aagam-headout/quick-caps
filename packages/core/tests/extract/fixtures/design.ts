@@ -118,3 +118,20 @@ code { font-family: var(--mono); }
   .row { display: none; }
 }
 `;
+
+/** One primary and one secondary button, neither repeated. This is the case a
+ * per-signature threshold cannot report at all: variants are deliberately
+ * distinct signatures, so each counts 1 and "2 button variants" vanishes. */
+export const TWO_BUTTON_VARIANTS_HTML = `<!doctype html>
+<html><body>
+  <button class="btn btn-primary">Buy</button>
+  <button class="btn btn-secondary">Save</button>
+</body></html>`;
+
+/** Two classed divs sharing nothing but their tag. A kind-level threshold must
+ * not read them as two variants of one 'div' component. */
+export const UNRELATED_DIVS_HTML = `<!doctype html>
+<html><body>
+  <div class="sidebar"><span>a</span></div>
+  <div class="promo-banner"><em>b</em></div>
+</body></html>`;

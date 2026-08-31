@@ -1,8 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { extractDesign } from '../../src/extract/design.js';
+import type {
+  ComponentPattern,
+  ComponentVariant,
+} from '../../src/extract/types.js';
 import {
   DESIGN_SYSTEM_CSS,
   REPEATED_COMPONENTS_HTML,
+  TWO_BUTTON_VARIANTS_HTML,
+  UNRELATED_DIVS_HTML,
   crossOrigin,
   designContext,
   inline,
@@ -14,22 +20,41 @@ const BLANK_HTML =
 
 function patternFor(
   report: ReturnType<typeof extractDesign>,
+  kind: string,
+): ComponentPattern | undefined {
+  return report.components.find((pattern) => pattern.kind === kind);
+}
+
+function variantFor(
+  pattern: ComponentPattern | undefined,
   match: string,
-): (typeof report.components)[number] | undefined {
-  return report.components.find((pattern) => pattern.signature.includes(match));
+): ComponentVariant | undefined {
+  return pattern?.variants.find((variant) => variant.signature.includes(match));
 }
 
 describe('extractDesign — component inventory', () => {
-  it('collapses near-identical instances into one pattern per variant', () => {
-    const { ctx } = designContext({ html: REPEATED_COMPONENTS_HTML });
+  it('reports a kind whose variants each appear once', () => {
+    const { ctx } = designContext({ html: TWO_BUTTON_VARIANTS_HTML });
     const report = extractDesign(ctx);
 
-    const primary = patternFor(report, 'btn-primary');
-    const secondary = patternFor(report, 'btn-secondary');
-    expect(primary?.count).toBe(4);
-    expect(primary?.kind).toBe('button');
-    expect(secondary?.count).toBe(2);
-    expect(secondary?.kind).toBe('button');
+    expect(report.components).toHaveLength(1);
+    const button = report.components[0];
+    expect(button?.kind).toBe('button');
+    expect(button?.count).toBe(2);
+    expect(button?.variants.map((variant) => variant.count)).toEqual([1, 1]);
+    expect(variantFor(button, 'btn-primary')?.count).toBe(1);
+    expect(variantFor(button, 'btn-secondary')?.count).toBe(1);
+  });
+
+  it('nests near-identical instances as variants of one kind', () => {
+    const { ctx } = designContext({ html: REPEATED_COMPONENTS_HTML });
+    const button = patternFor(extractDesign(ctx), 'button');
+
+    // 4 primary + 2 secondary + the one role="button" div.
+    expect(button?.count).toBe(7);
+    expect(variantFor(button, 'btn-primary')?.count).toBe(4);
+    expect(variantFor(button, 'btn-secondary')?.count).toBe(2);
+    expect(variantFor(button, 'fake-btn')?.count).toBe(1);
   });
 
   it('groups instances whose class differs only by a build hash', () => {
@@ -37,24 +62,53 @@ describe('extractDesign — component inventory', () => {
     const card = patternFor(extractDesign(ctx), 'card');
 
     expect(card?.count).toBe(3);
-    expect(card?.kind).toBe('card');
+    expect(card?.variants).toHaveLength(1);
+    expect(card?.variants[0]?.count).toBe(3);
   });
 
-  it('reports patterns most frequent first, with example dom paths', () => {
+  it('orders kinds and their variants most frequent first', () => {
     const { ctx } = designContext({ html: REPEATED_COMPONENTS_HTML });
     const report = extractDesign(ctx);
 
     const counts = report.components.map((pattern) => pattern.count);
     expect(counts).toEqual([...counts].sort((a, b) => b - a));
-    expect(patternFor(report, 'btn-primary')?.examples[0]).toEqual([0, 0, 0]);
+    const variantCounts = patternFor(report, 'button')?.variants.map(
+      (variant) => variant.count,
+    );
+    expect(variantCounts).toEqual([4, 2, 1]);
+    expect(
+      variantFor(patternFor(report, 'button'), 'btn-primary')?.examples[0],
+    ).toEqual([0, 0, 0]);
   });
 
-  it('drops one-off elements and unclassed prose', () => {
+  it('drops unclassed prose and kinds below the threshold', () => {
     const { ctx } = designContext({ html: REPEATED_COMPONENTS_HTML });
     const report = extractDesign(ctx);
 
     expect(report.components.every((pattern) => pattern.count >= 2)).toBe(true);
-    expect(patternFor(report, 'fake-btn')).toBeUndefined();
+    expect(report.components.map((pattern) => pattern.kind)).toEqual([
+      'button',
+      'card',
+      'heading',
+    ]);
+  });
+
+  it('does not read two unrelated classed divs as one kind', () => {
+    const { ctx } = designContext({ html: UNRELATED_DIVS_HTML });
+
+    expect(extractDesign(ctx).components).toEqual([]);
+  });
+
+  it('still reports an unrecognized kind whose own shape repeats', () => {
+    const { ctx } = designContext({
+      html: `<!doctype html><html><body><div class="sidebar"><span>a</span></div>
+        <div class="sidebar"><span>b</span></div></body></html>`,
+    });
+    const report = extractDesign(ctx);
+
+    expect(report.components).toHaveLength(1);
+    expect(report.components[0]?.kind).toBe('div');
+    expect(report.components[0]?.count).toBe(2);
   });
 
   it('recognizes a role that contradicts its tag', () => {
@@ -65,7 +119,7 @@ describe('extractDesign — component inventory', () => {
     const report = extractDesign(ctx);
 
     expect(report.components[0]?.kind).toBe('button');
-    expect(report.components[0]?.signature).toContain('[button]');
+    expect(report.components[0]?.variants[0]?.signature).toContain('[button]');
   });
 
   it('returns an empty inventory for a page with no repeated shapes', () => {

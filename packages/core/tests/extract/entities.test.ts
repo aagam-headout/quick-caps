@@ -2,16 +2,22 @@ import { describe, expect, it } from 'vitest';
 import { extractEntities } from '../../src/extract/entities.js';
 import {
   BARE_PAGE,
+  BASED_PAGINATION,
   CONTACTS,
   DECLARED_AND_TEXT_PRICE,
   EVENT_TIMES,
   FOOTER_PRICE,
+  HIGH_LOW_NODE,
   ITEMPROP_ONLY,
+  LINKED_SOCIAL,
   MULTI_CURRENCY,
   PAGINATION,
+  PRICE_SPEC_NODE,
   PRODUCT_NODE,
   PROSE_DATE_ONLY,
   RATING_IN_PROSE,
+  SALE_OFFER_NODE,
+  SALE_PAIR,
   SALE_PRICE,
   TIME_AND_PROSE_DATE,
   entityContext,
@@ -442,7 +448,9 @@ describe('pagination', () => {
       'numbered',
       'load-more',
     ]);
-    expect(report.pagination[0]?.value.href).toBe('/p/43');
+    expect(report.pagination[0]?.value.href).toBe(
+      'https://shop.example.com/p/43',
+    );
     expect(report.pagination[0]?.confidence).toBe('medium');
     expect(report.pagination[2]?.value.label).toBe('1');
 
@@ -470,5 +478,146 @@ describe('pagination', () => {
     const { ctx } = entityContext(BARE_PAGE);
 
     expect(extractEntities(ctx, structuredReport()).pagination).toEqual([]);
+  });
+});
+
+describe('discount roles', () => {
+  it('keeps a marked-up original beside a declared current price', () => {
+    const { ctx } = entityContext(SALE_PAIR);
+
+    const report = extractEntities(ctx, jsonLd(SALE_OFFER_NODE));
+
+    expect(report.prices).toEqual([
+      {
+        value: { amount: 49.99, currency: 'USD', kind: 'current' },
+        source: 'json-ld',
+        confidence: 'high',
+      },
+      {
+        value: { amount: 79, currency: 'USD', kind: 'original' },
+        source: 'semantic-markup',
+        confidence: 'medium',
+      },
+    ]);
+  });
+
+  it('reads a del/ins pair as two roles, both marked up', () => {
+    const { ctx } = entityContext(SALE_PRICE);
+
+    const report = extractEntities(ctx, structuredReport());
+
+    expect(report.prices).toEqual([
+      {
+        value: { amount: 49, currency: 'USD', kind: 'original' },
+        source: 'semantic-markup',
+        confidence: 'medium',
+      },
+      {
+        value: { amount: 29, currency: 'USD', kind: 'current' },
+        source: 'semantic-markup',
+        confidence: 'medium',
+      },
+    ]);
+  });
+
+  it('leaves kind absent when the page states a single price', () => {
+    const { ctx } = entityContext(FOOTER_PRICE);
+
+    const report = extractEntities(ctx, structuredReport());
+
+    expect(report.prices).toHaveLength(1);
+    expect('kind' in report.prices[0]!.value).toBe(false);
+  });
+
+  it('leaves kind absent on a lone declared price', () => {
+    const { ctx } = entityContext(BARE_PAGE);
+
+    const report = extractEntities(ctx, jsonLd(PRODUCT_NODE));
+
+    expect('kind' in report.prices[0]!.value).toBe(false);
+  });
+
+  it('reads a declared priceSpecification list price as the original', () => {
+    const { ctx } = entityContext(BARE_PAGE);
+
+    const report = extractEntities(ctx, jsonLd(PRICE_SPEC_NODE));
+
+    expect(report.prices.map((p) => p.value)).toEqual([
+      { amount: 49.99, currency: 'USD', kind: 'current' },
+      { amount: 79, currency: 'USD', kind: 'original' },
+    ]);
+    expect(report.prices.every((p) => p.confidence === 'high')).toBe(true);
+  });
+
+  it('reads highPrice and lowPrice together as a declared pair', () => {
+    const { ctx } = entityContext(BARE_PAGE);
+
+    const report = extractEntities(ctx, jsonLd(HIGH_LOW_NODE));
+
+    expect(report.prices.map((p) => p.value)).toEqual([
+      { amount: 79, currency: 'USD', kind: 'original' },
+      { amount: 49.99, currency: 'USD', kind: 'current' },
+    ]);
+  });
+});
+
+describe('role-level tiering beyond prices', () => {
+  it('lets a declared published date leave a heuristic modified date standing', () => {
+    const { ctx } = entityContext(TIME_AND_PROSE_DATE);
+
+    const report = extractEntities(
+      ctx,
+      jsonLd({ '@type': 'Article', datePublished: '2026-08-01' }),
+    );
+
+    expect(report.dates.published?.confidence).toBe('high');
+    expect(report.dates.modified).toEqual({
+      value: '2026-03-03T00:00:00.000Z',
+      source: 'text-heuristic',
+      confidence: 'low',
+      matched: 'updated March 3, 2026',
+    });
+  });
+
+  it('keeps a linked social account a declared one says nothing about', () => {
+    const { ctx } = entityContext(LINKED_SOCIAL);
+
+    const report = extractEntities(
+      ctx,
+      jsonLd({
+        '@type': 'Organization',
+        sameAs: ['https://twitter.com/example'],
+      }),
+    );
+
+    expect(
+      report.contacts.socials.map((s) => [s.value.platform, s.confidence]),
+    ).toEqual([
+      ['twitter', 'high'],
+      ['linkedin', 'medium'],
+    ]);
+  });
+});
+
+describe('pagination hrefs', () => {
+  it('absolutizes against a relative base, keeping an unresolvable href', () => {
+    const { ctx } = entityContext(BASED_PAGINATION);
+
+    const report = extractEntities(ctx, structuredReport());
+
+    expect(report.pagination.map((p) => p.value.href)).toEqual([
+      'https://shop.example.com/list/?page=3',
+      'http://',
+    ]);
+  });
+
+  it('absolutizes a numbered pager the same way links does', () => {
+    const { ctx } = entityContext(PAGINATION);
+
+    const report = extractEntities(ctx, structuredReport());
+
+    expect(report.pagination[2]?.value.href).toBe(
+      'https://shop.example.com/list?page=1',
+    );
   });
 });
