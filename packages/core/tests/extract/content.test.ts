@@ -17,6 +17,7 @@ import {
   UNDECLARED_JAPANESE,
   UNLAID_TEXT,
   UNDECLARED_SPANISH,
+  ZERO_AREA_MEDIA,
   bodylessHarness,
   harness,
 } from './fixtures/content.js';
@@ -182,6 +183,42 @@ describe('media inventory', () => {
 
     expect(media.items[0]?.displayed).toBeUndefined();
     expect(warnings.map((w) => w.reason).join(' ')).toContain('displayed size');
+    // A measured page names the region tree, so a reader can tell this apart
+    // from a page nobody laid out at all.
+    expect(warnings.map((w) => w.detail).join(' ')).toContain('region tree');
+    expect(warnings.map((w) => w.reason).join(' ')).not.toContain(
+      'not laid out',
+    );
+  });
+
+  it('omits displayed size entirely on a page that was never laid out', () => {
+    // The regression that matters: reporting {w:0,h:0} here would present an
+    // unmeasured value as a measurement, which a consumer cannot filter out.
+    const { ctx } = harness(MEDIA, { geometry: 'none' });
+    const { media } = extractContent(ctx);
+
+    expect(media.items).toHaveLength(9);
+    expect(media.items.some((item) => 'displayed' in item)).toBe(false);
+  });
+
+  it('warns once for the page, not once per image, when nothing was laid out', () => {
+    const { ctx, warnings } = harness(MEDIA, { geometry: 'none' });
+    extractContent(ctx);
+
+    const geometry = warnings.filter((w) => w.reason.includes('displayed'));
+    expect(geometry).toHaveLength(1);
+    // The two dead ends read differently: this page has a region tree, it
+    // simply was never measured.
+    expect(geometry[0]?.reason).toContain('not laid out');
+    expect(geometry[0]?.detail).not.toContain('region tree');
+  });
+
+  it('reports a genuine zero-area box on a measured page, which is real', () => {
+    const { ctx, warnings } = harness(ZERO_AREA_MEDIA);
+    const { media } = extractContent(ctx);
+
+    expect(media.items[0]?.displayed).toEqual({ w: 0, h: 0 });
+    expect(warnings.map((w) => w.reason).join(' ')).not.toContain('displayed');
   });
 
   it('returns a zero-filled inventory, not NaN, for a page with no media', () => {

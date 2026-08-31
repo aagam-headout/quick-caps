@@ -245,6 +245,25 @@ function outlineViolations(outline: HeadingNode[]): OutlineViolation[] {
 }
 
 // ---------------------------------------------------------------------------
+// geometry
+// ---------------------------------------------------------------------------
+
+/**
+ * Whether anything on this page was actually laid out. A static session has no
+ * layout engine, so every box is 0x0 and every textDensity is 0 — which is not
+ * a page of collapsed elements but a page nobody measured, and the two demand
+ * opposite treatment: the content split must ignore geometry rather than
+ * exclude every region, and the media inventory must omit `displayed` rather
+ * than report a zero it did not measure.
+ *
+ * Probed once per page and passed down, so those two consumers can never
+ * disagree about which kind of page this is.
+ */
+function isMeasured(flat: FlatRegion[]): boolean {
+  return flat.some((entry) => entry.region.box.w * entry.region.box.h > 0);
+}
+
+// ---------------------------------------------------------------------------
 // media
 // ---------------------------------------------------------------------------
 
@@ -330,6 +349,7 @@ function readMedia(
   ctx: ExtractorContext,
   boxes: Map<string, MediaItem['displayed']>,
   base: string,
+  measured: boolean,
 ): MediaInventory {
   const items: MediaItem[] = [];
   const formats: Record<string, number> = {};
@@ -342,12 +362,18 @@ function readMedia(
     const alt = altTextOf(el);
     const format = formatOf(src, el);
     const lazy = isLazy(el);
-    const displayed = boxes.get(pathFromBody(el).join(','));
+    // A box is a measurement only where something measured. On an unmeasured
+    // page every box is 0x0, and reporting that would make a genuinely
+    // collapsed image — a real finding — indistinguishable from one nobody
+    // sized, for any consumer that averages, sorts, or filters on the field.
+    const displayed = measured
+      ? boxes.get(pathFromBody(el).join(','))
+      : undefined;
 
     if (alt !== null && collapse(alt).length > 0) withAlt += 1;
     if (lazy) lazyCount += 1;
     if (format) formats[format] = (formats[format] ?? 0) + 1;
-    if (displayed === undefined) withoutBox += 1;
+    if (measured && displayed === undefined) withoutBox += 1;
 
     items.push({
       src,
@@ -358,10 +384,19 @@ function readMedia(
     });
   }
 
-  if (withoutBox > 0) {
+  // Two different absences, so two different sentences — and never both, since
+  // an unmeasured page has no per-element gap to report on top of the page-wide
+  // one. Once per page either way: one warning per image would bury the fact
+  // that the cause is the same single thing.
+  if (items.length > 0 && !measured) {
+    ctx.warn({
+      reason: 'displayed size unavailable: the page was not laid out',
+      detail: `this collection has no geometry at all, so displayed size is omitted from all ${items.length} media item(s) rather than reported as a zero nobody measured`,
+    });
+  } else if (withoutBox > 0) {
     ctx.warn({
       reason: 'displayed size unavailable for some media',
-      detail: `${withoutBox} of ${items.length} elements sit outside the region tree, so only their src, alt, format and lazy state are reported`,
+      detail: `${withoutBox} of ${items.length} elements were not found in the region tree, so only their src, alt, format and lazy state are reported`,
     });
   }
 
@@ -428,6 +463,7 @@ function splitContent(
   ctx: ExtractorContext,
   flat: FlatRegion[],
   body: Element,
+  measured: boolean,
 ): ContentSplit {
   const classified = new Set<number>();
   const mainRegionIds: number[] = [];
@@ -451,14 +487,6 @@ function splitContent(
     .filter((entry) => entry.depth === 1)
     .reduce((sum, entry) => sum + entry.region.textLength, 0);
   const landmarked = mainRegionIds.length > 0;
-
-  // Geometry is evidence only when the collection has any. A static session
-  // has no layout engine, so every box is 0x0 and every textDensity is 0 —
-  // requiring a laid-out box there would kill the inference on `pc data`'s
-  // default path rather than on the odd hidden region it is meant to exclude.
-  const measured = flat.some(
-    (entry) => entry.region.box.w * entry.region.box.h > 0,
-  );
 
   if (!landmarked) {
     const boilerplate = new Set(boilerplateRegionIds);
@@ -610,6 +638,7 @@ export const extractContent: ExtractorMap['content'] = (ctx) => {
     ctx.ir.metadata.url;
 
   const outline = readOutline(ctx.doc);
+  const measured = isMeasured(flat);
 
   return {
     wordCount,
@@ -617,7 +646,7 @@ export const extractContent: ExtractorMap['content'] = (ctx) => {
     ...(language === undefined ? {} : { language }),
     outline,
     outlineViolations: outlineViolations(outline),
-    media: readMedia(ctx, boxes, base),
-    split: splitContent(ctx, flat, body),
+    media: readMedia(ctx, boxes, base, measured),
+    split: splitContent(ctx, flat, body, measured),
   };
 };

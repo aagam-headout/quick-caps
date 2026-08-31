@@ -300,3 +300,19 @@ export const UNLAID_TEXT = `<!doctype html>
     </div>
   </body>
 </html>`;
+
+/**
+ * A measured page holding an image that genuinely occupies no space. This is
+ * the case that must survive the omit-when-unmeasured rule: the collection
+ * does have a layout engine, so `{w:0,h:0}` here is a measurement and a real
+ * finding, not a missing one.
+ */
+export const ZERO_AREA_MEDIA = `<!doctype html>
+<html lang="en">
+  <body>
+    <main data-box="0,0,1280,600">
+      <img src="/img/collapsed.png" alt="Collapsed" data-box="0,0,0,0" />
+      <p>A paragraph of prose, laid out, so the page has real geometry.</p>
+    </main>
+  </body>
+</html>`;
