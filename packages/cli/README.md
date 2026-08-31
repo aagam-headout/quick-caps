@@ -33,7 +33,9 @@ first-time users.
 
 ## Commands
 
-- `pc open <url> [--static]` — distill a page: numbered regions + actions.
+- `pc open <url> [--static] [--record] [--no-redact]` — distill a page:
+  numbered regions + actions. `--record` arms observation for the `network`,
+  `stack`, and `vitals` domains of `pc data`.
 - `pc do <n> [value]` — follow action `[n]` (click a button, fill an input).
 - `pc read <n>` — full text of region `[n]`.
 - `pc find <query>` — search the currently open page.
@@ -41,7 +43,8 @@ first-time users.
 - `pc layout` — structural tree: regions, roles, boxes.
 - `pc tokens` — colors, type scale, spacing, radii.
 - `pc scrape <shape>` — schema-driven field extraction, e.g. `pc scrape '{"title":"h1"}'`.
-- `pc data [url] [--structured] [--entities] [--content] [--design] [--links] [--all] [--json]`
+- `pc data [url] [--structured] [--entities] [--content] [--design] [--links]
+[--network] [--stack] [--vitals] [--all] [--json] [--record] [--no-redact]`
   — report the data the page contains, as human-readable text; `--json`
   prints the same report as one line of JSON. With no domain flag, an
   availability summary instead of the data.
@@ -49,7 +52,7 @@ first-time users.
   — walk a site from a seed and extract from every page into a resumable
   store on disk. `pc crawl --resume <name>` continues an interrupted crawl;
   `pc crawl --report [<name>] [--json]` summarizes one.
-- `pc capture [--zip] [--out <dir>]` — full archive to disk.
+- `pc capture [--zip] [--record] [--out <dir>]` — full archive to disk.
 - `pc mcp` — the same eleven tools, over an MCP stdio server.
 - `pc --help` — full usage, notes, and environment variables.
 
@@ -108,7 +111,7 @@ one report per invocation, so it pipes straight into `jq`:
 $ pc data --entities --json | jq '.entities.prices'
 ```
 
-The five domains, and what each yields:
+The five document domains, and what each yields:
 
 - `--structured` — what the page declares outright: JSON-LD (with `@graph`
   flattened), microdata, RDFa, Open Graph and Twitter cards normalized into
@@ -130,7 +133,18 @@ The five domains, and what each yields:
   per-domain outbound tally, and the action handle a link already carries so
   it can be `do`ne without re-finding it.
 
-`--all` requests all five.
+Three further domains report on a page that was _observed_ rather than merely
+parsed, and are available only on a session opened with `--record`; without it
+they report "not recorded" rather than empty:
+
+- `--network` — the fetch/XHR requests the page made while it loaded, as
+  request metadata with credentials redacted.
+- `--stack` — the third-party stack inferred from that traffic and from the
+  page's cookie inventory.
+- `--vitals` — the web vitals that only an observer running before first paint
+  can see (CLS, INP, LCP).
+
+`--all` requests all eight.
 
 `pc data` never upgrades a static session to a browser-backed one, precisely
 so the handles you are already holding keep their numbers — the re-numbering
