@@ -11,9 +11,12 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit -p tsconfig.base.json && tsc --noEmit -p apps/extension/tsconfig.json",
     "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "build": "pnpm --filter @quick-caps/extension build",
+    "build:packages": "pnpm --filter quick-caps-core build && pnpm --filter quick-caps-cli build",
+    "ship": "node scripts/ship.mjs",
     "e2e": "pnpm --filter @quick-caps/extension build:e2e && pnpm --filter @quick-caps/extension e2e"
   },
   "devDependencies": {

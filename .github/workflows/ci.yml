@@ -15,14 +15,16 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec playwright install chromium
+      # playwright is a dependency of quick-caps-cli, not of the workspace root,
+      # so its bin only resolves inside that package.
+      - run: pnpm --filter quick-caps-cli exec playwright install chromium
       - run: pnpm -w format:check
       - run: pnpm -w lint
       # Must run before typecheck: quick-caps-core's exports.types points at
       # ./dist/index.d.ts, which doesn't exist on a fresh checkout —
       # `pnpm -w typecheck` resolves quick-caps-core's types the same way any
       # TS consumer would, and fails without dist/ already built.
-      - run: pnpm --filter quick-caps-core build && pnpm --filter quick-caps-cli build
+      - run: pnpm -w build:packages
       - run: pnpm -w typecheck
       - run: pnpm -w test -- --coverage
       - run: pnpm -w build
@@ -40,7 +42,8 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec playwright install --with-deps chromium
+      # @playwright/test lives in the extension package, same reason.
+      - run: pnpm --filter @quick-caps/extension exec playwright install --with-deps chromium
       # Chrome refuses to load an extension headlessly, so the run needs a
       # display even though nobody is watching it.
       - run: xvfb-run --auto-servernum pnpm -w e2e

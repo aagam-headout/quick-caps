@@ -10,6 +10,9 @@ mkdir -p release
 pnpm install --frozen-lockfile
 pnpm -w format:check
 pnpm -w lint
+# Must run before typecheck: quick-caps-core's exports.types points at
+# ./dist/index.d.ts, which does not exist on a fresh checkout.
+pnpm -w build:packages
 pnpm -w typecheck
 pnpm -w test
 pnpm -w build

@@ -29,10 +29,10 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    // Plain-JS bin scripts run directly by Node (no TypeScript, no build
-    // step) — they need Node globals that js.configs.recommended doesn't
-    // assume by default.
-    files: ['**/bin/*.mjs'],
+    // Plain-JS bin and workspace scripts run directly by Node (no TypeScript,
+    // no build step) — they need Node globals that js.configs.recommended
+    // doesn't assume by default.
+    files: ['**/bin/*.mjs', 'scripts/*.mjs'],
     languageOptions: {
       globals: {
         process: 'readonly',

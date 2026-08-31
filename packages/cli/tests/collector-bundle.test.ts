@@ -12,10 +12,10 @@ describe('collectorBundleSource', () => {
   it('assigns a callable __quickCapsCollect when evaluated', async () => {
     const source = await collectorBundleSource();
     const globals: Record<string, unknown> = {};
-    // eslint-disable-next-line @typescript-eslint/no-implied-eval -- this is
-    // exactly what page.addScriptTag will do in a real browser; testing the
-    // string's shape without a browser means evaluating it against a stand-in
-    // global object the same way.
+
+    // new Function on a built bundle is exactly what page.addScriptTag will do
+    // in a real browser; testing the string's shape without a browser means
+    // evaluating it against a stand-in global object the same way.
     new Function('globalThis', source)(globals);
     expect(typeof globals['__quickCapsCollect']).toBe('function');
   });
