@@ -1,0 +1,5 @@
+# Every path needs a review from the repository owner before it can merge.
+# Combined with "Require review from Code Owners" on the main branch, this is
+# what makes an outside contribution wait for @aagam-headout specifically,
+# rather than for any collaborator who happens to have write access.
+* @aagam-headout
