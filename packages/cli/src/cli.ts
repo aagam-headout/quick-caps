@@ -1,4 +1,4 @@
-import { runOpen } from './commands/open.js';
+import { runOpen, type OpenCommandArgs } from './commands/open.js';
 import { runNext } from './commands/next.js';
 import { runDo } from './commands/do.js';
 import { runRead } from './commands/read.js';
@@ -45,8 +45,13 @@ export async function dispatch(
       const record = rest.includes('--record');
       const url = rest.find((arg) => !arg.startsWith('--'));
       if (!url)
-        throw new CliError('Usage: pc open <url> [--static] [--record]');
-      return runOpen({ url, static: staticFlag, record }, cwd);
+        throw new CliError(
+          'Usage: pc open <url> [--static] [--record] [--no-redact]',
+        );
+      const args: OpenCommandArgs = { url, static: staticFlag, record };
+      // Set only when passed, so the common path's args keep their shape.
+      if (rest.includes('--no-redact')) args.noRedact = true;
+      return runOpen(args, cwd);
     }
     case 'next':
       return runNext(cwd);
@@ -82,11 +87,16 @@ export async function dispatch(
         (domain) => all || rest.includes(`--${domain}`),
       );
       const url = rest.find((arg) => !arg.startsWith('--'));
+      // --record/--no-redact are forwarded because `pc data <url>` opens that
+      // url for the caller; dropping them here would arm nothing and then
+      // report the recording as missing.
       return runData(
         {
           ...(url !== undefined && { url }),
           domains: [...domains],
           json: rest.includes('--json'),
+          ...(rest.includes('--record') && { record: true }),
+          ...(rest.includes('--no-redact') && { noRedact: true }),
         },
         cwd,
       );

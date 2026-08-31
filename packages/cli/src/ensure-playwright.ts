@@ -35,7 +35,13 @@ export async function ensurePlaywrightSession(
   // `handles`/`page`/`hasMore`/`query`/`renderer` would point at nothing
   // real, or worse, at the wrong element in the new tree. This is a full
   // re-open in disguise, not a partial update.
-  const ir = await collectViaPlaywrightFor(session.url);
+  // Arming is forwarded, not just decided on: without it a `--record`
+  // escalation would re-collect the page with nobody watching. There is no
+  // `--no-redact` on this path — a capture-adjacent re-collection always
+  // redacts.
+  const ir = await collectViaPlaywrightFor(session.url, {
+    record: needsRecording,
+  });
   const d = distill(ir, { tokenBudget: 500, page: 0 });
   const escalated: Session = {
     url: ir.metadata.url,

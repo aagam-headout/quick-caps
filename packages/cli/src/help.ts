@@ -12,12 +12,14 @@ and actions, or capture it to disk. Region and action numbers printed by one
 command are the handles the next command takes.
 
 Commands:
-  pc open <url> [--static] [--record]
+  pc open <url> [--static] [--record] [--no-redact]
                                 Fetch, distill, and start a session. Escalates
                                 to a real browser when the static fetch looks
                                 like an unrendered SPA shell; --static opts out.
                                 --record arms observation for --network,
-                                --stack, and --vitals below.
+                                --stack, and --vitals below. --no-redact keeps
+                                recorded credentials, which are replaced with
+                                [redacted] by default.
   pc next                       Print the next slice of the current render.
   pc do <n> [value]             Follow handle n: click a link or button, or
                                 type value into an input.
@@ -58,6 +60,13 @@ Notes:
   network, stack, and vitals report "not recorded" on a session opened
   without --record, rather than reporting empty — nothing happened and nobody
   was watching are different answers.
+
+  A recording redacts Authorization, Cookie, and token-shaped headers, query
+  parameters, and body fields as it records them, so .quick-caps/ — gitignored
+  but not encrypted, and meant to be read into an agent's context — never
+  holds a live credential. --no-redact opts out for the case where reproducing
+  an API call needs the real thing; it applies to open only, and capture always
+  redacts.
 
   data never upgrades a static session, precisely so it keeps the handles
   you already have. Fields needing computed styles are skipped instead, and

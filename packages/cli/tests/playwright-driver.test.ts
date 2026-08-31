@@ -2,9 +2,12 @@ import { createServer, type Server } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterAll, beforeAll } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { chromium, type Browser } from 'playwright';
-import { PlaywrightDriver } from '../src/drivers/playwright-driver.js';
+import {
+  attachNetworkRecorder,
+  PlaywrightDriver,
+} from '../src/drivers/playwright-driver.js';
 import { runDriverConformance } from './driver-conformance.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -65,3 +68,34 @@ runDriverConformance(
   },
   () => baseUrl,
 );
+
+/**
+ * The one thing the fake page in network-recorder.test.ts cannot prove: that a
+ * real Playwright page emits `response` for the traffic a load issues, so
+ * recording needs no `route` interception (which would have to fulfil each
+ * request itself, and would break streaming and long-polling).
+ */
+describe('attachNetworkRecorder on a real page', () => {
+  it('records a navigation and its subresources from response events alone', async () => {
+    const page = await browser.newPage();
+    try {
+      const recorder = attachNetworkRecorder(page, { redact: true });
+      await page.goto(`${baseUrl}/pixel.png`);
+      const recording = await recorder.finish();
+
+      expect(recording.redacted).toBe(true);
+      const pixel = recording.requests.find((r) =>
+        r.url.endsWith('/pixel.png'),
+      );
+      expect(pixel?.status).toBe(200);
+      expect(pixel?.resourceType).toBeTruthy();
+      // A png is metadata-only by policy, with the reason on the record.
+      expect(pixel?.body).toMatchObject({
+        kept: false,
+        reason: 'binary-type',
+      });
+    } finally {
+      await page.close();
+    }
+  }, 30_000);
+});

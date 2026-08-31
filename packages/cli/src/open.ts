@@ -1,8 +1,12 @@
-import { chromium } from 'playwright';
+import { chromium, type Page } from 'playwright';
 import { assertFetchableUrl, type PageIR } from 'quick-caps-core';
 import { flattenRegions } from 'quick-caps-core/distill';
 import { collectViaStatic } from './collect-via-static.js';
 import { collectViaPlaywright } from './collect-via-playwright.js';
+import {
+  attachNetworkRecorder,
+  type NetworkRecorder,
+} from './drivers/playwright-driver.js';
 import { CliError } from './errors.js';
 
 /** Both thresholds are validated against the acceptance corpus (spec §7),
@@ -41,6 +45,45 @@ export type OpenResult = {
 };
 
 /**
+ * How long a recorded load is given to go quiet after `load` fires. The
+ * traffic worth recording — the XHR a shell fires once it has booted — happens
+ * *after* load, so returning at load would record the page's assets and miss
+ * its API. Bounded and best-effort rather than an unbounded `networkidle`
+ * wait: a page with a poll or a websocket never idles, and a recording is
+ * never worth failing an `open` over.
+ */
+export const RECORDING_SETTLE_MS = 2_000;
+
+export type RecordOptions = {
+  /** Arms network recording for this load. */
+  record?: boolean;
+  /** Opts out of record-time redaction. Full fidelity is a decision, never a
+   * default — see the design's "Redaction". */
+  noRedact?: boolean;
+};
+
+/** Arms the page if asked, warning into the IR rather than failing: a
+ * recording that could not be set up must cost the caller a warning, not their
+ * `open`. Returns undefined when nothing was armed. */
+function armRecording(
+  page: Page,
+  opts: RecordOptions,
+  warnings: PageIR['warnings'],
+): NetworkRecorder | undefined {
+  if (opts.record !== true) return undefined;
+  try {
+    return attachNetworkRecorder(page, { redact: opts.noRedact !== true });
+  } catch (error) {
+    warnings.push({
+      phase: 'collect',
+      reason: 'network recording could not be armed',
+      detail: error instanceof Error ? error.message : String(error),
+    });
+    return undefined;
+  }
+}
+
+/**
  * Launches a fresh browser, navigates to url, collects, closes the
  * browser. Extracted out of openUrl's escalation branch so
  * ensure-playwright.ts (Phase C2) can reuse the exact same
@@ -56,7 +99,10 @@ export type OpenResult = {
  * carry the request to a private/internal address the pre-navigation
  * check on the original `url` never saw.
  */
-export async function collectViaPlaywrightFor(url: string): Promise<PageIR> {
+export async function collectViaPlaywrightFor(
+  url: string,
+  opts: RecordOptions = {},
+): Promise<PageIR> {
   try {
     await assertFetchableUrl(url);
   } catch (error) {
@@ -64,8 +110,12 @@ export async function collectViaPlaywrightFor(url: string): Promise<PageIR> {
   }
 
   const browser = await chromium.launch();
+  const warnings: PageIR['warnings'] = [];
   try {
     const page = await browser.newPage();
+    // Armed before goto: the load is the thing being observed, so there is no
+    // way to arm it afterwards.
+    const recorder = armRecording(page, opts, warnings);
     await page.goto(url);
     try {
       await assertFetchableUrl(page.url());
@@ -74,7 +124,27 @@ export async function collectViaPlaywrightFor(url: string): Promise<PageIR> {
         error instanceof Error ? error.message : String(error),
       );
     }
-    return await collectViaPlaywright(page);
+    if (recorder !== undefined) {
+      await page
+        .waitForLoadState('networkidle', { timeout: RECORDING_SETTLE_MS })
+        // A page that never goes quiet is normal, not an error; whatever was
+        // observed by now is what gets recorded.
+        .catch(() => undefined);
+    }
+    const ir = await collectViaPlaywright(page);
+    if (recorder !== undefined) {
+      try {
+        ir.recording = await recorder.finish();
+      } catch (error) {
+        warnings.push({
+          phase: 'collect',
+          reason: 'network recording could not be finished',
+          detail: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    if (warnings.length > 0) ir.warnings = [...ir.warnings, ...warnings];
+    return ir;
   } finally {
     await browser.close();
   }
@@ -92,7 +162,7 @@ export async function collectViaPlaywrightFor(url: string): Promise<PageIR> {
  */
 export async function openUrl(
   url: string,
-  opts: { static?: boolean; record?: boolean } = {},
+  opts: { static?: boolean } & RecordOptions = {},
 ): Promise<OpenResult> {
   try {
     await assertFetchableUrl(url);
@@ -104,7 +174,10 @@ export async function openUrl(
     // Not even fetched statically first: the static IR would be discarded
     // whatever it looked like, and paying for a request to throw it away is
     // worse than skipping it.
-    const ir = await collectViaPlaywrightFor(url);
+    const ir = await collectViaPlaywrightFor(url, {
+      record: true,
+      ...(opts.noRedact === true && { noRedact: true }),
+    });
     return { ir, driver: 'playwright' };
   }
 

@@ -9,6 +9,10 @@ export type OpenCommandArgs = {
   /** Arms observation: forces a browser session, because a static fetch
    * witnesses nothing. See openUrl. */
   record?: boolean;
+  /** Opts out of record-time redaction, so a recorded request keeps the
+   * credentials it carried. Reproducing an API call is a real need; inheriting
+   * a session token in a gitignored-but-unencrypted file is not. */
+  noRedact?: boolean;
 };
 
 export async function runOpen(
@@ -24,9 +28,19 @@ export async function runOpen(
     );
   }
 
+  // Refused rather than ignored: silently accepting a flag that does nothing
+  // would let a caller believe they had opted out of redaction on a session
+  // that was never recording in the first place.
+  if (args.noRedact === true && args.record !== true) {
+    throw new CliError(
+      '--no-redact only affects a recording; pass --record too, or drop it.',
+    );
+  }
+
   const { ir, driver } = await openUrl(args.url, {
     static: args.static === true,
     record: args.record === true,
+    noRedact: args.noRedact === true,
   });
   const distillation = distill(ir, { tokenBudget: 500, page: 0 });
 

@@ -57,9 +57,13 @@ describe('build artifacts', () => {
       (name) => name.startsWith('offscreen-') && name.endsWith('.js'),
     );
     expect(chunk, 'no offscreen chunk in dist/assets').toBeDefined();
-    // Measured at ~45 kB after the flatten.ts split; this is that plus ~15%
-    // headroom, not a pin on the exact byte count.
-    expect(statSync(join(dist, 'assets', chunk!)).size).toBeLessThan(52_000);
+    // Measured at ~57 kB: ~45 kB after the flatten.ts split, plus ~11 kB of
+    // hand-written extractors when Piece 2 added network/stack/vitals. This is
+    // that plus ~15% headroom, not a pin on the exact byte count. Raise it only
+    // for growth you can name, in the way this comment names it — the point is
+    // to catch a vendored dependency arriving unnoticed, and a cap quietly
+    // moved to accommodate one would defeat the guard entirely.
+    expect(statSync(join(dist, 'assets', chunk!)).size).toBeLessThan(66_000);
   });
 
   it('registers the recorder content script in the built manifest', () => {

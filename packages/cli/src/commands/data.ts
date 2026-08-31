@@ -17,6 +17,12 @@ export type DataArgs = {
   /** Machine output: the report as one line of JSON. Off means the human
    * rendering, which is what a person at a terminal asked for. */
   json?: boolean;
+  /** Only meaningful alongside `url`: forwarded to the open this performs, so
+   * `pc data <url> --record --network` arms the load it is about to report on
+   * rather than reporting it as unrecorded. */
+  record?: boolean;
+  /** Forwarded the same way, and refused by runOpen without `record`. */
+  noRedact?: boolean;
 };
 
 /** Domains carrying fields that need per-element computed styles — natural
@@ -37,7 +43,16 @@ const NEEDS_COMPUTED_STYLE: ExtractDomain[] = ['content', 'design'];
  * caller's handles.
  */
 export async function runData(args: DataArgs, cwd: string): Promise<string> {
-  if (args.url !== undefined) await runOpen({ url: args.url }, cwd);
+  if (args.url !== undefined) {
+    await runOpen(
+      {
+        url: args.url,
+        ...(args.record === true && { record: true }),
+        ...(args.noRedact === true && { noRedact: true }),
+      },
+      cwd,
+    );
+  }
   const session = await readSession(cwd);
   const { document } = parseHTML(session.ir.html);
 
