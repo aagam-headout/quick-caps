@@ -19,6 +19,24 @@ describe('manifest', () => {
     ]);
   });
 
+  /**
+   * Named individually as well as by the exact list above, because these two
+   * are the ones an observation feature keeps asking for. `cookies` would let
+   * the extension read HttpOnly cookies and `debugger` would let it record
+   * response bodies; both are rejected in the observation-collectors design,
+   * and both would put a permission warning (and a "started debugging this
+   * browser" banner) in front of a user whose reason for installing this is
+   * that it asks for nothing. The cookie inventory is partial by construction
+   * instead, and says so via CookieJar.complete.
+   */
+  it('never asks for cookies or debugger, whatever an observer would gain', () => {
+    for (const rejected of ['cookies', 'debugger', 'webRequest']) {
+      expect(manifest.permissions).not.toContain(rejected);
+      expect(manifest.optional_host_permissions).not.toContain(rejected);
+      expect('optional_permissions' in manifest).toBe(false);
+    }
+  });
+
   it('declares the keyboard shortcut for a popup-free capture', () => {
     expect(manifest.commands['capture-page']?.suggested_key?.default).toBe(
       'Ctrl+Shift+U',

@@ -4,7 +4,9 @@ import { flattenRegions } from 'quick-caps-core/distill';
 import { collectViaStatic } from './collect-via-static.js';
 import { collectViaPlaywright } from './collect-via-playwright.js';
 import {
+  armPerfObserver,
   attachNetworkRecorder,
+  readPerfReport,
   type NetworkRecorder,
 } from './drivers/playwright-driver.js';
 import { CliError } from './errors.js';
@@ -84,6 +86,33 @@ function armRecording(
 }
 
 /**
+ * Arms performance observation on the same `--record` flag, for the reason
+ * spelled out in playwright-driver.ts's "Performance observation" section: CLS
+ * and INP only settle after load and need their observer installed before
+ * navigation, which is precisely what `--record` already means. Returns whether
+ * the observer is in place, and — like `armRecording` — degrades to a warning:
+ * a perf snapshot must never cost the caller their `open`.
+ */
+async function armPerfObservation(
+  page: Page,
+  opts: RecordOptions,
+  warnings: PageIR['warnings'],
+): Promise<boolean> {
+  if (opts.record !== true) return false;
+  try {
+    await armPerfObserver(page);
+    return true;
+  } catch (error) {
+    warnings.push({
+      phase: 'collect',
+      reason: 'performance observation could not be armed',
+      detail: error instanceof Error ? error.message : String(error),
+    });
+    return false;
+  }
+}
+
+/**
  * Launches a fresh browser, navigates to url, collects, closes the
  * browser. Extracted out of openUrl's escalation branch so
  * ensure-playwright.ts (Phase C2) can reuse the exact same
@@ -116,6 +145,7 @@ export async function collectViaPlaywrightFor(
     // Armed before goto: the load is the thing being observed, so there is no
     // way to arm it afterwards.
     const recorder = armRecording(page, opts, warnings);
+    const perfArmed = await armPerfObservation(page, opts, warnings);
     await page.goto(url);
     try {
       await assertFetchableUrl(page.url());
@@ -124,7 +154,10 @@ export async function collectViaPlaywrightFor(
         error instanceof Error ? error.message : String(error),
       );
     }
-    if (recorder !== undefined) {
+    if (recorder !== undefined || perfArmed) {
+      // One settle window for both observations, not two knobs: LCP and CLS
+      // land after load for the same reason the interesting XHR does. A metric
+      // that has not settled when this window closes is reported absent.
       await page
         .waitForLoadState('networkidle', { timeout: RECORDING_SETTLE_MS })
         // A page that never goes quiet is normal, not an error; whatever was
@@ -139,6 +172,17 @@ export async function collectViaPlaywrightFor(
         warnings.push({
           phase: 'collect',
           reason: 'network recording could not be finished',
+          detail: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    if (perfArmed) {
+      try {
+        ir.perf = await readPerfReport(page);
+      } catch (error) {
+        warnings.push({
+          phase: 'collect',
+          reason: 'performance metrics could not be read',
           detail: error instanceof Error ? error.message : String(error),
         });
       }

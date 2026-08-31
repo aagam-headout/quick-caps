@@ -1,11 +1,21 @@
 // Narrow subpaths, not the root barrel — see background/chrome-driver.ts.
 import { collectFromDocument } from 'quick-caps-core/collect';
 import { buildPerfReport, type PerfReport } from 'quick-caps-core/perf';
-import type { CaptureSettings, LogEntry, PageIR } from 'quick-caps-core';
+import { redactRecording } from 'quick-caps-core/observe';
+import type {
+  CaptureSettings,
+  CookieJar,
+  LogEntry,
+  PageIR,
+  Recording,
+  Warning,
+} from 'quick-caps-core';
+import type { RecorderObservations, VitalsObservation } from './recorder.js';
 import {
   FLUSH_EVENT,
   IR_KEY,
   LOGS_ATTRIBUTE,
+  OBSERVATIONS_ATTRIBUTE,
   SETTINGS_KEY,
 } from './protocol.js';
 
@@ -52,13 +62,122 @@ export function readRecorderLogs(): LogEntry[] | undefined {
 }
 
 /**
+ * Reads the recorder's over-time observations across the same world boundary.
+ *
+ * Removes both flushed attributes, not just its own: the flush rewrites the log
+ * attribute too, and an attribute left on <html> would be serialized straight
+ * into the captured page.
+ */
+export function readRecorderObservations(): RecorderObservations | undefined {
+  try {
+    document.dispatchEvent(new Event(FLUSH_EVENT));
+    const raw = document.documentElement.getAttribute(OBSERVATIONS_ATTRIBUTE);
+    document.documentElement.removeAttribute(OBSERVATIONS_ATTRIBUTE);
+    document.documentElement.removeAttribute(LOGS_ATTRIBUTE);
+    if (!raw) return undefined;
+    return JSON.parse(raw) as RecorderObservations;
+  } catch {
+    // Observations are optional; the rest of the capture is not.
+    return undefined;
+  }
+}
+
+/**
+ * The cookie inventory this surface can honestly produce, and no more.
+ *
+ * `document.cookie` cannot see an `HttpOnly` cookie - that is the flag's whole
+ * purpose - so the jar is partial by construction and `complete: false` says
+ * so. The `cookies` permission that would fix it is rejected for the same
+ * reason as chrome.debugger: this extension asks for nothing at install and
+ * uploads nothing, and a cookie-reading permission warning would cost far more
+ * than a complete inventory is worth. `extract/stack.ts` turns that flag into a
+ * warning of its own, so a reader never mistakes the subset for the whole.
+ *
+ * No value is read anywhere: `CookieRecord` has no value field, because the
+ * value is the credential and the name is the inventory.
+ */
+export function readCookieJar(): CookieJar | undefined {
+  try {
+    const cookies: CookieJar['cookies'] = [];
+    for (const pair of document.cookie.split(';')) {
+      const trimmed = pair.trim();
+      if (trimmed === '') continue;
+      const separator = trimmed.indexOf('=');
+      // The serialization is name=value; a segment without one carries no name
+      // to inventory, so there is nothing to report about it.
+      if (separator <= 0) continue;
+      cookies.push({
+        name: trimmed.slice(0, separator),
+        // The document's own host. `document.cookie` never discloses the
+        // Domain attribute, so this is where the cookie was readable rather
+        // than where it was set - the only honest answer available here.
+        domain: location.hostname,
+        // Always true, and not a guess: `document.cookie` only ever exposes
+        // cookies readable at the page origin.
+        firstParty: true,
+        // httpOnly, secure and sameSite are omitted rather than defaulted -
+        // the flags are invisible from here, and a false would assert one.
+      });
+    }
+    return { cookies, complete: false };
+  } catch {
+    // An opaque-origin document throws on document.cookie. No jar at all is
+    // the right answer: an empty one would look like a page carrying none.
+    return undefined;
+  }
+}
+
+/**
+ * Assembles what this surface observed into a `Recording`, or nothing when it
+ * observed nothing at all - absent means "nobody was watching", which every
+ * report derived from this field distinguishes from an empty recording.
+ *
+ * Bodies are never kept and headers are never read, so what reaches a report is
+ * request metadata plus the cookie jar. Redacted on the way out, which for this
+ * host is record time: a token in a query parameter is the most quotable
+ * credential there is, and `redactRecording` is also what sets `redacted` so a
+ * later reader never has to guess.
+ */
+export function buildRecording(
+  observations: RecorderObservations | undefined,
+): Recording | undefined {
+  const cookies = readCookieJar();
+  if (!observations && !cookies) return undefined;
+  return redactRecording({
+    // The recorder's install time is when observation was armed. Without a
+    // recorder the jar was read just now, and that is all this recording says.
+    startedAt: observations?.startedAt ?? new Date().toISOString(),
+    requests: observations?.requests ?? [],
+    ...(cookies ? { cookies } : {}),
+    redacted: false,
+    // No body was ever kept, so no cap was ever spent.
+    bodyBytes: 0,
+  });
+}
+
+/**
+ * States the limit of this surface's network observation rather than letting a
+ * partial request list read as a complete one. The recorder patches fetch and
+ * XMLHttpRequest, which is the API traffic; a document, script, stylesheet or
+ * image request never passes through either.
+ */
+const PARTIAL_RECORDING_WARNING: Warning = {
+  phase: 'collect',
+  reason: 'network observation covers only fetch and XMLHttpRequest',
+  detail:
+    'document, script, stylesheet, image and media requests are not recorded, no request or response headers are observed, and no response body is ever read - the rest of the capture is intact',
+};
+
+/**
  * Reads the page's own Navigation/Paint/Resource Timing entries and derives
  * a lightweight perf snapshot from them - not a Lighthouse audit.
  *
  * `largest-contentful-paint` can report more than once as bigger content
  * loads in; the last entry observed is the final value.
  */
-export function readPerfMetrics(): PerfReport | undefined {
+export function readPerfMetrics(
+  observed?: VitalsObservation | undefined,
+): PerfReport | undefined {
   try {
     const [navigation] = performance.getEntriesByType(
       'navigation',
@@ -90,8 +209,27 @@ export function readPerfMetrics(): PerfReport | undefined {
           }
         : {}),
       paint,
-      ...(lastLcp ? { largestContentfulPaintMs: lastLcp.startTime } : {}),
+      // The observed value wins: Chrome does not return
+      // largest-contentful-paint from getEntriesByType at all, so the sampled
+      // read above is a fallback for hosts where it does.
+      ...(typeof observed?.largestContentfulPaintMs === 'number'
+        ? { largestContentfulPaintMs: observed.largestContentfulPaintMs }
+        : lastLcp
+          ? { largestContentfulPaintMs: lastLcp.startTime }
+          : {}),
       resources,
+      // Spread conditionally, never defaulted. An unobserved metric has to
+      // reach buildPerfReport as an absent key: a 0 here would report a page
+      // nobody measured as a perfectly stable, instantly responsive one.
+      ...(typeof observed?.cumulativeLayoutShift === 'number'
+        ? { cumulativeLayoutShift: observed.cumulativeLayoutShift }
+        : {}),
+      ...(typeof observed?.interactionToNextPaintMs === 'number'
+        ? { interactionToNextPaintMs: observed.interactionToNextPaintMs }
+        : {}),
+      ...(observed?.unsupportedEntryTypes?.length
+        ? { unsupportedEntryTypes: observed.unsupportedEntryTypes }
+        : {}),
     });
   } catch {
     // A perf snapshot is optional; the rest of the capture is not.
@@ -108,9 +246,25 @@ export function readPerfMetrics(): PerfReport | undefined {
  */
 export function runCollector(settings: CaptureSettings): PageIR {
   const logs = settings.include.logs ? readRecorderLogs() : undefined;
-  const perf = settings.include.perf ? readPerfMetrics() : undefined;
+  // The over-time observations feed two consumers: the perf report's vitals,
+  // and the recording the stack/network reports read. Read once - the flush is
+  // synchronous and re-dispatching it would rewrite the attributes this just
+  // cleaned up.
+  const wantsObservations = settings.include.perf || settings.include.data;
+  const observations = wantsObservations
+    ? readRecorderObservations()
+    : undefined;
+  const perf = settings.include.perf
+    ? readPerfMetrics(observations?.vitals)
+    : undefined;
+  // Gated on the extract report, which is the only thing that reads a
+  // recording: a capture that asked for neither data nor vitals should not
+  // carry a cookie inventory it has no reader for.
+  const recording = settings.include.data
+    ? buildRecording(observations)
+    : undefined;
 
-  return collectFromDocument(document, {
+  const ir = collectFromDocument(document, {
     settings,
     pageUrl: location.href,
     userAgent: navigator.userAgent,
@@ -131,6 +285,15 @@ export function runCollector(settings: CaptureSettings): PageIR {
     ...(logs ? { logs } : {}),
     ...(perf ? { perf } : {}),
   });
+
+  // `recording` is attached here rather than passed to collectFromDocument,
+  // whose options predate the field.
+  if (!recording) return ir;
+  return {
+    ...ir,
+    recording,
+    warnings: [...ir.warnings, PARTIAL_RECORDING_WARNING],
+  };
 }
 
 /**

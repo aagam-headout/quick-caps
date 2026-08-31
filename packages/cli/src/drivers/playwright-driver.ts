@@ -15,6 +15,13 @@ import {
   type RecordedRequest,
   type Recording,
 } from 'quick-caps-core/observe';
+import {
+  buildPerfReport,
+  type PerfReport,
+  type RawNavigationTiming,
+  type RawPaintEntry,
+  type RawResourceTiming,
+} from 'quick-caps-core/perf';
 
 /**
  * PageDriver over a live Playwright page. Every core function already proven
@@ -368,4 +375,296 @@ export function attachNetworkRecorder(
   page.on('response', (response) => recorder.onResponse(response));
   page.on('requestfailed', (request) => recorder.onRequestFailed(request));
   return recorder;
+}
+
+// ---------------------------------------------------------------------------
+// Performance observation
+//
+// Armed by the same `--record` flag as the network recorder, deliberately not
+// a flag of its own: CLS and INP cannot be sampled once. They accumulate, so
+// they need a PerformanceObserver installed *before* navigation — which is
+// exactly the arming moment `--record` already defines. Reusing it also keeps
+// "not recorded" meaning one single thing across all three observed domains
+// (network, stack, vitals); a second flag would make an absence ambiguous
+// about which observation was missing.
+//
+// Installed via `addInitScript` rather than `addScriptTag`: a script tag can
+// only be added to a page that already exists, by which time first paint and
+// every layout shift up to it have already happened unwatched.
+// ---------------------------------------------------------------------------
+
+/**
+ * The page global the init script accumulates into and the read-back reads out
+ * of. A property name on the page's global object rather than a closure or a
+ * symbol, because `addInitScript` and `evaluate` are two separate injections
+ * with no shared scope — the global is the only place they can meet.
+ */
+export const PERF_OBSERVATIONS_GLOBAL = '__quickCapsPerfObservations';
+
+/**
+ * What the observer accumulated over the page's lifetime.
+ *
+ * Every metric is `number | null`, and `null` means *nobody observed it* — it
+ * is never a stand-in for zero. `extract/vitals.ts` is built entirely on that
+ * distinction, so this shape has to preserve it all the way from the page.
+ */
+export type PerfObservations = {
+  /** Unitless ratio, unrounded at every step (`Math.round(0.1) === 0` would
+   * flatten a needs-improvement page into a perfect one). 0 here is a real
+   * measurement: the observer watched and nothing shifted. */
+  cumulativeLayoutShift: number | null;
+  /** Null when nothing was interacted with. Absence, not an instant
+   * response — a headless load with no input has no INP at all. */
+  interactionToNextPaintMs: number | null;
+  largestContentfulPaintMs: number | null;
+  /** Entry types this browser would not observe, named so an absence above can
+   * be explained to the user instead of merely reported. Per the design's
+   * error contract: an unsupported entry type is named, not thrown. */
+  unsupportedEntryTypes: string[];
+};
+
+/**
+ * Installs the observer in the page, before any of the page's own script runs.
+ *
+ * Deliberately self-contained: `addInitScript` serializes this function's
+ * source and evaluates it in the page, so nothing it closes over travels with
+ * it — hence the inlined entry-type names and the global name arriving as an
+ * argument. Exported so its accumulation rules (CLS excludes input-driven
+ * shifts, an unsupported type is recorded rather than thrown) are provable in
+ * Node against a fake `PerformanceObserver`, with no browser involved.
+ */
+export function installPerfObserver(globalName: string): void {
+  const store: PerfObservations = {
+    cumulativeLayoutShift: null,
+    interactionToNextPaintMs: null,
+    largestContentfulPaintMs: null,
+    unsupportedEntryTypes: [],
+  };
+  (globalThis as unknown as Record<string, unknown>)[globalName] = store;
+
+  const Observer = (
+    globalThis as unknown as {
+      PerformanceObserver?: typeof PerformanceObserver;
+    }
+  ).PerformanceObserver;
+  if (typeof Observer !== 'function') {
+    // No observer at all: every over-time metric is absent, and each one says
+    // why rather than leaving the extractor with four unexplained nulls.
+    store.unsupportedEntryTypes.push(
+      'layout-shift',
+      'event',
+      'first-input',
+      'largest-contentful-paint',
+    );
+    return;
+  }
+
+  /** True iff the browser accepted the subscription. Both ways a browser can
+   * decline — a type missing from `supportedEntryTypes`, and an `observe` that
+   * throws — end in the same recorded name. */
+  const observe = (
+    type: string,
+    options: { durationThreshold?: number },
+    onEntry: (entry: PerformanceEntry) => void,
+  ): boolean => {
+    const supported = Observer.supportedEntryTypes;
+    if (Array.isArray(supported) && !supported.includes(type)) {
+      store.unsupportedEntryTypes.push(type);
+      return false;
+    }
+    try {
+      const observer = new Observer((list) => {
+        for (const entry of list.getEntries()) {
+          try {
+            onEntry(entry);
+          } catch {
+            // One malformed entry must not stop the rest of the buffer.
+          }
+        }
+      });
+      observer.observe({ type, buffered: true, ...options });
+      return true;
+    } catch {
+      store.unsupportedEntryTypes.push(type);
+      return false;
+    }
+  };
+
+  const clsWatched = observe('layout-shift', {}, (entry) => {
+    const shift = entry as PerformanceEntry & {
+      value?: number;
+      hadRecentInput?: boolean;
+    };
+    // The standard definition: shifts within 500ms of user input are the
+    // user's own doing and are excluded from the score.
+    if (shift.hadRecentInput === true) return;
+    if (typeof shift.value !== 'number' || !Number.isFinite(shift.value))
+      return;
+    // Accumulated, never rounded.
+    store.cumulativeLayoutShift =
+      (store.cumulativeLayoutShift ?? 0) + shift.value;
+  });
+  if (clsWatched) {
+    // The one metric that starts at zero, and only once the browser has
+    // accepted the subscription: from here on "nothing shifted" is a
+    // measurement that was actually made, which is a different fact from
+    // "nobody watched". Written with `??` so it cannot clobber a shift that
+    // already arrived.
+    store.cumulativeLayoutShift = store.cumulativeLayoutShift ?? 0;
+  }
+
+  const onInteraction = (entry: PerformanceEntry): void => {
+    const interaction = entry as PerformanceEntry & { interactionId?: number };
+    // An `event` entry without an interactionId is not an interaction — it is
+    // a stray event, and counting it would invent an INP for a page nobody
+    // touched. `first-input` entries carry no interactionId and are always
+    // real interactions.
+    if (
+      entry.entryType === 'event' &&
+      !(
+        typeof interaction.interactionId === 'number' &&
+        interaction.interactionId > 0
+      )
+    ) {
+      return;
+    }
+    if (!Number.isFinite(entry.duration)) return;
+    // The worst interaction on the page, which is what INP reports. Left null
+    // until one actually happens.
+    store.interactionToNextPaintMs = Math.max(
+      store.interactionToNextPaintMs ?? 0,
+      entry.duration,
+    );
+  };
+  // `durationThreshold: 16` because the default (104ms) hides most real
+  // interactions on a fast page, and an INP that only exists when the page is
+  // slow is worse than useless.
+  observe('event', { durationThreshold: 16 }, onInteraction);
+  observe('first-input', {}, onInteraction);
+
+  observe('largest-contentful-paint', {}, (entry) => {
+    // Reports repeatedly as bigger content loads in, each candidate later and
+    // larger than the last, so last-wins is the final value — the same rule
+    // the extension's readPerfMetrics applies to the buffered entries.
+    if (Number.isFinite(entry.startTime)) {
+      store.largestContentfulPaintMs = entry.startTime;
+    }
+  });
+}
+
+/** The slice of Playwright's `Page` arming needs — the same narrow-seam habit
+ * as RecordablePage, so open.ts's arming path is testable without a browser. */
+export type PerfArmablePage = {
+  /** `Promise<unknown>`, not `Promise<void>`: Playwright resolves this with a
+   * handle for removing the script again, which this never needs. */
+  addInitScript(
+    script: (globalName: string) => void,
+    arg: string,
+  ): Promise<unknown>;
+};
+
+/**
+ * Arms performance observation on a page. Must be called *before* navigation,
+ * for the reason in the section comment above. Errors are left to the caller
+ * to turn into a warning: a perf snapshot is never worth failing an `open`
+ * over.
+ */
+export async function armPerfObserver(page: PerfArmablePage): Promise<void> {
+  await page.addInitScript(installPerfObserver, PERF_OBSERVATIONS_GLOBAL);
+}
+
+/** The raw observations, gathered in the page and normalized by core. Kept as
+ * plain numbers for the same reason `perf.ts` does: it makes the whole path
+ * assertable against fabricated data. */
+export type PerfReadout = {
+  navigation: RawNavigationTiming | null;
+  paint: RawPaintEntry[];
+  resources: RawResourceTiming[];
+  /** Null when the page was never armed — nothing installed the global. */
+  observations: PerfObservations | null;
+};
+
+/** The slice of Playwright's `Page` the read-back needs. */
+export type PerfReadablePage = {
+  evaluate<R>(fn: (globalName: string) => R, arg: string): Promise<R>;
+};
+
+/**
+ * Reads the one-shot timing entries and the observer's accumulated totals out
+ * of the page. Self-contained for the same reason as installPerfObserver: this
+ * runs inside the page, serialized by `evaluate`.
+ */
+export function readPerfSnapshot(globalName: string): PerfReadout {
+  const [navigation] = performance.getEntriesByType(
+    'navigation',
+  ) as PerformanceNavigationTiming[];
+  return {
+    navigation: navigation
+      ? {
+          requestStart: navigation.requestStart,
+          responseStart: navigation.responseStart,
+          domContentLoadedEventEnd: navigation.domContentLoadedEventEnd,
+          loadEventEnd: navigation.loadEventEnd,
+          transferSize: navigation.transferSize,
+        }
+      : null,
+    paint: performance
+      .getEntriesByType('paint')
+      .map((entry) => ({ name: entry.name, startTime: entry.startTime })),
+    resources: (
+      performance.getEntriesByType('resource') as PerformanceResourceTiming[]
+    ).map((resource) => ({
+      initiatorType: resource.initiatorType,
+      transferSize: resource.transferSize,
+    })),
+    observations:
+      (globalThis as unknown as Record<string, PerfObservations | undefined>)[
+        globalName
+      ] ?? null,
+  };
+}
+
+/** A metric survived the page and a JSON round trip as a real number, or it is
+ * absent. A NaN, a string from a hand-edited file, or an undefined is absence
+ * — never a zero. */
+function observedOrNull(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+/**
+ * Hands the readout to core's normalizer. Nothing is derived here that
+ * `buildPerfReport` already derives.
+ *
+ * Every over-time field is spread only when it was genuinely observed, because
+ * `buildPerfReport` omits from the report exactly what it is not given — so a
+ * field this function declines to pass reaches `extract/vitals.ts` as absent
+ * rather than as a value nobody measured. The tests are `=== null`, never
+ * truthiness: a CLS of 0 is a measurement and must be written as 0.
+ */
+export function perfReportFrom(readout: PerfReadout): PerfReport {
+  const observations = readout.observations;
+  const cls = observedOrNull(observations?.cumulativeLayoutShift);
+  const inp = observedOrNull(observations?.interactionToNextPaintMs);
+  const lcp = observedOrNull(observations?.largestContentfulPaintMs);
+  const unsupported = observations?.unsupportedEntryTypes;
+  return buildPerfReport({
+    ...(readout.navigation === null ? {} : { navigation: readout.navigation }),
+    paint: readout.paint,
+    resources: readout.resources,
+    ...(lcp === null ? {} : { largestContentfulPaintMs: lcp }),
+    ...(cls === null ? {} : { cumulativeLayoutShift: cls }),
+    ...(inp === null ? {} : { interactionToNextPaintMs: inp }),
+    ...(Array.isArray(unsupported)
+      ? { unsupportedEntryTypes: unsupported }
+      : {}),
+  });
+}
+
+/** The whole read-after-load half, in one call for open.ts. */
+export async function readPerfReport(
+  page: PerfReadablePage,
+): Promise<PerfReport> {
+  return perfReportFrom(
+    await page.evaluate(readPerfSnapshot, PERF_OBSERVATIONS_GLOBAL),
+  );
 }
