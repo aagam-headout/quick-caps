@@ -90,6 +90,48 @@ Observation: what only a witness can answer.
   extraction layer reached the distiller for region flattening and pulled it
   along transitively. The offscreen bundle went from 2,080 kB to 45 kB.
 
+Crawling: the same questions, a site at a time.
+
+- New `pc crawl <url>` command and `pc_crawl` MCP tool. It walks same-origin
+  links and pagination from a seed, extracts the requested domains from every
+  page, and writes a dataset — not a session — into
+  `.quick-caps/crawls/<name>/`, gitignored beside the session it never
+  touches. `--limit` (25) and `--depth` (3) keep an unqualified crawl a sample
+  rather than a commitment, and every crawl ends with a named stop reason: a
+  short dataset nobody can explain is the failure the summary exists to
+  prevent. The MCP tool returns the summary and the store path, never the
+  records — a 200-page dataset is not a tool result.
+- Records are JSON Lines, one page per line, because a crawl is long and
+  interruptible: killed at page 180 of 200 it leaves 180 valid records rather
+  than one truncated document that parses to nothing, and `--report` streams
+  them instead of loading them. The half-written last line a kill leaves is
+  reported as an unreadable line and the scan continues past it. A page that
+  404s or times out is a record with its error, and a URL robots disallowed is
+  a record naming the rule that decided it. State is flushed atomically after
+  every page, so `pc crawl --resume <name>` continues a crawl rather than
+  discovering it is corrupt, and a URL that was in flight goes back on the
+  queue rather than being lost.
+- A URL is marked seen when it is _enqueued_, not when it is fetched, which is
+  what makes a cyclic site terminate; normalization is explicit for the same
+  reason, since two URLs differing only by a `utm_` tag are one page and
+  treating them as two is how a crawler runs forever on a finite site. Links
+  the frontier refused are tallied by reason rather than recorded per href,
+  which is what answers "why did a 200-page site yield 40 pages" without
+  burying the dataset under its own bookkeeping.
+- Politeness is the default and every way out of it has to be typed:
+  robots.txt honoured including `crawl-delay`, one request per second per
+  host, concurrency 1, backoff on 429 and 5xx but not on a 404 that is a fact
+  about one URL, a stop after five consecutive host-level failures, and an
+  identifiable user agent so an operator reading their logs can act on it.
+  `--rate`, `--concurrency`, and `--ignore-robots` raise or waive those;
+  `--ignore-robots` waives the rules and not the crawl-delay. The reason is
+  unattended use: an agent looping on an impolite default is how a tool earns
+  a place on a block list.
+- Static by default, escalating to a browser only where `pc open` already
+  would, and with no `--record`: the `network`, `stack`, and `vitals` domains
+  are deliberately not offered, since a browser plus a settle window per page
+  across hundreds of pages is a different tool.
+
 ## 0.1.0
 
 Initial release.

@@ -3,8 +3,8 @@
 Distill any rendered web page into a few hundred tokens of numbered
 regions and actions — or capture it to disk. Built for agents: `open` a
 page, `do` an action by number, `read` a region in full, `find` a query,
-`scrape` a schema-driven shape, report the `data` a page contains, or
-`capture` the whole thing to a single-file HTML or zip archive. Same functions are also exposed as MCP
+`scrape` a schema-driven shape, report the `data` a page contains, `crawl` a
+whole site into a dataset on disk, or `capture` the whole thing to a single-file HTML or zip archive. Same functions are also exposed as MCP
 tools over stdio (`pc mcp`).
 
 ## Requirements
@@ -45,8 +45,12 @@ first-time users.
   — report the data the page contains, as human-readable text; `--json`
   prints the same report as one line of JSON. With no domain flag, an
   availability summary instead of the data.
+- `pc crawl <url> [--limit N] [--depth N] [--name <name>] [--structured] [--entities] [--content] [--design] [--links] [--all] [--rate N] [--concurrency N] [--ignore-robots]`
+  — walk a site from a seed and extract from every page into a resumable
+  store on disk. `pc crawl --resume <name>` continues an interrupted crawl;
+  `pc crawl --report [<name>] [--json]` summarizes one.
 - `pc capture [--zip] [--out <dir>]` — full archive to disk.
-- `pc mcp` — the same ten tools, over an MCP stdio server.
+- `pc mcp` — the same eleven tools, over an MCP stdio server.
 - `pc --help` — full usage, notes, and environment variables.
 
 Every command is stateful across invocations within one directory: a
@@ -138,13 +142,164 @@ domains ran degraded:
 warning: content, design: skipped every field needing computed styles
 ```
 
+## `pc crawl`
+
+Walks a site from a seed URL, extracts from every page, and writes the result
+as a dataset on disk rather than a session. `pc data` answers a question about
+one page; most questions worth asking — every product's price, every article's
+author, what a whole site is built from — are about a set of them.
+
+```
+$ pc crawl https://example.com --limit 40 --entities
+```
+
+Progress goes to stderr, one line per page, because a silent multi-minute
+command is indistinguishable from a hung one. The summary goes to stdout, so
+the two can be separated:
+
+```
+$ pc crawl --report
+crawl example.com
+  store      /work/site/.quick-caps/crawls/example.com
+  seed       http://example.com/
+  pages      21
+  fetched    19
+  errors     1
+             1  fetch failed
+  skipped    1
+             1  robots: disallow-rule (/admin/)
+  structured 19
+  entities   19
+  links      19
+  refused    263
+             214  already-seen
+             37  external-host
+             12  depth-cap
+  queued     1
+  stopped    interrupted
+```
+
+A crawl prints exactly what `--report` reprints. `refused` is the frontier's
+tally of links it declined and why — the answer to "why did a 200-page site
+yield 40 pages" — counted by reason rather than recorded per href, since
+`already-seen` fires for every chrome link on every page. Every crawl ends
+with a `stopped` reason: the limit, an exhausted frontier, a host-level stop
+condition, or an interrupt. A crawl that produced a short dataset for a reason
+nobody can see is the failure this is here to prevent.
+
+### Politeness, and how to opt out of it
+
+Defaults, all overridable but only explicitly, because this is a command an
+agent may run unattended against somebody else's server:
+
+- **robots.txt is fetched once per host and honoured**, `crawl-delay`
+  included. The longest matching rule wins and an equal-length tie goes to
+  `Allow`. A disallowed URL is not silently dropped: it is a record whose
+  reason names the deciding rule, as in `robots: disallow-rule (/admin/)`.
+- **One request per second per host, concurrency 1.** `--rate N` and
+  `--concurrency N` raise them. `--rate 0` removes the rate limit entirely,
+  which is what a local fixture wants and a real site never does.
+- **An identifiable user agent** —
+  `quick-caps-crawler/1 (+https://github.com/aagam-headout/quick-caps)` — so
+  an operator reading their logs can tell what hit them and act on it.
+- **Backoff on 429 and 5xx**, doubling from one second to a one-minute
+  ceiling, and only for statuses the host is responsible for: a 404 is a fact
+  about one URL and neither slows the crawl nor counts toward stopping it. A
+  success anywhere resets the ladder.
+- **A stop after five consecutive host-level failures**, with that reason in
+  the summary. A crawler that keeps hammering a host that is already failing
+  is the behaviour that gets tools blocked.
+- **`--ignore-robots` exists and has to be typed.** It waives robots
+  _rules_ — for your own staging site, a local fixture, a contractual crawl —
+  and not `crawl-delay`, which is still read from the same file.
+
+### The store
+
+`.quick-caps/crawls/<name>/`, beside the session and gitignored by the same
+self-written `.quick-caps/.gitignore`. `<name>` is the seed's host unless
+`--name` says otherwise.
+
+```
+.quick-caps/crawls/example.com/
+  records.jsonl   one JSON object per page, appended
+  state.json      the frontier, the seen set, the settings, the counters
+```
+
+JSON Lines rather than one JSON document, because a crawl is long and
+interruptible: a crawl killed at page 180 of 200 has to leave 180 _valid_
+records, not one truncated document that parses to nothing. It also lets
+`--report` stream the store instead of loading a 200-page dataset into memory.
+A half-written final line — what a killed process leaves — is counted on the
+summary's `unread` row as an unparseable line and the scan continues past it;
+199 good records are not lost to the 200th.
+
+Each record carries the URL, its depth, the timestamp of the fetch attempt,
+the outcome, the requested domains' reports, and any extract warnings for that
+page. A page that 404s, times out, or fails to parse is a record with its
+error rather than an absence, on the principle the rest of the tool follows: a
+gap a caller can see is a fact, a gap it cannot see is a lie.
+
+`state.json` is rewritten atomically after every page, so a kill that arrives
+without warning leaves a resumable crawl rather than a corrupt one, and a URL
+that was in flight goes back onto the queue rather than being lost.
+
+- `pc crawl --resume <name>` reads that state and continues. `--limit` is a
+  budget per run rather than a permanent ceiling: resuming a crawl that spent
+  its budget grants it another one, while resuming an interrupted crawl
+  finishes the budget it had.
+- `pc crawl --report [<name>] [--json]` summarizes a store, including an
+  interrupted one — a crawl store is a legitimate end state, not only a
+  waypoint. With no name it reports on the most recently updated crawl in the
+  directory; with no crawl in the directory at all it says so and exits
+  non-zero, rather than printing an empty summary.
+
+### What a crawl extracts
+
+The frontier follows same-origin links — `content` links before `nav` and
+`footer` ones, since a site's chrome links to the same twenty pages from every
+page — and `entities.pagination` targets ahead of both, because pagination is
+how a catalogue exposes its own contents. It skips external hosts,
+non-document schemes (`mailto:`, `tel:`, `javascript:`), and URLs already
+seen, where seen means _enqueued_ rather than fetched, which is the property
+that makes a cyclic site terminate. Normalization is explicit for the same
+reason: the fragment dropped, the host lowercased but never the path, a
+trailing `index.html` stripped, query parameters sorted and tracking
+parameters (`utm_*`, `gclid`, `fbclid`) dropped — two URLs differing only by a
+campaign tag are one page, and treating them as two is the classic way a
+crawler runs forever on a finite site.
+
+`--limit` caps pages at 25 by default and `--depth` caps levels from the seed
+at 3, so an unqualified `pc crawl` is a sample rather than a commitment.
+
+Domain flags are the same five document domains `pc data` takes —
+`--structured`, `--entities`, `--content`, `--design`, `--links` — and `--all`
+requests those five and no more. The observation domains (`network`, `stack`,
+`vitals`) need a page armed with `--record` before it loads, and `pc crawl`
+deliberately has no `--record`: a browser plus a settle window per page across
+hundreds of pages is a different tool, and offering the flags without it would
+only write "not recorded" two hundred times. With no domain flag a crawl
+extracts `structured`, `entities`, and `links` — not the availability summary
+`pc data` prints for a single page, since 200 pages' worth of "something was
+here" is 200 wasted fetches.
+
+Crawling is **static by default**: each page is fetched and extracted exactly
+the way `pc data` does it, escalating to a real browser only where `pc open`
+already would — an unrendered SPA shell. No session is written, so a crawl
+neither disturbs nor is disturbed by the handles you are holding in that
+directory.
+
 ## `pc mcp`
 
 Starts an MCP server over stdio, exposing every command above as a typed
 tool (`pc_open`, `pc_do`, `pc_read`, `pc_find`, `pc_next`, `pc_layout`,
-`pc_tokens`, `pc_scrape`, `pc_data`, `pc_capture`). `pc_data` takes a
-`domains` array mirroring the flags — omit it for the availability summary —
-and an optional `url` to open first. Two environment variables control
+`pc_tokens`, `pc_scrape`, `pc_data`, `pc_crawl`, `pc_capture`). `pc_data`
+takes a `domains` array mirroring the flags — omit it for the availability
+summary — and an optional `url` to open first. `pc_crawl` mirrors `pc crawl`'s
+flags the same way, including `resume` and `report`, and always answers with
+the crawl's summary as JSON plus the store path — never the records: a
+200-page dataset is not a tool result, and a follow-up can read exactly the
+part of the store it wants. Its per-page progress is suppressed, an MCP client
+having no terminal to print it to. Two environment variables control
 `pc_capture`'s default output location:
 
 - `QUICK_CAPS_MCP_ARTIFACT_ROOT` — defaults to a per-user directory under
@@ -198,6 +353,10 @@ setup, the test suite, and the release process.
   computed style — an image's natural size, the fonts actually loaded — are
   therefore never reported by this command, on a browser-backed session or a
   static one. The report names what it skipped.
+- `crawl`'s `content` and `design` domains extract from the serialized DOM,
+  the same way `data`'s do, so the fields that would need a computed style are
+  absent from a crawl record too — and unlike `pc data`, a record carries no
+  warning saying so. Read the absence as "not measured", not as "not there".
 - No CDP attach to a real running browser — every `open`/`capture` starts
   from a clean, unauthenticated browser context or a plain fetch. Real
   cookies/sessions are never available to this tool.

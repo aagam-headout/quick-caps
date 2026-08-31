@@ -36,7 +36,14 @@ authors, content quality, design system, link graph. Called with no domain
 flag it prints only what each domain found and how much, so a caller can see
 whether a page is worth the tokens before spending them.
 
-Wire the same ten commands into an MCP client as tools:
+`pc crawl <url>` asks that same question of a whole site: it walks
+same-origin links and pagination from a seed, extracts from every page, and
+writes one JSON Lines record per page into a resumable store under
+`.quick-caps/crawls/`. It is polite by default — robots.txt honoured
+including `crawl-delay`, one request per second, one request at a time — and
+every way of opting out of that has to be typed.
+
+Wire the same eleven commands into an MCP client as tools:
 
 ```bash
 claude mcp add quick-caps -- npx -y quick-caps-cli mcp
