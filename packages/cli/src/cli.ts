@@ -8,6 +8,7 @@ import { runTokens } from './commands/tokens.js';
 import { runScrape } from './commands/scrape.js';
 import { runCapture, type CaptureArgs } from './commands/capture.js';
 import { startMcpServer } from './mcp/server.js';
+import { HELP_TEXT } from './help.js';
 import { CliError } from './errors.js';
 
 /**
@@ -20,6 +21,21 @@ export async function dispatch(
   cwd: string = process.cwd(),
 ): Promise<string> {
   const [command, ...rest] = argv;
+
+  // Checked before the switch so the flags win from any position: `pc
+  // --help` and `pc open --help` both print usage rather than the second
+  // dispatching a real fetch against a URL the user never supplied. The
+  // bare word `help` is only honored as the command itself — `pc find help`
+  // is a search for the word, not a request for this text.
+  if (
+    command === undefined ||
+    command === 'help' ||
+    rest.some((arg) => arg === '--help' || arg === '-h') ||
+    command === '--help' ||
+    command === '-h'
+  ) {
+    return HELP_TEXT;
+  }
 
   switch (command) {
     case 'open': {
@@ -71,7 +87,7 @@ export async function dispatch(
       return '';
     default:
       throw new CliError(
-        `Unknown command: ${command ?? '(none)'}. Expected one of: open, do, read, find, next, layout, tokens, scrape, capture, mcp.`,
+        `Unknown command: ${command}. Expected one of: open, do, read, find, next, layout, tokens, scrape, capture, mcp — run 'pc --help' for usage.`,
       );
   }
 }

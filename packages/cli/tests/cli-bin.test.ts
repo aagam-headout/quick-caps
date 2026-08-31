@@ -70,6 +70,23 @@ describe('pc bin (end-to-end)', () => {
     });
   }, 30_000);
 
+  it('prints help and exits 0 for --help', async () => {
+    const { stdout, stderr } = await execFileAsync(
+      'node',
+      [binPath, '--help'],
+      {
+        cwd,
+      },
+    );
+    expect(stdout).toContain('Usage: pc <command>');
+    expect(stderr).toBe('');
+  }, 30_000);
+
+  it('prints help and exits 0 when invoked with no arguments', async () => {
+    const { stdout } = await execFileAsync('node', [binPath], { cwd });
+    expect(stdout).toContain('Usage: pc <command>');
+  }, 30_000);
+
   it('runs a full open -> layout -> scrape sequence through the real bin', async () => {
     await execFileAsync('node', [binPath, 'open', baseUrl], { cwd });
     const { stdout: layoutOut } = await execFileAsync(

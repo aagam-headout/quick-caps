@@ -125,4 +125,57 @@ describe('dispatch — extended commands', () => {
     expect(result).toBe('');
     expect(startMcpServer).toHaveBeenCalledOnce();
   });
+
+  it('routes "--help" to the help text', async () => {
+    const output = await dispatch(['--help']);
+    expect(output).toContain('Usage: pc <command>');
+    expect(output).toContain('open <url>');
+  });
+
+  it('routes "-h" to the same help text', async () => {
+    expect(await dispatch(['-h'])).toBe(await dispatch(['--help']));
+  });
+
+  it('routes the "help" subcommand to the same help text', async () => {
+    expect(await dispatch(['help'])).toBe(await dispatch(['--help']));
+  });
+
+  it('prints help instead of erroring when invoked with no arguments', async () => {
+    expect(await dispatch([])).toBe(await dispatch(['--help']));
+  });
+
+  it('lists every dispatchable command in the help text', async () => {
+    const help = await dispatch(['--help']);
+    for (const command of [
+      'open',
+      'next',
+      'do',
+      'read',
+      'find',
+      'layout',
+      'tokens',
+      'scrape',
+      'capture',
+      'mcp',
+    ]) {
+      expect(help).toMatch(new RegExp(`^\\s+pc ${command}\\b`, 'm'));
+    }
+  });
+
+  it('points at --help in the unknown-command error', async () => {
+    await expect(dispatch(['bogus'])).rejects.toThrow(/pc --help/);
+  });
+
+  it('honors --help after a command instead of running it', async () => {
+    const { runOpen } = await import('../src/commands/open.js');
+    vi.mocked(runOpen).mockClear();
+    expect(await dispatch(['open', '--help'])).toBe(await dispatch(['--help']));
+    expect(runOpen).not.toHaveBeenCalled();
+  });
+
+  it('treats a bare "help" argument to a command as that command\'s input', async () => {
+    const { runFind } = await import('../src/commands/find.js');
+    await dispatch(['find', 'help']);
+    expect(runFind).toHaveBeenCalledWith('help', expect.any(String));
+  });
 });

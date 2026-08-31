@@ -7,7 +7,26 @@
     "type": "git",
     "url": "git+https://github.com/aagam-headout/quick-caps.git"
   },
-  "homepage": "https://github.com/aagam-headout/quick-caps#readme",
+  "homepage": "https://github.com/aagam-headout/quick-caps/tree/main/packages/cli#readme",
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "model-context-protocol",
+    "agent",
+    "cli",
+    "web-scraping",
+    "playwright",
+    "dom",
+    "design-tokens",
+    "page-capture"
+  ],
+  "mcpName": "io.github.aagam-headout/quick-caps",
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -26,7 +45,7 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "dev": "tsx src/cli.ts",
+    "dev": "tsx src/main.ts",
     "prepublishOnly": "pnpm run build"
   },
   "dependencies": {

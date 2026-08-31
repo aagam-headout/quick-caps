@@ -7,7 +7,21 @@
     "type": "git",
     "url": "git+https://github.com/aagam-headout/quick-caps.git"
   },
-  "homepage": "https://github.com/aagam-headout/quick-caps#readme",
+  "homepage": "https://github.com/aagam-headout/quick-caps/tree/main/packages/core#readme",
+  "keywords": [
+    "dom",
+    "page-capture",
+    "design-tokens",
+    "distillation",
+    "agent",
+    "html-archive"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

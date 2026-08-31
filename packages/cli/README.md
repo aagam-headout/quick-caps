@@ -7,16 +7,28 @@ page, `do` an action by number, `read` a region in full, `find` a query,
 single-file HTML or zip archive. Same functions are also exposed as MCP
 tools over stdio (`pc mcp`).
 
+## Requirements
+
+Node 22 or newer. Installing pulls Playwright, which downloads a Chromium
+build on first install (a few hundred MB) — that download is what lets
+`pc` render pages a plain fetch can't. Commands that never need a browser
+(`pc open --static`, `read`, `find`, `next`, `scrape`) work without it.
+
 ## Install / run
 
 ```bash
 npx quick-caps-cli open https://example.com
+npx quick-caps-cli --help
 ```
 
 Note: the npm package is named `quick-caps-cli`, but the command it
 installs is `pc` — `npx quick-caps-cli <command>` runs `pc <command>`
 directly. A local or global install (`npm install -g quick-caps-cli`)
 additionally exposes `pc` on your `PATH`.
+
+Run `pc --help` (or `pc help`, `pc -h`, or `pc` with no arguments) for the
+full command reference, including the handle-numbering rules that trip up
+first-time users.
 
 ## Commands
 
@@ -30,6 +42,7 @@ additionally exposes `pc` on your `PATH`.
 - `pc scrape <shape>` — schema-driven field extraction, e.g. `pc scrape '{"title":"h1"}'`.
 - `pc capture [--zip] [--out <dir>]` — full archive to disk.
 - `pc mcp` — the same nine tools, over an MCP stdio server.
+- `pc --help` — full usage, notes, and environment variables.
 
 Every command is stateful across invocations within one directory: a
 `.quick-caps/session.json` file holds the current page, its numbered
@@ -48,6 +61,34 @@ tool (`pc_open`, `pc_do`, `pc_read`, `pc_find`, `pc_next`, `pc_layout`,
 - `QUICK_CAPS_MCP_ARTIFACT_RETENTION_MS` — files older than this are swept
   before each `pc_capture` call. Defaults to 24 hours.
 
+### Adding it to an MCP client
+
+Claude Code:
+
+```bash
+claude mcp add quick-caps -- npx -y quick-caps-cli mcp
+```
+
+Claude Desktop, Cursor, or any client that reads a JSON config
+(`claude_desktop_config.json` and friends):
+
+```json
+{
+  "mcpServers": {
+    "quick-caps": {
+      "command": "npx",
+      "args": ["-y", "quick-caps-cli", "mcp"]
+    }
+  }
+}
+```
+
+The server's session state and `pc_capture`'s default output directory are
+resolved from the server process's working directory and
+`QUICK_CAPS_MCP_ARTIFACT_ROOT` respectively, so a client that spawns the
+server from a project root shares one session with a `pc` invoked in that
+same directory from a shell.
+
 ## When to use `only-cli` instead
 
 [`only-cli`](https://www.npmjs.com/package/@only-cli/oc) works from a
@@ -60,10 +101,8 @@ actual computed colors/spacing/type scale, not just text.
 
 ## Local development
 
-Run `pnpm --filter quick-caps-cli dev -- <command>` (or `pnpm run dev -- <command>`
-from `packages/cli`) to run `src/cli.ts` directly via `tsx`, so edits under
-`src/` take effect immediately instead of silently running against a stale
-`dist/` build.
+See [CONTRIBUTING.md](../../CONTRIBUTING.md) in the repository root for
+setup, the test suite, and the release process.
 
 ## Known limitations
 
