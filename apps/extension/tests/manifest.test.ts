@@ -60,11 +60,15 @@ describe('manifest', () => {
     expect(manifest.background.service_worker).toBe('src/background/index.ts');
   });
 
-  it('registers the recorder at document_start in the main world', () => {
-    const script = manifest.content_scripts[0]!;
-    expect(script.run_at).toBe('document_start');
-    expect(script.world).toBe('MAIN');
-    expect(script.matches).toEqual(['<all_urls>']);
+  /**
+   * The recorder is registered from the service worker instead, and only while
+   * a setting consumes what it observes - see
+   * background/recorder-registration.ts. A static entry here would run it on
+   * every page the user visits regardless, which is what this asserts is gone:
+   * a MAIN-world script has no chrome.* and so cannot check a setting itself.
+   */
+  it('declares no content script, so nothing runs on a page unasked', () => {
+    expect('content_scripts' in manifest).toBe(false);
   });
 
   it('declares all six icon sizes', () => {

@@ -66,11 +66,22 @@ describe('build artifacts', () => {
     expect(statSync(join(dist, 'assets', chunk!)).size).toBeLessThan(66_000);
   });
 
-  it('registers the recorder content script in the built manifest', () => {
+  it('builds the dynamically registered recorder', () => {
+    // Must match RECORDER_SCRIPT's js entry in
+    // src/background/recorder-registration.ts. Nothing type-checks that string
+    // against the build output, and a missing file here means the log, perf and
+    // data toggles silently produce nothing.
+    expect(existsSync(join(dist, 'recorder.js'))).toBe(true);
+  });
+
+  it('ships a built manifest with no content script at all', () => {
+    // The counterpart of the check above: the recorder used to be a manifest
+    // content script matching <all_urls>, which patched console, fetch and
+    // XMLHttpRequest on every page visited whether or not a setting consumed
+    // it. It must not come back through the crxjs build.
     const manifest = JSON.parse(
       readFileSync(join(dist, 'manifest.json'), 'utf8'),
-    ) as { content_scripts: { js: string[]; world: string }[] };
-    expect(manifest.content_scripts[0]!.world).toBe('MAIN');
-    expect(manifest.content_scripts[0]!.js.length).toBeGreaterThan(0);
+    ) as Record<string, unknown>;
+    expect('content_scripts' in manifest).toBe(false);
   });
 });

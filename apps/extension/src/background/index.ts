@@ -7,6 +7,7 @@ import { OffscreenClient } from './offscreen-client.js';
 import { CaptureSession } from './session.js';
 import { hasHostPermission as checkHostPermission } from './permissions.js';
 import { restrictionFor } from './restricted.js';
+import { syncRecorderRegistration } from './recorder-registration.js';
 import {
   FETCH_RESOURCE,
   IR_KEY,
@@ -704,6 +705,12 @@ chrome.runtime.onInstalled.addListener((details) => {
     });
   });
 
+  // An update from a version that registered the recorder from the manifest
+  // arrives with nothing registered dynamically, and a fresh install with the
+  // observation toggles off arrives wanting nothing registered. Both are the
+  // same reconcile.
+  void loadSettings().then(syncRecorderRegistration);
+
   // Explains what Quick-Caps will ask permission for, and why, before Chrome's
   // native prompt shows up unexplained on the first capture. Skipped on
   // update/browser-update reinstalls, which is not a first impression.
@@ -771,4 +778,25 @@ chrome.runtime.onConnect.addListener((port) => {
 // A checkpoint surviving a worker restart means the previous capture died.
 chrome.runtime.onStartup.addListener(() => {
   void new CaptureSession().clear();
+  // The registration persists across sessions, so this is a correction, not
+  // the primary path: it catches a profile whose stored settings changed while
+  // the extension was disabled.
+  void loadSettings().then(syncRecorderRegistration);
+});
+
+/**
+ * The recorder is only registered while a setting consumes what it observes, so
+ * the moment those settings change is the moment the registration has to
+ * change. Storage is the seam rather than a message from the popup: the popup
+ * is not the only writer (settings sync between profiles), and a storage change
+ * wakes the worker on its own.
+ *
+ * A page already open when a toggle is switched on has no recorder in it -
+ * nothing can retroactively observe requests that already happened - so the
+ * change takes effect on that tab's next load. The popup and the README already
+ * say to reload before capturing a log.
+ */
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'sync' || !(SETTINGS_KEY_STORAGE in changes)) return;
+  void loadSettings().then(syncRecorderRegistration);
 });

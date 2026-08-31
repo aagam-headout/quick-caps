@@ -65,6 +65,13 @@ user's local disk.
 - **`offscreen`** — runs the archive-building step (assembling the zip or
   single-file blob) in an offscreen document, since a Manifest V3 service
   worker cannot use the Blob/DOM APIs that step needs.
+- **`contextMenus`** — adds the single right-click entry "Capture page with
+  Quick-Caps", so a capture can be started without opening the popup. Nothing
+  else is added to the menu, and no page content is read to build it.
+- **`notifications`** — the keyboard shortcut and the right-click entry run
+  with no popup open, so a Chrome notification is the only way to tell the user
+  the capture finished (with the filename) or failed (with the reason). Used
+  for nothing else.
 - **`<all_urls>` (optional, requested at capture time, not at install)** —
   lets the extension fetch a page's own cross-origin assets (stylesheets,
   fonts, scripts served from a different domain) on the user's behalf,

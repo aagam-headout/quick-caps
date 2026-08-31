@@ -198,6 +198,41 @@ async function capture(
   return { filename, warnings: result.warnings ?? [], path };
 }
 
+/**
+ * Stores settings and waits for the recorder registration to catch up, before
+ * the page under test is even loaded.
+ *
+ * The recorder is registered dynamically, only while a setting consumes it, and
+ * it has to be in place at document_start to observe anything - so a capture
+ * that wants logs has to have had the toggle on *before* the page loaded. This
+ * is that ordering, made explicit; `capture` below stores the same settings
+ * again, which is harmless.
+ */
+async function applySettingsBeforeLoad(
+  settings: Record<string, unknown>,
+  expectRecorder: boolean,
+): Promise<void> {
+  const driver = await extensionPage();
+  await driver.evaluate(
+    async ([applied, wanted]) => {
+      await chrome.storage.sync.set({ settings: applied });
+      const deadline = Date.now() + 10_000;
+      for (;;) {
+        const ids = (await chrome.scripting.getRegisteredContentScripts()).map(
+          (script) => script.id,
+        );
+        if (ids.includes('quick-caps-recorder') === wanted) return;
+        if (Date.now() > deadline) {
+          throw new Error(`recorder registration never settled: ${ids.join()}`);
+        }
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    },
+    [settings, expectRecorder] as [Record<string, unknown>, boolean],
+  );
+  await driver.close();
+}
+
 test('the extension loads and registers a service worker', () => {
   expect(extensionId).toMatch(/^[a-z]{32}$/);
 });
@@ -236,9 +271,9 @@ test('the captured file renders offline and requests nothing', async () => {
   const requests: string[] = [];
   offline.on('request', (request) => {
     const url = request.url();
-    // The archive itself, and this extension injecting its own recorder into
-    // the page being viewed. Neither is the archive reaching for the network,
-    // which is the invariant under test.
+    // The archive itself, and anything this extension loads into the page
+    // being viewed. Neither is the archive reaching for the network, which is
+    // the invariant under test.
     if (url.startsWith('file:') || url.startsWith('chrome-extension:')) return;
     requests.push(url);
   });
@@ -296,6 +331,41 @@ test('produces a zip carrying the page and its extras', async () => {
  * about:, file:, and the Web Store. What is worth proving end to end is that
  * the worker refuses before injecting, which the next test does.
  */
+
+/**
+ * The whole point of the dynamic registration: with the toggles off nothing
+ * patches a page the user merely visits, and with one on the log path still
+ * works end to end. Both halves are asserted here because only a real browser
+ * runs the registration - a dynamically registered script injects only where a
+ * host permission is actually granted, which no unit test can tell you.
+ */
+test('records the page console only once a setting asks for it', async () => {
+  // Zip on both sides: logs.json is a zip entry, so its absence is only
+  // evidence in an archive that would have carried it.
+  const offSettings = { ...BASE_SETTINGS, output: 'zip' };
+  const logSettings = {
+    ...offSettings,
+    include: { ...BASE_SETTINGS.include, logs: true },
+  };
+
+  await applySettingsBeforeLoad(offSettings, false);
+  const off = await capture('static.html', offSettings);
+  const { unzipSync } = await import('fflate');
+  // logs: false, and no recorder was in the page to have anything to write.
+  expect(
+    Object.keys(unzipSync(new Uint8Array(await readFile(off.path)))),
+  ).not.toContain('logs.json');
+
+  await applySettingsBeforeLoad(logSettings, true);
+  const on = await capture('static.html', logSettings);
+  const entries = unzipSync(new Uint8Array(await readFile(on.path)));
+  expect(Object.keys(entries)).toContain('logs.json');
+  // static.html loads app.js, which console.logs exactly this at load time -
+  // so only a recorder that was already installed at document_start sees it.
+  expect(new TextDecoder().decode(entries['logs.json'])).toContain(
+    'fixture script ran',
+  );
+});
 
 test('refuses a tab that no longer exists, in plain words', async () => {
   const driver = await extensionPage();
