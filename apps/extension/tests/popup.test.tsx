@@ -438,11 +438,8 @@ describe('popup', () => {
 
     // Not applied yet - a confirm strip stands in the way first.
     expect(
-      (
-        (await screen.findByLabelText(
-          /design tokens/i,
-        )) as HTMLInputElement
-      ).checked,
+      ((await screen.findByLabelText(/design tokens/i)) as HTMLInputElement)
+        .checked,
     ).toBe(false);
     const switchButton = await screen.findByRole('button', {
       name: /^switch$/i,

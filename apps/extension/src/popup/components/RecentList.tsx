@@ -59,8 +59,9 @@ export function RecentList({
   // no "open this folder path" API - chrome.downloads.show anchors on a
   // specific download and reveals its containing folder, so the newest entry
   // with a live downloadId stands in for "the folder".
-  const folderAnchor = entries.find((entry) => entry.downloadId !== undefined)
-    ?.downloadId;
+  const folderAnchor = entries.find(
+    (entry) => entry.downloadId !== undefined,
+  )?.downloadId;
 
   const openFolder = (): void => {
     if (folderAnchor === undefined) return;
