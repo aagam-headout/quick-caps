@@ -15,6 +15,7 @@ import {
   CrawlStore,
   createCrawlState,
   readCrawlRecords,
+  summarizeCrawl,
   type CrawlFrontierSnapshot,
   type CrawlState,
 } from '../../src/crawl/store.js';
@@ -238,13 +239,16 @@ function testPoliteness(
     disallow?: RegExp;
     stopAfterFailures?: number;
     waitMs?: number;
+    /** How many times the wait is handed out. Unbounded models a host in a
+     * long backoff, which is where an interrupt has to still land. */
+    waits?: number;
   } = {},
 ): PolitenessLike & { requests: string[]; outcomes: RequestOutcome[] } {
   let failures = 0;
   let stop:
     { kind: 'consecutive-errors'; host: string; count: number } | undefined;
   const robots = new Set<string>();
-  let waitsLeft = options.waitMs === undefined ? 0 : 1;
+  let waitsLeft = options.waitMs === undefined ? 0 : (options.waits ?? 1);
   const requests: string[] = [];
   /** Every outcome the runner reported, verbatim: what the runner knows about
    * a response is only worth as much as what reaches this call. */
@@ -512,17 +516,80 @@ describe('executeCrawl', () => {
     expect(politeness.outcomes).toEqual([{ ok: false, status: 404 }]);
   }, 30_000);
 
-  // Defect 3: a crawl extracts from a serialized DOM, exactly as `pc data`
-  // does, so a record whose computed-style fields are missing must say why.
-  it('annotates a record whose domains ran without computed styles', async () => {
-    await run({ seed: `${baseUrl}/a`, limit: 1, domains: ['content'] });
+  // Finding 1, the runner's half: a backoff is waited with a timer, and a
+  // SIGINT arriving mid-wait must end the crawl rather than being queued
+  // behind it. `Retry-After: 86400` is a real header, so the wait here is a
+  // real day — before the abortable sleep this test does not fail, it hangs.
+  it('ends promptly when the signal aborts during a long backoff', async () => {
+    const controller = new AbortController();
+    const startedAt = Date.now();
+    const timer = setTimeout(() => controller.abort(), 50);
+    let state: CrawlState;
+    try {
+      state = await run({
+        seed: `${baseUrl}/a`,
+        limit: 1,
+        politeness: testPoliteness({
+          waitMs: 24 * 60 * 60 * 1_000,
+          waits: Number.POSITIVE_INFINITY,
+        }),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+
+    expect(Date.now() - startedAt).toBeLessThan(5_000);
+    expect(state.stopReason).toBe('interrupted');
+    // Flushed and resumable: the URL that was waiting out the backoff is back
+    // on the queue rather than lost to a frontier that already saw it.
+    const persisted = await CrawlStore.open(cwd, 'fixture').then((store) =>
+      store.readState(),
+    );
+    expect(persisted?.stopReason).toBe('interrupted');
+    expect(persisted?.frontier.queue.map((entry) => entry.url)).toContain(
+      `${baseUrl}/a`,
+    );
+  }, 20_000);
+
+  // Defect 3, relocated by finding 4: the annotation a caller needs in order
+  // to know why a computed-style field is absent is a fact about the crawl —
+  // identical on every page — so it is reported once, at the crawl level,
+  // rather than copied into all 500 records where it would swamp the warnings
+  // tally that exists to surface the handful of real per-page ones.
+  it('states the computed-style degradation once, for the crawl', async () => {
+    const state = await run({
+      seed: `${baseUrl}/a`,
+      limit: 1,
+      domains: ['content'],
+    });
+
+    expect(
+      state.warnings?.map((warning) => warning.reason).join(' '),
+    ).toContain('content: skipped every field needing computed styles');
+  }, 30_000);
+
+  it('keeps the boilerplate out of every record, and out of the tally', async () => {
+    const state = await run({ limit: 3, domains: ['design'] });
 
     const { records } = await readCrawlRecords(
       CrawlStore.dirFor(cwd, 'fixture'),
     );
+    expect(records).toHaveLength(3);
+    // Not once per record: the sentence is the same on all of them, and 500
+    // copies of it is 500 warnings hiding the real ones.
     expect(
-      records[0]?.warnings?.map((warning) => warning.reason).join(' '),
-    ).toContain('content: skipped every field needing computed styles');
+      records
+        .flatMap((record) => record.warnings ?? [])
+        .filter((warning) => warning.reason.includes('computed styles')),
+    ).toEqual([]);
+    expect(state.warnings).toHaveLength(1);
+    const summary = await summarizeCrawl(
+      CrawlStore.dirFor(cwd, 'fixture'),
+      'fixture',
+    );
+    expect(summary.warnings).toBe(0);
+    expect(summary.crawlWarnings).toHaveLength(1);
   }, 30_000);
 
   it('extracts only the requested domains', async () => {

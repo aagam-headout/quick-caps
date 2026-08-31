@@ -4,6 +4,7 @@ import {
   BACKOFF_MAX_MS,
   DEFAULT_CONCURRENCY,
   DEFAULT_MAX_CONSECUTIVE_ERRORS,
+  DEFAULT_MAX_TOTAL_ERRORS,
   DEFAULT_REQUESTS_PER_SECOND,
   DEFAULT_USER_AGENT,
   MAX_FAILING_HOSTS,
@@ -566,6 +567,200 @@ describe('Politeness backoff and stop conditions', () => {
       politeness.noteOutcome(host, { ok: false, status: 500 });
     }
     expect(politeness.stop).toBeUndefined();
+  });
+
+  // Finding 1: the ladder has a ceiling and a server-sent Retry-After must
+  // not walk around it. `Retry-After: 86400` is a real header, and honouring
+  // it literally parks a worker for a day.
+  it('clamps a Retry-After the ladder would never have reached', () => {
+    const clock = fakeClock();
+    const politeness = new Politeness({ clock, requestsPerSecond: 1_000 });
+    politeness.noteRequest('example.com');
+    politeness.noteOutcome('example.com', {
+      ok: false,
+      status: 429,
+      retryAfterSeconds: 86_400,
+    });
+    expect(politeness.permit('example.com')).toEqual({
+      kind: 'wait',
+      ms: BACKOFF_MAX_MS,
+      reason: 'backoff',
+    });
+  });
+
+  // Finding 1, the other end of it: a wait past 2**31-1 ms overflows a Node
+  // timer, which fires after 1ms — so an enormous Retry-After honoured
+  // literally yields *no* backoff at all, the opposite of what it asked for.
+  it('never asks for a wait longer than a timer can hold', () => {
+    const clock = fakeClock();
+    const politeness = new Politeness({ clock, requestsPerSecond: 1_000 });
+    politeness.noteRequest('example.com');
+    politeness.noteOutcome('example.com', {
+      ok: false,
+      status: 503,
+      // 30 days, as seen in the wild behind a proxy.
+      retryAfterSeconds: 2_592_000,
+    });
+    const permit = politeness.permit('example.com');
+    if (permit.kind !== 'wait') throw new Error('expected a backoff wait');
+    // Node's setTimeout ceiling: a wait past it fires after 1ms with a
+    // TimeoutOverflowWarning, so the largest headers would yield no backoff.
+    expect(permit.ms).toBeLessThanOrEqual(2 ** 31 - 1);
+    expect(permit.ms).toBe(BACKOFF_MAX_MS);
+  });
+
+  // Finding 3: `Retry-After: 0` — or a stale HTTP-date behind a clock-skewed
+  // proxy, which parses to the same 0 — must not buy a failing host an
+  // instant retry. The parse stays honest about what the server said; the
+  // *applied* backoff is floored, which is what the ladder is for.
+  it('floors a Retry-After of zero at the base backoff', () => {
+    const clock = fakeClock();
+    const politeness = new Politeness({
+      clock,
+      requestsPerSecond: 1_000,
+      maxConsecutiveErrors: 5,
+    });
+    // Both forms the server can express "come back now" in.
+    expect(parseRetryAfterSeconds('0', clock.now())).toBe(0);
+    for (let attempt = 1; attempt < 5; attempt += 1) {
+      politeness.noteRequest('example.com');
+      politeness.noteOutcome('example.com', {
+        ok: false,
+        status: 503,
+        retryAfterSeconds: 0,
+      });
+      expect(politeness.permit('example.com')).toEqual({
+        kind: 'wait',
+        ms: BACKOFF_BASE_MS,
+        reason: 'backoff',
+      });
+      clock.advance(BACKOFF_BASE_MS);
+    }
+    // Five retries at a second apiece, not five instant ones: the host is
+    // given up on rather than hammered.
+    politeness.noteRequest('example.com');
+    politeness.noteOutcome('example.com', {
+      ok: false,
+      status: 503,
+      retryAfterSeconds: 0,
+    });
+    expect(politeness.stop).toEqual({
+      kind: 'consecutive-errors',
+      host: 'example.com',
+      count: 5,
+    });
+  });
+
+  // Finding 2: `consecutiveErrors` is only cleared by a success on that host,
+  // so a host that failed once an hour ago and was never requested again sits
+  // at 1 forever. Without a recency bound those stale counters make the
+  // all-hosts condition fire the moment the one host doing the work has a
+  // single transient blip.
+  it('does not read a long-idle host’s stale counter as a host failing now', () => {
+    const clock = fakeClock();
+    const politeness = new Politeness({
+      clock,
+      requestsPerSecond: 1_000,
+      maxConsecutiveErrors: 5,
+    });
+    // a and b each fail once in the first minute and hold one URL apiece, so
+    // they are never requested again.
+    for (const host of ['a.example', 'b.example']) {
+      politeness.noteRequest(host);
+      politeness.noteOutcome(host, { ok: false, status: 500 });
+    }
+    // c does all the work for the next forty minutes, successfully.
+    for (let page = 0; page < 5; page += 1) {
+      clock.advance(8 * 60_000);
+      politeness.noteRequest('c.example');
+      politeness.noteOutcome('c.example', { ok: true, status: 200 });
+    }
+    // One transient 500 on c, forty minutes after a and b last said anything.
+    politeness.noteRequest('c.example');
+    politeness.noteOutcome('c.example', { ok: false, status: 500 });
+
+    expect(politeness.stop).toBeUndefined();
+  });
+
+  // Finding 5: making the stop per host was right, but nothing replaced the
+  // global ceiling, and all-hosts-failing needs *every* attempted host to be
+  // failing. A broad crawl where one host is healthy and thirty-nine each sit
+  // just under their own limit would otherwise run forever.
+  it('stops on the crawl-wide error budget when no single host spends its own', () => {
+    const clock = fakeClock();
+    const politeness = new Politeness({
+      clock,
+      requestsPerSecond: 1_000,
+      maxConsecutiveErrors: 5,
+    });
+    // The healthy host keeps all-hosts-failing off the table throughout.
+    politeness.noteRequest('healthy.example');
+    politeness.noteOutcome('healthy.example', { ok: true, status: 200 });
+    for (let host = 0; host < 39; host += 1) {
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        politeness.noteRequest(`h${host}.example`);
+        politeness.noteOutcome(`h${host}.example`, { ok: false, status: 503 });
+        clock.advance(BACKOFF_MAX_MS);
+      }
+    }
+    expect(politeness.stop).toEqual({
+      kind: 'error-budget',
+      errors: DEFAULT_MAX_TOTAL_ERRORS,
+      budget: DEFAULT_MAX_TOTAL_ERRORS,
+    });
+  });
+
+  it('leaves a crawl that is mostly working alone, inside the budget', () => {
+    const clock = fakeClock();
+    const politeness = new Politeness({
+      clock,
+      requestsPerSecond: 1_000,
+      maxConsecutiveErrors: 5,
+    });
+    politeness.noteRequest('healthy.example');
+    politeness.noteOutcome('healthy.example', { ok: true, status: 200 });
+    // Ten scattered transient failures across five hosts: a normal crawl of a
+    // flaky site, and not a crawl with a problem of its own.
+    for (let host = 0; host < 5; host += 1) {
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        politeness.noteRequest(`h${host}.example`);
+        politeness.noteOutcome(`h${host}.example`, { ok: false, status: 500 });
+        clock.advance(BACKOFF_MAX_MS);
+        politeness.noteRequest(`h${host}.example`);
+        politeness.noteOutcome(`h${host}.example`, { ok: true, status: 200 });
+      }
+    }
+    expect(politeness.stop).toBeUndefined();
+  });
+
+  // The budget counts host-level failures the crawl actually saw, one apiece.
+  // It is deliberately not the per-host counters summed — that was the bug the
+  // previous commit fixed, and a summed budget would name a host that never
+  // spent its own limit.
+  it('counts each failure once toward the budget rather than summing ladders', () => {
+    const clock = fakeClock();
+    const politeness = new Politeness({
+      clock,
+      requestsPerSecond: 1_000,
+      maxConsecutiveErrors: 10,
+      maxTotalErrors: 4,
+    });
+    politeness.noteRequest('healthy.example');
+    politeness.noteOutcome('healthy.example', { ok: true, status: 200 });
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      politeness.noteRequest('a.example');
+      politeness.noteOutcome('a.example', { ok: false, status: 500 });
+      clock.advance(BACKOFF_MAX_MS);
+    }
+    // Three failures on one host is three toward the budget — not 1+2+3.
+    expect(politeness.stop).toBeUndefined();
+    politeness.noteRequest('a.example');
+    politeness.noteOutcome('a.example', { ok: false, status: 500 });
+    expect(politeness.stop).toEqual({
+      kind: 'error-budget',
+      errors: 4,
+      budget: 4,
+    });
   });
 
   it('prefers an HTTP-date Retry-After over the ladder, measured from the clock', () => {

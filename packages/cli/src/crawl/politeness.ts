@@ -231,10 +231,45 @@ export const DEFAULT_MAX_CONSECUTIVE_ERRORS = 5;
  * crawl is broad enough that "none of them is answering" says something the
  * per-host counters cannot. */
 export const MAX_FAILING_HOSTS = 3;
+/** Host-level failures the whole crawl may accumulate before it gives up,
+ * counted once per failure and never reset. The per-host ladder cannot see a
+ * crawl that is broadly broken: forty hosts each sitting one failure short of
+ * their own limit, with one host still answering, trips neither the per-host
+ * stop nor `all-hosts-failing`, and the README promises we stop hammering.
+ * Fifty is far past any healthy crawl — the default page limit is 25 — so this
+ * speaks only for a crawl whose failures are its defining feature. */
+export const DEFAULT_MAX_TOTAL_ERRORS = 50;
 export const BACKOFF_BASE_MS = 1_000;
 /** A minute is long enough to ride out a deploy and short enough that a
  * resumed crawl is not indistinguishable from a hung one. */
 export const BACKOFF_MAX_MS = 60_000;
+/** Node's setTimeout ceiling. A wait past it does not wait longer — it
+ * overflows, warns, and fires after 1ms — so a backoff above this would mean
+ * *no* backoff, the exact opposite of what a large `Retry-After` asked for.
+ * BACKOFF_MAX_MS is well inside it; this is the guard that keeps that true if
+ * the ceiling is ever raised. */
+export const MAX_TIMER_MS = 2 ** 31 - 1;
+
+/**
+ * The backoff actually applied, whoever proposed it.
+ *
+ * Both ends matter, and both were reachable through a server-sent
+ * `Retry-After` before this existed:
+ *
+ * - Floored at the base, because `Retry-After: 0` — or a stale HTTP-date
+ *   behind a clock-skewed proxy, which reads as the same 0 — would otherwise
+ *   buy a failing host five instant retries, which is the hammering the
+ *   ladder exists to prevent. A server asking for *less* than the ladder is
+ *   still honoured; asking for nothing is not.
+ * - Capped at the ceiling, because `Retry-After: 86400` parks a worker for a
+ *   day and `Retry-After: 2592000` overflows the timer. A crawl that has to
+ *   wait longer than a minute is a crawl to resume later, which is what the
+ *   store is for.
+ */
+export function clampBackoffMs(ms: number): number {
+  if (!Number.isFinite(ms)) return Math.min(BACKOFF_MAX_MS, MAX_TIMER_MS);
+  return Math.min(Math.max(ms, BACKOFF_BASE_MS), BACKOFF_MAX_MS, MAX_TIMER_MS);
+}
 /** An identifiable agent, so an operator reading their logs can tell what hit
  * them and act on it. */
 export const DEFAULT_USER_AGENT =
@@ -248,6 +283,8 @@ export type PolitenessOptions = {
    * for sites the caller is entitled to crawl, not as licence to hammer one. */
   ignoreRobots?: boolean;
   maxConsecutiveErrors?: number;
+  /** The crawl-wide budget, alongside the per-host one. */
+  maxTotalErrors?: number;
   clock?: Clock;
 };
 
@@ -313,7 +350,15 @@ export type StopReason =
       kind: 'all-hosts-failing';
       /** How many hosts are failing — all of the ones tried, by definition. */
       hosts: number;
-    };
+    }
+  /** The crawl spent its whole-crawl failure budget. Its own reason, naming no
+   * host, because it is a fact about the crawl and not about any one host: a
+   * broad crawl can accumulate failures indefinitely without any single host
+   * reaching its own limit and without every host being down at once. The
+   * count is failures *observed*, incremented once each — deliberately not the
+   * per-host counters summed, which would end a crawl blaming a host that
+   * never spent its own budget. */
+  | { kind: 'error-budget'; errors: number; budget: number };
 
 /**
  * Whether a request to a host may go now, and if not, why not. One decision
@@ -356,7 +401,11 @@ export class Politeness {
   private readonly concurrency: number;
   private readonly ignoreRobots: boolean;
   private readonly maxConsecutiveErrors: number;
+  private readonly maxTotalErrors: number;
   private readonly clock: Clock;
+  /** Host-level failures this crawl has seen, one per failure. A single
+   * counter, not a sum over hosts: see the `error-budget` stop reason. */
+  private totalErrors = 0;
   private readonly hosts = new Map<string, HostState>();
   /** Absent for a host whose robots.txt is missing or unreadable — present as
    * a key either way, so `hasRobots` answers "have we looked". */
@@ -371,6 +420,7 @@ export class Politeness {
     this.ignoreRobots = options.ignoreRobots ?? false;
     this.maxConsecutiveErrors =
       options.maxConsecutiveErrors ?? DEFAULT_MAX_CONSECUTIVE_ERRORS;
+    this.maxTotalErrors = options.maxTotalErrors ?? DEFAULT_MAX_TOTAL_ERRORS;
     this.clock = options.clock ?? { now: () => Date.now() };
   }
 
@@ -470,23 +520,24 @@ export class Politeness {
     if (!isHostFailure(outcome)) return;
 
     state.consecutiveErrors += 1;
-    const ladder = Math.min(
-      BACKOFF_BASE_MS * 2 ** (state.consecutiveErrors - 1),
-      BACKOFF_MAX_MS,
-    );
-    // A server that said when to come back knows better than the ladder does.
-    const backoffMs =
+    this.totalErrors += 1;
+    const ladder = BACKOFF_BASE_MS * 2 ** (state.consecutiveErrors - 1);
+    // A server that said when to come back knows better than the ladder does —
+    // within the same bounds the ladder itself obeys, which is what
+    // clampBackoffMs is for. Neither proposal escapes them.
+    const backoffMs = clampBackoffMs(
       outcome.retryAfterSeconds !== undefined
         ? outcome.retryAfterSeconds * 1_000
-        : ladder;
+        : ladder,
+    );
     state.retryAtMs = this.clock.now() + backoffMs;
 
     if (state.consecutiveErrors >= this.maxConsecutiveErrors) {
-      this.stopReason = {
+      this.raise({
         kind: 'consecutive-errors',
         host: host.toLowerCase(),
         count: state.consecutiveErrors,
-      };
+      });
       return;
     }
     // The whole-crawl condition, checked only once no single host has tripped
@@ -498,18 +549,47 @@ export class Politeness {
     // Only hosts actually requested count. `permit` creates a host's state on
     // first sight, so a host merely asked about would otherwise sit at zero
     // errors and hold this condition off forever.
+    const now = this.clock.now();
     const attempted = [...this.hosts.values()].filter(
       (other) => other.lastRequestAtMs !== undefined,
     );
+    // "Failing" means failing *now*, not failing once at some point. A host's
+    // consecutiveErrors is cleared only by a success on that host, so a host
+    // that 500ed once in the first minute and holds one URL is never requested
+    // again and sits at 1 forever; without a recency bound those stale
+    // counters make this fire the moment the one host doing the work has a
+    // single transient blip. Its live backoff window is the bound: it is
+    // exactly the period during which the crawl believes the host needs
+    // leaving alone, and a success clears it.
+    const failing = attempted.filter(
+      (other) =>
+        other.consecutiveErrors > 0 &&
+        other.retryAtMs !== undefined &&
+        other.retryAtMs > now,
+    );
     if (
       attempted.length >= MAX_FAILING_HOSTS &&
-      attempted.every((other) => other.consecutiveErrors > 0)
+      failing.length === attempted.length
     ) {
-      this.stopReason = {
-        kind: 'all-hosts-failing',
-        hosts: attempted.length,
-      };
+      this.raise({ kind: 'all-hosts-failing', hosts: attempted.length });
+      return;
     }
+    // Last, because it is the least specific of the three: it says the crawl
+    // as a whole is failing without being able to name who. Reached only when
+    // neither of the attributable conditions applies.
+    if (this.totalErrors >= this.maxTotalErrors) {
+      this.raise({
+        kind: 'error-budget',
+        errors: this.totalErrors,
+        budget: this.maxTotalErrors,
+      });
+    }
+  }
+
+  /** First reason wins. A crawl ends once, and an in-flight request landing
+   * after the stop must not rewrite why. */
+  private raise(reason: StopReason): void {
+    this.stopReason ??= reason;
   }
 
   private hostState(host: string): HostState {

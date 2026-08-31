@@ -121,20 +121,13 @@ export async function fetchAndExtract(
     if (value !== undefined) (data as Record<string, unknown>)[domain] = value;
   }
 
-  // The same annotation `pc data` appends, from the same place: a crawl
-  // extracts from a serialized DOM too, so a record missing its
-  // computed-style fields has to say why it is missing them. Only the
-  // requested domains are named — the discovery domains are not the caller's
-  // and are not persisted.
-  const degraded = computedStyleWarning(
-    domains,
-    'a crawl extracts from each page as fetched, with no live page to compute styles from, because a browser and a settle window per page is a different tool',
-  );
-
+  // The computed-style annotation is not appended here: it is the same
+  // sentence for every page of the crawl, so `executeCrawl` states it once at
+  // the crawl level. What a record carries is what happened to *that* page.
   return {
     driver,
     data,
-    warnings: [...(report.warnings ?? []), ...(degraded ? [degraded] : [])],
+    warnings: [...(report.warnings ?? [])],
     ...(report.links !== undefined && { links: { links: report.links.links } }),
     ...(report.entities !== undefined && {
       pagination: report.entities.pagination,
@@ -189,11 +182,46 @@ function plural(count: number, noun: string): string {
 }
 
 function describeStop(stop: StopReason): string {
-  return stop.kind === 'consecutive-errors'
-    ? `stopped after ${plural(stop.count, 'consecutive error')} on ${stop.host}`
-    : // Named as itself: a crawl that stopped because nothing it tried was
-      // answering must not read as one host having spent its own budget.
-      `stopped after every one of ${plural(stop.hosts, 'host')} tried was failing`;
+  switch (stop.kind) {
+    case 'consecutive-errors':
+      return `stopped after ${plural(stop.count, 'consecutive error')} on ${stop.host}`;
+    // Named as itself: a crawl that stopped because nothing it tried was
+    // answering must not read as one host having spent its own budget.
+    case 'all-hosts-failing':
+      return `stopped after every one of ${plural(stop.hosts, 'host')} tried was failing`;
+    // Likewise its own reason, naming no host, because no host is to blame:
+    // the crawl as a whole spent its failure budget.
+    case 'error-budget':
+      return `stopped after ${plural(stop.errors, 'host-level failure')} across the crawl (budget ${stop.budget})`;
+  }
+}
+
+/**
+ * A sleep that ends when the crawl does.
+ *
+ * The runner is where waiting lives, so it is also where an interrupt has to
+ * land: a backoff can be a minute, and a plain setTimeout would queue SIGINT
+ * behind it — the command looks hung and the store is never flushed. The timer
+ * is cleared rather than merely raced, so an aborted crawl leaves nothing
+ * holding the event loop open either.
+ */
+export function abortableSleep(
+  ms: number,
+  signal?: AbortSignal,
+): Promise<void> {
+  if (signal === undefined) {
+    return new Promise<void>((resolve) => setTimeout(resolve, ms));
+  }
+  if (signal.aborted) return Promise.resolve();
+  return new Promise<void>((resolve) => {
+    const done = (): void => {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', done);
+      resolve();
+    };
+    const timer = setTimeout(done, ms);
+    signal.addEventListener('abort', done, { once: true });
+  });
 }
 
 /** The robots verdict as a skip reason worth reading in the store: the
@@ -223,10 +251,19 @@ export async function executeCrawl(
     signal,
   } = options;
   const now = options.now ?? Date.now;
-  const sleep =
-    options.sleep ??
-    ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  const sleep = options.sleep ?? ((ms: number) => abortableSleep(ms, signal));
   const startedAt = now();
+
+  // Stated once, before the first page: the annotation is a fact about how
+  // this crawl extracts — no live page, so no computed styles — and identical
+  // on every record. Per record it would add one warning per page to the tally
+  // that exists to surface the few real per-page ones, and ~250 bytes to each
+  // line of the dataset.
+  const degraded = computedStyleWarning(
+    state.domains,
+    'a crawl extracts from each page as fetched, with no live page to compute styles from, because a browser and a settle window per page is a different tool',
+  );
+  if (degraded !== undefined) state.warnings = [degraded];
 
   let stopReason: string | undefined;
   /** Set once, by whichever worker gets there first; the others see it on
@@ -412,11 +449,12 @@ export async function executeCrawl(
       // be about to expand one more page into it. The caller below decides.
       if (entry === undefined) return;
       inFlight.add(entry);
-      try {
-        await visit(entry);
-      } finally {
-        inFlight.delete(entry);
-      }
+      // Removed by `write`, which runs exactly when the page produced a
+      // record. A visit that abandoned — an interrupt or a stop arriving
+      // mid-wait — leaves it in flight deliberately, so the final flush puts
+      // it back on the queue: the frontier has already marked it seen, and an
+      // interrupt must cost no page.
+      await visit(entry);
     }
   };
 

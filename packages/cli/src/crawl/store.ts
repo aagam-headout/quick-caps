@@ -88,6 +88,11 @@ export type CrawlState = {
   updatedAt: string;
   frontier: CrawlFrontierSnapshot;
   counters: CrawlCounters;
+  /** Warnings true of the crawl rather than of a page: the computed-style
+   * degradation is the same sentence on every record, so it is stated once
+   * here. Per record it would add a warning per page to a tally whose whole
+   * job is to surface the handful of real per-page ones. */
+  warnings?: Warning[];
   /** Hrefs the frontier refused, tallied by reason. Counted rather than
    * recorded per href: 'already-seen' fires for every chrome link on every
    * page, so a record each would bury the dataset under its own bookkeeping,
@@ -302,7 +307,12 @@ export type CrawlSummary = {
   /** Lines that did not parse — a truncated tail is one, and saying so is
    * how the store stays honest about what it could not read. */
   unreadable: number;
+  /** Per-page extract warnings, summed. Crawl-level ones are not counted
+   * here — one boilerplate sentence per record would bury the real ones. */
   warnings: number;
+  /** Warnings the crawl reported once, for every record: why a computed-style
+   * field is absent from all of them. */
+  crawlWarnings?: Warning[];
   seed?: string;
   startedAt?: string;
   updatedAt?: string;
@@ -389,6 +399,9 @@ export async function summarizeCrawl(
     summary.startedAt = state.startedAt;
     summary.updatedAt = state.updatedAt;
     summary.queued = state.frontier.queue.length;
+    if (state.warnings !== undefined && state.warnings.length > 0) {
+      summary.crawlWarnings = state.warnings;
+    }
     if (state.stopReason !== undefined) summary.stopReason = state.stopReason;
     if (state.discoverySkips !== undefined) {
       summary.discoverySkips = state.discoverySkips;

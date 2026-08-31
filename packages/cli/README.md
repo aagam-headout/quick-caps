@@ -209,7 +209,11 @@ agent may run unattended against somebody else's server:
 - **A `Retry-After` is preferred over that ladder**, in either legal form —
   delay-seconds or an HTTP-date — because it is the one pacing instruction a
   server sends deliberately rather than something the crawler has to guess. A
-  value that cannot be read falls back to the ladder.
+  value that cannot be read falls back to the ladder, and the value that is
+  used stays inside the same one-second floor and one-minute ceiling the ladder
+  obeys: `Retry-After: 0` does not buy a failing host an instant retry, and
+  `Retry-After: 86400` does not park a worker for a day. A wait longer than a
+  minute is a crawl to `--resume` later, which is what the store is for.
 - **A stop after five consecutive failures on one host**, with that reason in
   the summary. Per host, like everything else here: two unrelated hosts
   failing once each is two hosts with one problem, not one host with two. A
@@ -217,9 +221,17 @@ agent may run unattended against somebody else's server:
   that gets tools blocked.
 - **A separate stop when every host the crawl has tried is failing at once**,
   once there are at least three of them — counted in hosts, not in errors
-  summed across them. A crawl fanned out over several hosts where none is
-  answering has a problem of its own, and it ends saying so rather than
+  summed across them, and in hosts failing _now_: a host still inside its
+  backoff window. A host that failed once an hour ago and was never asked
+  again is not a host that is down. A crawl fanned out over several hosts where
+  none is answering has a problem of its own, and it ends saying so rather than
   blaming whichever host failed last.
+- **A crawl-wide budget of fifty host-level failures**, alongside the per-host
+  one and with its own reason naming no host, because none is to blame. Forty
+  hosts each sitting one failure short of their own limit, with one host still
+  answering, trips neither of the conditions above and would otherwise crawl
+  indefinitely. Each failure counts once toward it — it is not the per-host
+  ladders summed — and a `--resume` starts a fresh budget.
 - **`--ignore-robots` exists and has to be typed.** It waives robots
   _rules_ — for your own staging site, a local fixture, a contractual crawl —
   and not `crawl-delay`, which is still read from the same file.
@@ -247,15 +259,20 @@ summary's `unread` row as an unparseable line and the scan continues past it;
 Each record carries the URL, its depth, the timestamp of the fetch attempt,
 the outcome, the requested domains' reports, and any extract warnings for that
 page. `content` and `design` extract from each page as fetched, with no live
-page to compute styles from, so a record that requested either carries the same
-warning `pc data` prints — the absence of a natural image size or a loaded font
-means "not measured", and a record has to say so itself. A page that 404s, times out, or fails to parse is a record with its
-error rather than an absence, on the principle the rest of the tool follows: a
-gap a caller can see is a fact, a gap it cannot see is a lie.
+page to compute styles from — the absence of a natural image size or a loaded
+font means "not measured" rather than "not there" — and the summary says so on
+a `note` row, once for the crawl rather than once per record: it is the same
+sentence on every page, and 500 copies of it would bury the handful of real
+per-page warnings the `warnings` count exists to surface. A page that 404s,
+times out, or fails to parse is a record with its error rather than an absence,
+on the principle the rest of the tool follows: a gap a caller can see is a
+fact, a gap it cannot see is a lie.
 
 `state.json` is rewritten atomically after every page, so a kill that arrives
 without warning leaves a resumable crawl rather than a corrupt one, and a URL
-that was in flight goes back onto the queue rather than being lost.
+that was in flight goes back onto the queue rather than being lost. A SIGINT
+lands even mid-backoff: the wait is abortable, so `^C` ends the crawl at once
+instead of being queued behind a minute of politeness.
 
 - `pc crawl --resume <name>` reads that state and continues. `--limit` is a
   budget per run rather than a permanent ceiling: resuming a crawl that spent

@@ -101,6 +101,12 @@ export function renderCrawlSummary(summary: CrawlSummary): string {
   if (summary.warnings > 0) {
     lines.push(`  ${pad('warnings')}${summary.warnings}`);
   }
+  for (const warning of summary.crawlWarnings ?? []) {
+    // Stated once for the crawl, as the store holds it: the annotation says
+    // why a computed-style field is absent from every record, and it has to
+    // stay visible without being counted 500 times.
+    lines.push(`  ${pad('note')}${warning.reason}`);
+  }
   if (summary.unreadable > 0) {
     // Named, never swallowed: a truncated tail is a fact about the store.
     lines.push(`  ${pad('unread')}${summary.unreadable} unparseable line(s)`);

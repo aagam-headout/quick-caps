@@ -265,6 +265,45 @@ describe('summarizeCrawl', () => {
     expect(summary.unreadable).toBe(0);
   });
 
+  // Finding 4: the tally exists to surface the handful of real per-page
+  // warnings, so it counts what a page reported and nothing that is true of
+  // every page. A crawl-level note is surfaced once, beside the count.
+  it('counts per-page warnings only, and surfaces a crawl-level note once', async () => {
+    const store = await CrawlStore.open(cwd, 'example.com');
+    const warning = {
+      phase: 'extract' as const,
+      reason: 'entities: pagination extractor threw',
+    };
+    await store.append(
+      record('https://example.com/a', { warnings: [warning] }),
+    );
+    await store.append(record('https://example.com/b'));
+    const state = createCrawlState({
+      name: 'example.com',
+      seed: 'https://example.com/',
+      domains: ['design'] satisfies ExtractDomain[],
+      limit: 10,
+      maxDepth: 2,
+      rate: 1,
+      concurrency: 1,
+      ignoreRobots: false,
+    });
+    state.warnings = [
+      {
+        phase: 'extract',
+        reason: 'design: skipped every field needing computed styles',
+        detail: 'no live page to compute styles from',
+      },
+    ];
+    await store.saveState(state);
+
+    const summary = await summarizeCrawl(store.dir, 'example.com');
+    // One real warning on one of two pages — not one per record plus the
+    // boilerplate.
+    expect(summary.warnings).toBe(1);
+    expect(summary.crawlWarnings).toEqual(state.warnings);
+  });
+
   it('reports a truncated tail as unreadable rather than failing', async () => {
     const store = await CrawlStore.open(cwd, 'example.com');
     await store.append(record('https://example.com/a'));
