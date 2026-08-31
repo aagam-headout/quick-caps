@@ -28,9 +28,11 @@ Commands:
           [--links] [--all] [--json]
                                 Report the data the page contains: declared
                                 structured data, entities, content quality,
-                                design system, link graph. With no domain flag,
-                                prints which domains found something and how
-                                much. With a url, opens it first.
+                                design system, link graph. Readable text by
+                                default; --json prints the report as one line
+                                of JSON. With no domain flag, prints which
+                                domains found something and how much. With a
+                                url, opens it first.
   pc capture [--zip] [--out <dir>]
                                 Write a self-contained archive of the page.
   pc mcp                        Serve every command above as an MCP tool over

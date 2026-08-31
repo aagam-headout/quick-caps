@@ -146,6 +146,11 @@ export function buildMcpServer(): McpServer {
           {
             ...(args.url !== undefined && { url: args.url }),
             domains: args.domains ?? [],
+            // JSON, not the readable rendering: that form truncates values and
+            // elides long categories behind a "--json" hint, and a tool caller
+            // has no flag to follow it with. Withholding data an agent cannot
+            // then ask for is worse than spending the tokens.
+            json: true,
           },
           cwd,
         ),

@@ -9,7 +9,11 @@ Page data extraction: what a page _contains_, alongside what it looks like.
 - New `pc data [url]` command and `pc_data` MCP tool. With no domain flag it
   prints an availability summary rather than the data, so a caller can see
   what a page holds before paying tokens for it. With no URL it reads the
-  open session and touches the network not at all.
+  open session and touches the network not at all. Output is readable text
+  by default — entity values shown with their provenance, their confidence,
+  and, for a guess, the text it was guessed from — with `--json` for one
+  line of JSON. The MCP tool always answers in JSON, since the readable
+  form elides long categories behind a flag a tool caller cannot pass.
 - Five extraction domains, opt-in per call:
   - `structured` — JSON-LD (including `@graph` flattening), microdata, RDFa,
     a normalized Open Graph/Twitter preview, and the SEO set (canonical,

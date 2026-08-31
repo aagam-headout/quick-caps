@@ -42,8 +42,9 @@ first-time users.
 - `pc tokens` — colors, type scale, spacing, radii.
 - `pc scrape <shape>` — schema-driven field extraction, e.g. `pc scrape '{"title":"h1"}'`.
 - `pc data [url] [--structured] [--entities] [--content] [--design] [--links] [--all] [--json]`
-  — report the data the page contains. With no domain flag, an availability
-  summary instead of the data.
+  — report the data the page contains, as human-readable text; `--json`
+  prints the same report as one line of JSON. With no domain flag, an
+  availability summary instead of the data.
 - `pc capture [--zip] [--out <dir>]` — full archive to disk.
 - `pc mcp` — the same ten tools, over an MCP stdio server.
 - `pc --help` — full usage, notes, and environment variables.
@@ -70,10 +71,37 @@ available: structured(3) entities(6) content design links(6)
 
 Counts are discrete findings, and the two whole-page domains (`content`,
 `design`) have nothing to count, so they appear bare. Naming domains prints
-their reports as JSON — indented by default, one line with `--json`:
+their reports, one block per domain, in the same terse form the other
+navigation commands use:
 
 ```
 $ pc data --structured --entities
+structured
+  json-ld    Product "Widget Pro"
+  preview    "Widget Pro" — http://127.0.0.1:8912/img/widget.png…
+  canonical  http://127.0.0.1:8912/
+
+entities
+  price      49.99 USD (current)           json-ld         high
+             79 USD (original)             semantic-markup medium
+  stock      in-stock                      json-ld         high
+  published  2026-03-11T00:00:00.000Z      text-heuristic  low  "Published on March 11, 2026"
+  rating     4.6/5 (128 reviews)           json-ld         high
+  next page  http://127.0.0.1:8912/page/2  semantic-markup medium
+```
+
+Every entity value shows its provenance and confidence tier, and a
+low-confidence one shows the text the heuristic matched on, so a guess can be
+judged where it is read. Long values are truncated rather than wrapped, and a
+category with more rows than fit ends in `… N more (--json)` — no category is
+dropped in silence. A domain that found nothing reads `(empty)`; one whose
+extractor failed reads `(unavailable)`, with the reason in the warnings.
+
+`--json` prints the whole report as one line of JSON instead, for a machine —
+one report per invocation, so it pipes straight into `jq`:
+
+```
+$ pc data --entities --json | jq '.entities.prices'
 ```
 
 The five domains, and what each yields:

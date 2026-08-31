@@ -3,9 +3,9 @@ import {
   extractData,
   formatAvailability,
   EXTRACT_DOMAINS,
-  type DataReport,
   type ExtractDomain,
 } from 'quick-caps-core/extract';
+import { renderDataReport } from './data-render.js';
 import { runOpen } from './open.js';
 import { readSession } from '../session.js';
 
@@ -14,6 +14,8 @@ export type DataArgs = {
   url?: string;
   /** Empty means "tell me what's here" rather than "give me everything". */
   domains: ExtractDomain[];
+  /** Machine output: the report as one line of JSON. Off means the human
+   * rendering, which is what a person at a terminal asked for. */
   json?: boolean;
 };
 
@@ -71,5 +73,5 @@ export async function runData(args: DataArgs, cwd: string): Promise<string> {
 
   return args.json === true
     ? JSON.stringify(report)
-    : JSON.stringify(report as DataReport, null, 2);
+    : renderDataReport(report, domains);
 }

@@ -60,7 +60,10 @@ describe('runData', () => {
   });
 
   it('opens the url itself, then extracts from the session it saved', async () => {
-    const output = await runData({ url: baseUrl, domains: ['links'] }, cwd);
+    const output = await runData(
+      { url: baseUrl, domains: ['links'], json: true },
+      cwd,
+    );
 
     expect(JSON.parse(output).links).toBeDefined();
     const session = await readSession(cwd);
@@ -76,16 +79,28 @@ describe('runData', () => {
     expect(output).toContain('links(');
   });
 
-  it('prints requested domains as pretty JSON, and as one line with --json', async () => {
+  it('prints one line of parseable JSON with --json', async () => {
     await runOpen({ url: baseUrl, static: true }, cwd);
 
-    const pretty = await runData({ domains: ['structured'] }, cwd);
-    expect(pretty).toContain('\n  ');
-    expect(Object.keys(JSON.parse(pretty))).toContain('structured');
-
     const compact = await runData({ domains: ['structured'], json: true }, cwd);
+
     expect(compact.trim().split('\n')).toHaveLength(1);
     expect(Object.keys(JSON.parse(compact))).toContain('structured');
+  });
+
+  it('prints a human rendering, not JSON, by default', async () => {
+    await runOpen({ url: baseUrl, static: true }, cwd);
+
+    const output = await runData(
+      { domains: ['content', 'links'], json: false },
+      cwd,
+    );
+
+    expect(() => JSON.parse(output)).toThrow();
+    expect(output).toMatch(/^content$/m);
+    expect(output).toMatch(/^links$/m);
+    expect(output).toMatch(/^ {2}total\s+\d+/m);
+    expect(output).toMatch(/words, ~/);
   });
 
   it('never upgrades a static session to a browser-backed one', async () => {
@@ -106,13 +121,19 @@ describe('runData', () => {
 
   it('warns by name about the domains a session without computed styles degrades', async () => {
     await runOpen({ url: baseUrl, static: true }, cwd);
-    const report = JSON.parse(await runData({ domains: ['design'] }, cwd));
+    const report = JSON.parse(
+      await runData({ domains: ['design'], json: true }, cwd),
+    );
 
     const reasons = (report.warnings ?? []).map(
       (warning: { reason: string }) => warning.reason,
     );
     expect(reasons.join(' ')).toContain('design');
     expect(reasons.join(' ')).toContain('computed styles');
+
+    // Same degradation, said in the human form the default now prints.
+    const human = await runData({ domains: ['design'] }, cwd);
+    expect(human).toMatch(/^warning: design: .*computed styles/m);
   });
 
   it('keeps warnings out of the availability summary line', async () => {

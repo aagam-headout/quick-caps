@@ -101,7 +101,10 @@ describe('buildMcpServer', () => {
     const { runData } = await import('../../src/commands/data.js');
     const client = await connectedClient();
     await client.callTool({ name: 'pc_data', arguments: {} });
-    expect(runData).toHaveBeenCalledWith({ domains: [] }, expect.any(String));
+    expect(runData).toHaveBeenCalledWith(
+      { domains: [], json: true },
+      expect.any(String),
+    );
   });
 
   it('passes pc_data its requested domains and url through', async () => {
@@ -112,7 +115,7 @@ describe('buildMcpServer', () => {
       arguments: { domains: ['links'], url: 'https://example.com' },
     });
     expect(runData).toHaveBeenCalledWith(
-      { domains: ['links'], url: 'https://example.com' },
+      { domains: ['links'], url: 'https://example.com', json: true },
       expect.any(String),
     );
   });
