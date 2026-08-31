@@ -1,4 +1,4 @@
-import { flattenRegions, type FlatRegion } from '../distill.js';
+import { flattenRegions, type FlatRegion } from '../flatten.js';
 import type {
   ContentReport,
   ContentSplit,

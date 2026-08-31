@@ -1,5 +1,6 @@
 import type { FetchOptions } from 'quick-caps-core';
-import { fetchAssetBytes } from 'quick-caps-core';
+// Narrow subpath, not the root barrel — see chrome-driver.ts.
+import { fetchAssetBytes } from 'quick-caps-core/http';
 import type { ResourceFetchResponse } from '../content/serialize.js';
 
 /** base64 without Buffer: service workers have btoa, not Node. */

@@ -1,11 +1,7 @@
-import {
-  buildPerfReport,
-  collectFromDocument,
-  type CaptureSettings,
-  type LogEntry,
-  type PageIR,
-  type PerfReport,
-} from 'quick-caps-core';
+// Narrow subpaths, not the root barrel — see background/chrome-driver.ts.
+import { collectFromDocument } from 'quick-caps-core/collect';
+import { buildPerfReport, type PerfReport } from 'quick-caps-core/perf';
+import type { CaptureSettings, LogEntry, PageIR } from 'quick-caps-core';
 import {
   FLUSH_EVENT,
   IR_KEY,

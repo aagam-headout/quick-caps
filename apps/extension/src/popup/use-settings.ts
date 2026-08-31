@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
+// Narrow subpath, not the root barrel — see background/chrome-driver.ts.
 import {
   defaultSettings,
   parseSettings,
   type CaptureSettings,
-} from 'quick-caps-core';
+} from 'quick-caps-core/settings';
 
 const KEY = 'settings';
 

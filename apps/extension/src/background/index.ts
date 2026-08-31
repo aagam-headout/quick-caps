@@ -1,8 +1,6 @@
-import {
-  captureFilename,
-  parseSettings,
-  type CaptureSettings,
-} from 'quick-caps-core';
+// Narrow subpaths, not the root barrel — see background/chrome-driver.ts.
+import { captureFilename } from 'quick-caps-core/bundle';
+import { parseSettings, type CaptureSettings } from 'quick-caps-core/settings';
 import { CaptureLock, type CaptureClaim } from './busy.js';
 import { ChromeDriver } from './chrome-driver.js';
 import { OffscreenClient } from './offscreen-client.js';

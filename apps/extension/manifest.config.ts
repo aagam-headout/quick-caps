@@ -1,5 +1,5 @@
 import { defineManifest } from '@crxjs/vite-plugin';
-import pkg from './package.json';
+import pkg from './package.json' with { type: 'json' };
 
 /**
  * Exported as a concrete object as well as through defineManifest. crxjs's

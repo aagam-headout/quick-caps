@@ -1,11 +1,11 @@
-import {
-  buildSingleFile,
-  buildTokens,
-  buildZip,
-  type CaptureSettings,
-  type FetchOptions,
-  type PageIR,
-  type Warning,
+// Narrow subpaths, not the root barrel — see background/chrome-driver.ts.
+import { buildSingleFile, buildZip } from 'quick-caps-core/bundle';
+import { buildTokens } from 'quick-caps-core/tokens';
+import type {
+  CaptureSettings,
+  FetchOptions,
+  PageIR,
+  Warning,
 } from 'quick-caps-core';
 import {
   extractData,
