@@ -111,6 +111,15 @@ describe('OffscreenClient', () => {
     );
   });
 
+  it('gives up on a document that never answers', async () => {
+    // A pending sendMessage used to hold the capture lock for the life of the
+    // worker: every later capture was refused with "already running".
+    chromeMock.runtime.sendMessage.mockReturnValue(new Promise(() => {}));
+    await expect(new OffscreenClient(10).stitch(stitchRequest)).rejects.toThrow(
+      'stopped responding',
+    );
+  });
+
   it('closes the document only if one exists', async () => {
     chromeMock.offscreen.hasDocument.mockResolvedValue(true);
     await new OffscreenClient().close();

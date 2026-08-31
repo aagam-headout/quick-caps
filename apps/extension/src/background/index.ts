@@ -3,6 +3,7 @@ import {
   parseSettings,
   type CaptureSettings,
 } from 'quickcaps-core';
+import { CaptureLock, type CaptureClaim } from './busy.js';
 import { ChromeDriver } from './chrome-driver.js';
 import { OffscreenClient } from './offscreen-client.js';
 import { CaptureSession } from './session.js';
@@ -49,9 +50,18 @@ let activeCapture: { tabId: number; settings: CaptureSettings } | null = null;
  * several awaits into runCapture, so two clicks in the same tick both saw it
  * null and both proceeded - two captures sharing one offscreen document, the
  * first to finish closing it under the second. The screenshot preview shares
- * this flag for the same reason: it opens and closes the same document.
+ * this lock for the same reason: it opens and closes the same document.
+ *
+ * It expires, so a run that wedges on something that never settles cannot
+ * refuse every capture for the life of the worker - see CaptureLock.
  */
-let busy = false;
+const captureLock = new CaptureLock();
+
+/** The refusal both entry points give while a live run holds the lock. */
+function busyMessage(): string {
+  const heldMs = captureLock.heldForMs() ?? 0;
+  return `A capture is already running (${Math.round(heldMs / 1000)}s so far). Wait for it to finish.`;
+}
 
 /** A user-facing sentence for anything thrown inside the pipeline. */
 function friendlyError(error: unknown): string {
@@ -295,6 +305,8 @@ async function runCapture(params: {
    * the element picker, which sets `selectionSelector` without touching the
    * saved preference. */
   settingsOverride?: Partial<CaptureSettings>;
+  /** The lock this run holds, released in its `finally`. */
+  claim: CaptureClaim;
 }): Promise<void> {
   const { tabId, hasPageAccess, post } = params;
   const offscreen = new OffscreenClient();
@@ -464,7 +476,7 @@ async function runCapture(params: {
     });
   } finally {
     activeCapture = null;
-    busy = false;
+    captureLock.release(params.claim);
     await session.clear();
     await offscreen.close();
   }
@@ -478,17 +490,17 @@ function startCapture(params: {
   post: (message: WorkerToPopup) => void;
   settingsOverride?: Partial<CaptureSettings>;
 }): void {
-  if (busy) {
+  // Claimed here, in the same tick as the check - see `captureLock`.
+  const claim = captureLock.acquire();
+  if (!claim) {
     params.post({
       type: 'capture:failed',
-      reason: 'A capture is already running. Wait for it to finish.',
+      reason: busyMessage(),
       recoverable: true,
     });
     return;
   }
-  // Claimed here, in the same tick as the check - see `busy`.
-  busy = true;
-  void runCapture(params);
+  void runCapture({ ...params, claim });
 }
 
 const CONTEXT_MENU_ID = 'quickcaps-capture';
@@ -579,13 +591,8 @@ async function previewScreenshot(
   // Shares the offscreen document with a real capture, so it shares the lock:
   // whichever finished first would otherwise close the document under the
   // other.
-  if (busy) {
-    return {
-      ok: false,
-      error: 'A capture is already running. Wait for it to finish.',
-    };
-  }
-  busy = true;
+  const claim = captureLock.acquire();
+  if (!claim) return { ok: false, error: busyMessage() };
   const offscreen = new OffscreenClient();
   try {
     const sourceTab = await chrome.tabs.get(tabId).catch(() => undefined);
@@ -643,7 +650,7 @@ async function previewScreenshot(
     notify('Screenshot preview failed', message);
     return { ok: false, error: message };
   } finally {
-    busy = false;
+    captureLock.release(claim);
     await offscreen.close();
   }
 }
