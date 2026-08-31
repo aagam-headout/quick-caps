@@ -1,3 +1,7 @@
 packages:
   - 'packages/*'
   - 'apps/*'
+allowBuilds:
+  esbuild: true
+minimumReleaseAgeExclude:
+  - single-file-core@1.5.118

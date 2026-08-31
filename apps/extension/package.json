@@ -13,25 +13,25 @@
   },
   "dependencies": {
     "quick-caps-core": "workspace:*",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "single-file-core": "^1.5.84"
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "single-file-core": "^1.5.118"
   },
   "devDependencies": {
-    "@crxjs/vite-plugin": "^2.0.0-beta.28",
-    "@playwright/test": "^1.49.0",
-    "@tailwindcss/vite": "^4.0.0",
-    "@testing-library/dom": "^10.4.0",
-    "@testing-library/react": "^16.1.0",
-    "@testing-library/user-event": "^14.5.2",
-    "@types/chrome": "^0.0.280",
-    "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0",
-    "@vitejs/plugin-react": "^4.3.3",
-    "fflate": "^0.8.2",
-    "jsdom": "^25.0.1",
-    "tailwindcss": "^4.0.0",
-    "tsx": "^4.19.2",
-    "vite": "^5.4.10"
+    "@crxjs/vite-plugin": "^2.7.1",
+    "@playwright/test": "^1.62.1",
+    "@tailwindcss/vite": "^4.3.3",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.6",
+    "@types/chrome": "^0.2.7",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5",
+    "@vitejs/plugin-react": "^6.1.1",
+    "fflate": "^0.8.3",
+    "jsdom": "^30.0.1",
+    "tailwindcss": "^4.3.3",
+    "tsx": "^4.23.13",
+    "vite": "^8.2.2"
   }
 }

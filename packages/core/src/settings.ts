@@ -17,7 +17,7 @@ export const captureSettingsSchema = z.object({
        * Navigation/Paint/Resource Timing entries — not a Lighthouse audit. */
       perf: z.boolean().default(false),
     })
-    .default({}),
+    .prefault({}),
   scrollToLoadLazy: z.boolean().default(true),
   inertSnapshot: z.boolean().default(true),
   /**
@@ -66,7 +66,7 @@ export const captureSettingsSchema = z.object({
         .default(50 * 1024 * 1024),
       logRingSize: z.number().int().positive().max(5000).default(500),
     })
-    .default({}),
+    .prefault({}),
   theme: z.enum(['system', 'light', 'dark']).default('system'),
 });
 

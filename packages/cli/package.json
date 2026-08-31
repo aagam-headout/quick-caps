@@ -1,7 +1,7 @@
 {
   "name": "quick-caps-cli",
   "version": "0.1.0",
-  "description": "Distill any rendered web page into a few hundred tokens of numbered regions and actions, or capture it to disk — a CLI and MCP server for agents.",
+  "description": "Distill any rendered web page into a few hundred tokens of numbered regions and actions, or capture it to disk - a CLI and MCP server for agents.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -31,14 +31,14 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
+    "esbuild": "^0.28.2",
+    "fflate": "^0.8.3",
+    "linkedom": "^0.18.13",
+    "playwright": "^1.62.1",
     "quick-caps-core": "workspace:*",
-    "esbuild": "^0.24.0",
-    "fflate": "^0.8.2",
-    "linkedom": "^0.18.5",
-    "playwright": "^1.48.0",
-    "zod": "^4.4.3"
+    "zod": "^4.5.4"
   },
   "devDependencies": {
-    "tsx": "^4.19.2"
+    "tsx": "^4.23.13"
   }
 }

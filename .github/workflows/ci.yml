@@ -8,11 +8,11 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       # playwright is a dependency of quick-caps-cli, not of the workspace root,
@@ -35,15 +35,18 @@ jobs:
     runs-on: ubuntu-latest
     needs: check
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       # @playwright/test lives in the extension package, same reason.
       - run: pnpm --filter @quick-caps/extension exec playwright install --with-deps chromium
+      # The extension imports quick-caps-core through its package exports, which
+      # point at ./dist - the e2e build cannot resolve it on a fresh checkout.
+      - run: pnpm -w build:packages
       # Chrome refuses to load an extension headlessly, so the run needs a
       # display even though nobody is watching it.
       - run: xvfb-run --auto-servernum pnpm -w e2e

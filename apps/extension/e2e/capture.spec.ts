@@ -147,6 +147,12 @@ async function capture(
     await chrome.storage.sync.set({ settings: applied });
     const [tab] = await chrome.tabs.query({ url: 'http://localhost:4321/*' });
     if (!tab?.id) throw new Error('fixture tab not found');
+    // captureVisibleTab only ever sees the foreground tab, and this driver
+    // page is the one in front by virtue of having just been opened. Hand
+    // focus back to the fixture so a screenshot-enabled capture can work;
+    // the port lives in the service worker, so this page keeps receiving
+    // messages from the background even once it is no longer active.
+    await chrome.tabs.update(tab.id, { active: true });
 
     return await new Promise<{
       ok: boolean;
@@ -201,6 +207,10 @@ test('the popup renders its controls', async () => {
   await expect(
     page.getByRole('button', { name: /capture page/i }),
   ).toBeVisible();
+  // "Page contents" ships collapsed - the first-run path is preset then
+  // capture, not five checkboxes - so the checkboxes only exist once the
+  // accordion is opened.
+  await page.getByText(/^Page contents/).click();
   await expect(page.getByLabel('HTML / DOM')).toBeVisible();
   await page.close();
 });

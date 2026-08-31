@@ -233,6 +233,7 @@ export async function runCapture(
   } catch (error) {
     throw new Error(
       `The capture was too large to package (${error instanceof Error ? error.message : String(error)}). Try turning off raw sources or the screenshot.`,
+      { cause: error },
     );
   }
 

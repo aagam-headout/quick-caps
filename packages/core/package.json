@@ -1,7 +1,7 @@
 {
   "name": "quick-caps-core",
   "version": "0.1.0",
-  "description": "Rendered-DOM page distillation engine for quick-caps-cli — PageIR, design-token extraction, single-file/zip capture bundling.",
+  "description": "Rendered-DOM page distillation engine for quick-caps-cli \u2014 PageIR, design-token extraction, single-file/zip capture bundling.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -37,8 +37,8 @@
     "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
-    "fflate": "^0.8.2",
-    "gpt-tokenizer": "^2.6.2",
-    "zod": "^3.23.8"
+    "fflate": "^0.8.3",
+    "gpt-tokenizer": "^4.0.0",
+    "zod": "^4.5.4"
   }
 }

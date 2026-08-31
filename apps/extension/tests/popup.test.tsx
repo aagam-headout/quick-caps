@@ -1,3 +1,6 @@
+/**
+ * @vitest-environment jsdom
+ */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -362,8 +365,10 @@ describe('popup', () => {
     await waitFor(() => {
       expect(screen.queryByLabelText(/^everything$/i)).toBeNull();
     });
+    // The legend and the summary are adjacent spans with no whitespace
+    // between them, so the computed accessible name is "PresetEverything".
     expect(
-      await screen.findByRole('button', { name: /^preset\s+everything/i }),
+      await screen.findByRole('button', { name: /^preset\s*everything/i }),
     ).toBeDefined();
   });
 

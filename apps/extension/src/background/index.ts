@@ -132,6 +132,7 @@ async function startDownload(url: string, filename: string): Promise<number> {
   } catch (error) {
     throw new Error(
       `The capture was built but could not be saved: ${friendlyError(error)}`,
+      { cause: error },
     );
   }
 }
@@ -562,7 +563,7 @@ function waitForTabLoad(tabId: number, timeoutMs = 15_000): Promise<void> {
     };
     const onUpdated = (
       updatedTabId: number,
-      info: chrome.tabs.TabChangeInfo,
+      info: chrome.tabs.OnUpdatedInfo,
     ): void => {
       if (updatedTabId === tabId && info.status === 'complete') finish();
     };
