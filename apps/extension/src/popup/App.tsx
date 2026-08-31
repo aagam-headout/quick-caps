@@ -14,15 +14,35 @@ import { usePicker } from './use-picker.js';
 import { usePreview } from './use-preview.js';
 import { formatSize } from './lib/format-size.js';
 
-const OpenArrowIcon = () => (
+const CameraIcon = () => (
   <svg viewBox="0 0 16 16" aria-hidden="true" className="h-[13px] w-[13px]">
     <path
-      d="M7 9 13 3M9 3h4v4M13 9v3a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h3"
+      d="M2.5 5.5a1 1 0 0 1 1-1h1.3l.7-1.2h5l.7 1.2h1.3a1 1 0 0 1 1 1v6.3a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1V5.5Z"
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
+      strokeWidth="1.4"
       strokeLinejoin="round"
+    />
+    <circle
+      cx="8"
+      cy="8.5"
+      r="2.1"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+    />
+  </svg>
+);
+
+const PickerIcon = () => (
+  <svg viewBox="0 0 16 16" aria-hidden="true" className="h-[13px] w-[13px]">
+    <path
+      d="M4 2.5 12.5 6l-3.4 1.3L7.7 11 4 2.5Z"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinejoin="round"
+      strokeLinecap="round"
     />
   </svg>
 );
@@ -300,6 +320,24 @@ export function App() {
     error: previewError,
   } = usePreview();
   const [mode, setMode] = useState<CaptureMode>('page');
+  const [folderError, setFolderError] = useState<string | null>(null);
+
+  // Same "newest download with a live id stands in for the folder" trick
+  // RecentList uses - there's no "open this path" API, only "reveal the
+  // folder containing this download".
+  const folderAnchor = entries.find(
+    (entry) => entry.downloadId !== undefined,
+  )?.downloadId;
+
+  const openFolder = (): void => {
+    if (folderAnchor === undefined) return;
+    setFolderError(null);
+    void Promise.resolve()
+      .then(() => chrome.downloads.show(folderAnchor))
+      .catch(() => {
+        setFolderError('Could not open the Quick-Caps folder.');
+      });
+  };
   // A preset picked while the current selection is already custom-tuned
   // would otherwise silently discard that tuning. Held here until the user
   // confirms, rather than applied on the same click that picked it.
@@ -568,6 +606,7 @@ export function App() {
             disabled={running}
             className="flex w-full cursor-pointer items-center justify-center gap-[7px] rounded-[var(--radius-control)] bg-[var(--accent)] px-3 py-[9px] text-[13px] font-medium text-white transition-all duration-[var(--duration-fast)] hover:bg-[var(--accent-hover)] active:scale-[0.985] disabled:cursor-default disabled:opacity-70 disabled:active:scale-100"
           >
+            <PickerIcon />
             Choose element…
           </button>
         ) : (
@@ -577,7 +616,7 @@ export function App() {
             disabled={previewRunning || running}
             className="flex w-full cursor-pointer items-center justify-center gap-[7px] rounded-[var(--radius-control)] bg-[var(--accent)] px-3 py-[9px] text-[13px] font-medium text-white transition-all duration-[var(--duration-fast)] hover:bg-[var(--accent-hover)] active:scale-[0.985] disabled:cursor-default disabled:opacity-70 disabled:active:scale-100"
           >
-            {previewRunning ? <SpinnerIcon /> : <OpenArrowIcon />}
+            {previewRunning ? <SpinnerIcon /> : <CameraIcon />}
             {previewRunning ? 'Taking Page Snap…' : 'Take Page Snap'}
           </button>
         )}
@@ -585,14 +624,37 @@ export function App() {
         {mode === 'element' ? (
           <p className="text-[11px] text-[var(--text-secondary)]">
             Hover the page to highlight, click to select, then confirm in the
-            bar that appears. Esc cancels.
+            bar that appears.{' '}
+            <kbd className="rounded-[4px] border border-[var(--border)] bg-[var(--surface-raised)] px-[4px] py-[1px] font-mono text-[10px] text-[var(--text-primary)]">
+              Esc
+            </kbd>{' '}
+            cancels.
           </p>
         ) : null}
 
         {mode === 'snap' ? (
           <p className="text-[11px] text-[var(--text-secondary)]">
-            One full-page PNG, top to bottom. Opens in a new tab and saves to
-            Downloads/Quick-Caps/previews. No archive, no settings.
+            One full-page PNG, top to bottom. Opens in a new tab and saves to{' '}
+            {folderAnchor !== undefined ? (
+              <button
+                type="button"
+                onClick={openFolder}
+                className="cursor-pointer rounded-[3px] font-mono text-[var(--accent)] underline decoration-[var(--accent)]/40 underline-offset-2 transition-colors duration-[var(--duration-fast)] hover:text-[var(--accent-hover)]"
+              >
+                Downloads/Quick-Caps/previews
+              </button>
+            ) : (
+              <span className="font-mono text-[var(--text-primary)]">
+                Downloads/Quick-Caps/previews
+              </span>
+            )}
+            . No archive, no settings.
+          </p>
+        ) : null}
+
+        {folderError ? (
+          <p role="alert" className="text-[11.5px] text-[var(--error)]">
+            {folderError}
           </p>
         ) : null}
 
