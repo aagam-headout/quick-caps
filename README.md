@@ -30,7 +30,13 @@ follows it, `pc find <query>` re-ranks the page, `pc capture` archives it.
 Static fetch first; it escalates to a real browser only when the page looks
 like an unrendered shell.
 
-Wire the same nine commands into an MCP client as tools:
+`pc data` answers a different question — not what the page looks like, but
+what it contains: declared structured data, entities like prices and
+authors, content quality, design system, link graph. Called with no domain
+flag it prints only what each domain found and how much, so a caller can see
+whether a page is worth the tokens before spending them.
+
+Wire the same ten commands into an MCP client as tools:
 
 ```bash
 claude mcp add quick-caps -- npx -y quick-caps-cli mcp

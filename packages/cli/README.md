@@ -3,8 +3,8 @@
 Distill any rendered web page into a few hundred tokens of numbered
 regions and actions — or capture it to disk. Built for agents: `open` a
 page, `do` an action by number, `read` a region in full, `find` a query,
-`scrape` a schema-driven shape, or `capture` the whole thing to a
-single-file HTML or zip archive. Same functions are also exposed as MCP
+`scrape` a schema-driven shape, report the `data` a page contains, or
+`capture` the whole thing to a single-file HTML or zip archive. Same functions are also exposed as MCP
 tools over stdio (`pc mcp`).
 
 ## Requirements
@@ -12,7 +12,8 @@ tools over stdio (`pc mcp`).
 Node 22 or newer. Installing pulls Playwright, which downloads a Chromium
 build on first install (a few hundred MB) — that download is what lets
 `pc` render pages a plain fetch can't. Commands that never need a browser
-(`pc open --static`, `read`, `find`, `next`, `scrape`) work without it.
+(`pc open --static`, `read`, `find`, `next`, `scrape`, and `data` on an
+already-open session) work without it.
 
 ## Install / run
 
@@ -40,8 +41,11 @@ first-time users.
 - `pc layout` — structural tree: regions, roles, boxes.
 - `pc tokens` — colors, type scale, spacing, radii.
 - `pc scrape <shape>` — schema-driven field extraction, e.g. `pc scrape '{"title":"h1"}'`.
+- `pc data [url] [--structured] [--entities] [--content] [--design] [--links] [--all] [--json]`
+  — report the data the page contains. With no domain flag, an availability
+  summary instead of the data.
 - `pc capture [--zip] [--out <dir>]` — full archive to disk.
-- `pc mcp` — the same nine tools, over an MCP stdio server.
+- `pc mcp` — the same ten tools, over an MCP stdio server.
 - `pc --help` — full usage, notes, and environment variables.
 
 Every command is stateful across invocations within one directory: a
@@ -49,11 +53,70 @@ Every command is stateful across invocations within one directory: a
 action map, and the render cursor, so `do`/`read`/`find`/`next` resolve
 without re-fetching.
 
+## `pc data`
+
+Reports the facts a page contains rather than what it looks like. With no
+URL it reads the session already on disk and makes no network request; given
+a URL it opens that page first — saving the session, exactly as `pc open`
+would — and then extracts.
+
+With no domain flag it prints an availability line instead of the data, so a
+caller can see what a page holds before paying tokens for it:
+
+```
+$ pc data
+available: structured(3) entities(6) content design links(6)
+```
+
+Counts are discrete findings, and the two whole-page domains (`content`,
+`design`) have nothing to count, so they appear bare. Naming domains prints
+their reports as JSON — indented by default, one line with `--json`:
+
+```
+$ pc data --structured --entities
+```
+
+The five domains, and what each yields:
+
+- `--structured` — what the page declares outright: JSON-LD (with `@graph`
+  flattened), microdata, RDFa, Open Graph and Twitter cards normalized into
+  one social preview, and the SEO set (canonical, `hreflang` alternates,
+  robots directives, feeds).
+- `--entities` — prices, availability, dates, authors, ratings, contacts,
+  and pagination targets. Every value carries its provenance and a
+  confidence tier — declared sources are `high`, semantic markup `medium`, a
+  text heuristic `low`, with the matched text alongside — so a caller can
+  filter down to what the page actually declared.
+- `--content` — word count, reading time, language, heading outline with
+  level violations, media inventory (alt coverage, format mix, lazy-load
+  share), and a main-content-versus-boilerplate split.
+- `--design` — component inventory grouped by family with variants nested
+  under it, fonts declared in stylesheets, and breakpoint and grid inference
+  from the page's media queries.
+- `--links` — every link classified internal versus external and by page
+  zone (nav, content, footer, aside), with anchor text, `rel` tokens, a
+  per-domain outbound tally, and the action handle a link already carries so
+  it can be `do`ne without re-finding it.
+
+`--all` requests all five.
+
+`pc data` never upgrades a static session to a browser-backed one, precisely
+so the handles you are already holding keep their numbers — the re-numbering
+`layout`, `tokens`, and `capture` warn about. Fields that would need
+computed styles are skipped rather than guessed, and the report says which
+domains ran degraded:
+
+```
+warning: content, design: skipped every field needing computed styles
+```
+
 ## `pc mcp`
 
 Starts an MCP server over stdio, exposing every command above as a typed
 tool (`pc_open`, `pc_do`, `pc_read`, `pc_find`, `pc_next`, `pc_layout`,
-`pc_tokens`, `pc_scrape`, `pc_capture`). Two environment variables control
+`pc_tokens`, `pc_scrape`, `pc_data`, `pc_capture`). `pc_data` takes a
+`domains` array mirroring the flags — omit it for the availability summary —
+and an optional `url` to open first. Two environment variables control
 `pc_capture`'s default output location:
 
 - `QUICK_CAPS_MCP_ARTIFACT_ROOT` — defaults to a per-user directory under
@@ -101,6 +164,12 @@ setup, the test suite, and the release process.
   for a human running this locally; if you're hosting `pc mcp` for a
   program you don't fully trust, sandbox its filesystem permissions rather
   than relying on this tool to restrict the path itself.
+- `data`'s `content` and `design` domains always run degraded here: they are
+  read from the stored session, which has no live page to compute styles
+  from, and upgrading it would re-number every handle. Fields that need a
+  computed style — an image's natural size, the fonts actually loaded — are
+  therefore never reported by this command, on a browser-backed session or a
+  static one. The report names what it skipped.
 - No CDP attach to a real running browser — every `open`/`capture` starts
   from a clean, unauthenticated browser context or a plain fetch. Real
   cookies/sessions are never available to this tool.
