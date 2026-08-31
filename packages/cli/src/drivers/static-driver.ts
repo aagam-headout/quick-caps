@@ -6,6 +6,23 @@ import {
   type PageDriver,
   type Viewport,
 } from 'quick-caps-core';
+import { HttpStatusError } from '../errors.js';
+
+/** `fetch`, but a refused response arrives as an HttpStatusError rather than
+ * as bytes core will reject with a bare string. Only the document fetch uses
+ * it: a sub-asset's status is nothing any caller acts on, and assets.ts already
+ * degrades those to warnings. */
+const failOnErrorStatus: typeof fetch = async (input, init) => {
+  const response = await fetch(input, init);
+  if (!response.ok) {
+    throw new HttpStatusError(
+      response.status,
+      response.statusText,
+      response.headers.get('retry-after') ?? undefined,
+    );
+  }
+  return response;
+};
 
 /**
  * PageDriver over a linkedom-parsed document with no browser and no layout
@@ -33,10 +50,19 @@ export class StaticDriver implements PageDriver {
   }
 
   static async fetch(url: string): Promise<StaticDriver> {
-    const asset = await fetchAssetBytes(url, {
-      timeoutMs: 15_000,
-      maxBytes: 20 * 1024 * 1024,
-    });
+    const asset = await fetchAssetBytes(
+      url,
+      {
+        timeoutMs: 15_000,
+        maxBytes: 20 * 1024 * 1024,
+      },
+      // core refuses a non-ok response with a message-only Error, which loses
+      // the status and every header. It takes a fetch, so the refusal happens
+      // here instead, one step earlier, where the response is still a
+      // response — the crawler's backoff needs `Retry-After`, and a caller
+      // that only wanted the bytes still sees the same message.
+      failOnErrorStatus,
+    );
     return new StaticDriver(new TextDecoder().decode(asset.bytes), asset.url);
   }
 

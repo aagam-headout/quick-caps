@@ -23,12 +23,17 @@ import {
   type FrontierLike,
   type PolitenessLike,
 } from '../../src/crawl/runner.js';
+import type { ExtractDomain } from 'quick-caps-core/extract';
 import type {
   FrontierEntry,
   FrontierExpansion,
   PageDiscovery,
 } from '../../src/crawl/frontier.js';
-import type { Permit, RobotsVerdict } from '../../src/crawl/politeness.js';
+import type {
+  Permit,
+  RequestOutcome,
+  RobotsVerdict,
+} from '../../src/crawl/politeness.js';
 
 // ---------------------------------------------------------------------------
 // The fixture site. Every case the runner has to survive is one route:
@@ -85,6 +90,22 @@ beforeAll(async () => {
     }
     if (path === '/private') {
       html('private', '<p>should never be fetched</p>');
+      return;
+    }
+    // Two 429s, one per legal Retry-After form: a bare delay-seconds and an
+    // HTTP-date. Neither is linked from anywhere, so they only appear as an
+    // explicit seed and the cycle test is untouched.
+    if (path === '/rate-limited') {
+      res.writeHead(429, { 'content-type': 'text/html', 'retry-after': '12' });
+      res.end(page('rate limited', '<p>slow down</p>'));
+      return;
+    }
+    if (path === '/rate-limited-date') {
+      res.writeHead(429, {
+        'content-type': 'text/html',
+        'retry-after': new Date(Date.now() + 30_000).toUTCString(),
+      });
+      res.end(page('rate limited', '<p>slow down</p>'));
       return;
     }
     if (path === '/slow') {
@@ -218,16 +239,20 @@ function testPoliteness(
     stopAfterFailures?: number;
     waitMs?: number;
   } = {},
-): PolitenessLike & { requests: string[] } {
+): PolitenessLike & { requests: string[]; outcomes: RequestOutcome[] } {
   let failures = 0;
   let stop:
     { kind: 'consecutive-errors'; host: string; count: number } | undefined;
   const robots = new Set<string>();
   let waitsLeft = options.waitMs === undefined ? 0 : 1;
   const requests: string[] = [];
+  /** Every outcome the runner reported, verbatim: what the runner knows about
+   * a response is only worth as much as what reaches this call. */
+  const outcomes: RequestOutcome[] = [];
 
   return {
     requests,
+    outcomes,
     hasRobots: (host) => robots.has(host),
     setRobots: (host) => robots.add(host),
     check: (url: string): RobotsVerdict =>
@@ -248,6 +273,7 @@ function testPoliteness(
     },
     noteRequest: (host) => requests.push(host),
     noteOutcome: (host, outcome) => {
+      outcomes.push(outcome);
       if (outcome.ok) {
         failures = 0;
         return;
@@ -268,6 +294,7 @@ function testPoliteness(
 
 type RunOptions = {
   seed?: string;
+  domains?: ExtractDomain[];
   limit?: number;
   maxDepth?: number;
   concurrency?: number;
@@ -284,7 +311,7 @@ async function run(options: RunOptions = {}): Promise<CrawlState> {
   const state = createCrawlState({
     name: 'fixture',
     seed,
-    domains: ['links'],
+    domains: options.domains ?? ['links'],
     limit: options.limit ?? 50,
     maxDepth,
     rate: 0,
@@ -451,6 +478,51 @@ describe('executeCrawl', () => {
     // noteRequest is what starts the interval and takes the concurrency
     // slot, so a page fetched without it is a page that outran the limiter.
     expect(politeness.requests).toHaveLength(state.counters.fetched);
+  }, 30_000);
+
+  // Defect 1: the one back-off signal a server sends deliberately has to
+  // reach politeness. Both legal Retry-After forms, and the real status —
+  // regexing either out of a thrown error message is a guess.
+  it("passes the server's Retry-After delay-seconds through to politeness", async () => {
+    const politeness = testPoliteness();
+    await run({ seed: `${baseUrl}/rate-limited`, politeness });
+
+    expect(politeness.outcomes).toEqual([
+      { ok: false, status: 429, retryAfterSeconds: 12 },
+    ]);
+  }, 30_000);
+
+  it('passes an HTTP-date Retry-After through as seconds from now', async () => {
+    const politeness = testPoliteness();
+    await run({ seed: `${baseUrl}/rate-limited-date`, politeness });
+
+    const outcome = politeness.outcomes[0];
+    expect(outcome?.ok).toBe(false);
+    expect(outcome?.status).toBe(429);
+    // The fixture said "30 seconds from now"; the fetch and the parse spend
+    // some of it, so the window is what is assertable.
+    expect(outcome?.retryAfterSeconds).toBeGreaterThan(25);
+    expect(outcome?.retryAfterSeconds).toBeLessThanOrEqual(30);
+  }, 30_000);
+
+  it('reports the response status, and no Retry-After when none was sent', async () => {
+    const politeness = testPoliteness();
+    await run({ seed: `${baseUrl}/missing`, politeness });
+
+    expect(politeness.outcomes).toEqual([{ ok: false, status: 404 }]);
+  }, 30_000);
+
+  // Defect 3: a crawl extracts from a serialized DOM, exactly as `pc data`
+  // does, so a record whose computed-style fields are missing must say why.
+  it('annotates a record whose domains ran without computed styles', async () => {
+    await run({ seed: `${baseUrl}/a`, limit: 1, domains: ['content'] });
+
+    const { records } = await readCrawlRecords(
+      CrawlStore.dirFor(cwd, 'fixture'),
+    );
+    expect(
+      records[0]?.warnings?.map((warning) => warning.reason).join(' '),
+    ).toContain('content: skipped every field needing computed styles');
   }, 30_000);
 
   it('extracts only the requested domains', async () => {

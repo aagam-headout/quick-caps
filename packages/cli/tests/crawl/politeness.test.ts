@@ -6,9 +6,11 @@ import {
   DEFAULT_MAX_CONSECUTIVE_ERRORS,
   DEFAULT_REQUESTS_PER_SECOND,
   DEFAULT_USER_AGENT,
+  MAX_FAILING_HOSTS,
   Politeness,
   isUrlAllowed,
   matchRobotsGroup,
+  parseRetryAfterSeconds,
   parseRobotsTxt,
 } from '../../src/crawl/politeness.js';
 
@@ -475,7 +477,11 @@ describe('Politeness backoff and stop conditions', () => {
     });
   });
 
-  it('counts consecutive errors across hosts but forgives on any success', () => {
+  // Defect 2: the stop counter is per host, like every other decision in this
+  // unit. Two unrelated hosts failing once each is two hosts with one problem,
+  // not one host with two, and stopping there would end the crawl with a
+  // reason that misattributes the cause.
+  it('does not combine two hosts’ failures into one host’s stop', () => {
     const clock = fakeClock();
     const politeness = new Politeness({
       clock,
@@ -485,13 +491,150 @@ describe('Politeness backoff and stop conditions', () => {
     politeness.noteRequest('a.example');
     politeness.noteOutcome('a.example', { ok: false, status: 500 });
     politeness.noteRequest('b.example');
+    politeness.noteOutcome('b.example', { ok: false, status: 500 });
+    expect(politeness.stop).toBeUndefined();
+
+    // The same host twice is what the condition is about.
+    politeness.noteRequest('a.example');
+    politeness.noteOutcome('a.example', { ok: false, status: 500 });
+    expect(politeness.stop).toEqual({
+      kind: 'consecutive-errors',
+      host: 'a.example',
+      count: 2,
+    });
+  });
+
+  it('forgives a host on its own success, and only its own', () => {
+    const clock = fakeClock();
+    const politeness = new Politeness({
+      clock,
+      requestsPerSecond: 1_000,
+      maxConsecutiveErrors: 2,
+    });
+    politeness.noteRequest('a.example');
+    politeness.noteOutcome('a.example', { ok: false, status: 500 });
+    // b succeeding says nothing about a: a's ladder is a's.
+    politeness.noteRequest('b.example');
     politeness.noteOutcome('b.example', { ok: true, status: 200 });
     politeness.noteRequest('a.example');
     politeness.noteOutcome('a.example', { ok: false, status: 500 });
+    expect(politeness.stop).toEqual({
+      kind: 'consecutive-errors',
+      host: 'a.example',
+      count: 2,
+    });
+  });
+
+  it('stops separately when every host it has tried is failing at once', () => {
+    const clock = fakeClock();
+    const politeness = new Politeness({
+      clock,
+      requestsPerSecond: 1_000,
+      maxConsecutiveErrors: 5,
+    });
+    const hosts = Array.from(
+      { length: MAX_FAILING_HOSTS },
+      (_unused, index) => `host-${index}.example`,
+    );
+    for (const host of hosts) {
+      politeness.noteRequest(host);
+      politeness.noteOutcome(host, { ok: false, status: 500 });
+    }
+    // One failure each: no host is anywhere near its own limit of 5, so this
+    // is the whole-crawl condition, named as itself rather than the per-host
+    // one in disguise. It counts hosts, never errors summed across them.
+    expect(politeness.stop).toEqual({
+      kind: 'all-hosts-failing',
+      hosts: MAX_FAILING_HOSTS,
+    });
+  });
+
+  it('does not trip the all-hosts stop while some host is still answering', () => {
+    const clock = fakeClock();
+    const politeness = new Politeness({
+      clock,
+      requestsPerSecond: 1_000,
+      maxConsecutiveErrors: 5,
+    });
+    // One host answering is enough to make "every host tried" false, however
+    // many of the others are failing — and its success still leaves their
+    // ladders alone.
+    politeness.noteRequest('d.example');
+    politeness.noteOutcome('d.example', { ok: true, status: 200 });
+    for (const host of ['a.example', 'b.example', 'c.example']) {
+      politeness.noteRequest(host);
+      politeness.noteOutcome(host, { ok: false, status: 500 });
+    }
     expect(politeness.stop).toBeUndefined();
-    politeness.noteRequest('a.example');
-    politeness.noteOutcome('a.example', { ok: false, status: 500 });
-    expect(politeness.stop?.kind).toBe('consecutive-errors');
+  });
+
+  it('prefers an HTTP-date Retry-After over the ladder, measured from the clock', () => {
+    const clock = fakeClock();
+    const politeness = new Politeness({ clock, requestsPerSecond: 1_000 });
+    const seconds = parseRetryAfterSeconds(
+      new Date(clock.now() + 45_000).toUTCString(),
+      clock.now(),
+    );
+    if (seconds === undefined) {
+      throw new Error('expected the HTTP-date form to parse');
+    }
+    politeness.noteRequest('example.com');
+    politeness.noteOutcome('example.com', {
+      ok: false,
+      status: 503,
+      retryAfterSeconds: seconds,
+    });
+    expect(politeness.permit('example.com')).toEqual({
+      kind: 'wait',
+      ms: 45_000,
+      reason: 'backoff',
+    });
+  });
+
+  it('falls back to the ladder when Retry-After cannot be read', () => {
+    const clock = fakeClock();
+    const politeness = new Politeness({ clock, requestsPerSecond: 1_000 });
+    // Unreadable parses to nothing, so the runner omits the field entirely —
+    // which is the shape asserted here.
+    expect(parseRetryAfterSeconds('soon-ish', clock.now())).toBeUndefined();
+    politeness.noteRequest('example.com');
+    politeness.noteOutcome('example.com', { ok: false, status: 429 });
+    expect(politeness.permit('example.com')).toEqual({
+      kind: 'wait',
+      ms: BACKOFF_BASE_MS,
+      reason: 'backoff',
+    });
+  });
+});
+
+describe('parseRetryAfterSeconds', () => {
+  it('reads the delay-seconds form', () => {
+    expect(parseRetryAfterSeconds('120', 1_000)).toBe(120);
+    expect(parseRetryAfterSeconds('  0 ', 1_000)).toBe(0);
+  });
+
+  it('reads the HTTP-date form as seconds from now', () => {
+    const now = Date.parse('Wed, 21 Oct 2026 07:28:00 GMT');
+    expect(parseRetryAfterSeconds('Wed, 21 Oct 2026 07:28:30 GMT', now)).toBe(
+      30,
+    );
+  });
+
+  it('reads a date already past as "now" rather than a negative wait', () => {
+    const now = Date.parse('Wed, 21 Oct 2026 07:28:00 GMT');
+    expect(parseRetryAfterSeconds('Wed, 21 Oct 2026 07:27:00 GMT', now)).toBe(
+      0,
+    );
+  });
+
+  it('returns undefined for a header it cannot read, so the ladder decides', () => {
+    expect(parseRetryAfterSeconds('soon-ish', 1_000)).toBeUndefined();
+    expect(parseRetryAfterSeconds('', 1_000)).toBeUndefined();
+    expect(parseRetryAfterSeconds(null, 1_000)).toBeUndefined();
+    expect(parseRetryAfterSeconds(undefined, 1_000)).toBeUndefined();
+    // Negative delay-seconds is not a legal delay-seconds, and reading it as a
+    // year via Date.parse would be worse than not reading it at all.
+    expect(parseRetryAfterSeconds('-5', 1_000)).toBeUndefined();
   });
 });
 

@@ -5,6 +5,7 @@ import {
   EXTRACT_DOMAINS,
   type ExtractDomain,
 } from 'quick-caps-core/extract';
+import { computedStyleWarning } from '../computed-style-degradation.js';
 import { renderDataReport } from './data-render.js';
 import { runOpen } from './open.js';
 import { readSession } from '../session.js';
@@ -24,13 +25,6 @@ export type DataArgs = {
   /** Forwarded the same way, and refused by runOpen without `record`. */
   noRedact?: boolean;
 };
-
-/** Domains carrying fields that need per-element computed styles — natural
- * image size, fonts actually loaded, z-index and contrast. A stored session
- * has no live element to compute a style from, and upgrading it to a
- * browser-backed one would re-number every handle the caller is holding, so
- * these run degraded and say so. */
-const NEEDS_COMPUTED_STYLE: ExtractDomain[] = ['content', 'design'];
 
 /**
  * Extracts data from the *stored* session, offline: session.ir.html holds a
@@ -63,19 +57,14 @@ export async function runData(args: DataArgs, cwd: string): Promise<string> {
     domains,
   );
 
-  const degraded = NEEDS_COMPUTED_STYLE.filter((domain) =>
-    domains.includes(domain),
+  // Shared with the crawl path, which degrades the same way for its own
+  // reason: one wording for one limitation.
+  const degraded = computedStyleWarning(
+    domains,
+    'the stored session has no live page to compute styles from, and upgrading it would re-number every handle',
   );
-  if (degraded.length > 0) {
-    report.warnings = [
-      ...(report.warnings ?? []),
-      {
-        phase: 'extract',
-        reason: `${degraded.join(', ')}: skipped every field needing computed styles`,
-        detail:
-          'the stored session has no live page to compute styles from, and upgrading it would re-number every handle',
-      },
-    ];
+  if (degraded !== undefined) {
+    report.warnings = [...(report.warnings ?? []), degraded];
   }
 
   if (summaryOnly) {

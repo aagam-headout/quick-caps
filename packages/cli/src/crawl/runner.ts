@@ -3,6 +3,8 @@ import { fetchAssetText } from 'quick-caps-core';
 import { extractData } from 'quick-caps-core/extract';
 import type { DataReport, ExtractDomain } from 'quick-caps-core/extract';
 import type { Warning } from 'quick-caps-core';
+import { computedStyleWarning } from '../computed-style-degradation.js';
+import { HttpStatusError } from '../errors.js';
 import { openUrl } from '../open.js';
 import type {
   FrontierEntry,
@@ -10,9 +12,10 @@ import type {
   FrontierState,
   PageDiscovery,
 } from './frontier.js';
-import { parseRobotsTxt } from './politeness.js';
+import { parseRetryAfterSeconds, parseRobotsTxt } from './politeness.js';
 import type {
   Permit,
+  RequestOutcome,
   RobotsTxt,
   RobotsVerdict,
   StopReason,
@@ -59,7 +62,10 @@ export type PolitenessLike = {
   /** Immediately before the request: takes the concurrency slot and starts
    * the rate-limit interval. */
   noteRequest(host: string): void;
-  noteOutcome(host: string, outcome: { ok: boolean; status?: number }): void;
+  /** The response as it was, not as an error message described it: the status
+   * and the server's own `Retry-After` both reach the backoff, which is the
+   * only signal about pacing a host sends deliberately. */
+  noteOutcome(host: string, outcome: RequestOutcome): void;
   readonly stop: StopReason | undefined;
 };
 
@@ -115,10 +121,20 @@ export async function fetchAndExtract(
     if (value !== undefined) (data as Record<string, unknown>)[domain] = value;
   }
 
+  // The same annotation `pc data` appends, from the same place: a crawl
+  // extracts from a serialized DOM too, so a record missing its
+  // computed-style fields has to say why it is missing them. Only the
+  // requested domains are named — the discovery domains are not the caller's
+  // and are not persisted.
+  const degraded = computedStyleWarning(
+    domains,
+    'a crawl extracts from each page as fetched, with no live page to compute styles from, because a browser and a settle window per page is a different tool',
+  );
+
   return {
     driver,
     data,
-    warnings: report.warnings ?? [],
+    warnings: [...(report.warnings ?? []), ...(degraded ? [degraded] : [])],
     ...(report.links !== undefined && { links: { links: report.links.links } }),
     ...(report.entities !== undefined && {
       pagination: report.entities.pagination,
@@ -173,7 +189,11 @@ function plural(count: number, noun: string): string {
 }
 
 function describeStop(stop: StopReason): string {
-  return `stopped after ${plural(stop.count, 'consecutive error')} on ${stop.host}`;
+  return stop.kind === 'consecutive-errors'
+    ? `stopped after ${plural(stop.count, 'consecutive error')} on ${stop.host}`
+    : // Named as itself: a crawl that stopped because nothing it tried was
+      // answering must not read as one host having spent its own budget.
+      `stopped after every one of ${plural(stop.hosts, 'host')} tried was failing`;
 }
 
 /** The robots verdict as a skip reason worth reading in the store: the
@@ -331,14 +351,10 @@ export async function executeCrawl(
       page = await fetchPage(entry.url, state.domains);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      const status = statusFrom(message);
       // The failure stays with the page. Whether it also says something about
       // the host — a 429 or a 5xx does, a 404 does not — is politeness's call,
-      // not this loop's.
-      politeness.noteOutcome(host, {
-        ok: false,
-        ...(status !== undefined && { status }),
-      });
+      // not this loop's, and so is what a Retry-After means.
+      politeness.noteOutcome(host, outcomeFor(error, now()));
       await write(entry, {
         url: entry.url,
         depth: entry.depth,
@@ -418,13 +434,22 @@ export async function executeCrawl(
   return state;
 }
 
-/** The HTTP status out of fetchAssetBytes's `"404 Not Found"` message, when
- * there is one. Read from the message because that is the only place the
- * status survives — a shared fetch helper that threw is not going to grow a
- * status field for the crawler's sake. */
-function statusFrom(message: string): number | undefined {
-  const match = /\b(\d{3})\b/.exec(message);
-  if (match === null) return undefined;
-  const status = Number(match[1]);
-  return status >= 100 && status <= 599 ? status : undefined;
+/**
+ * A failed fetch as politeness reads it. A refused response arrives as an
+ * HttpStatusError carrying the status and the `Retry-After` the server sent;
+ * anything else — a timeout, a DNS failure, a parse failure — has no status,
+ * which politeness already treats as a host-level failure.
+ *
+ * Nothing is inferred from the message. A status regexed out of one is a guess
+ * that reads `exceeds per-asset cap: declared 300 bytes` as a 300, and a header
+ * never appears in one at all.
+ */
+function outcomeFor(error: unknown, nowMs: number): RequestOutcome {
+  if (!(error instanceof HttpStatusError)) return { ok: false };
+  const retryAfterSeconds = parseRetryAfterSeconds(error.retryAfter, nowMs);
+  return {
+    ok: false,
+    status: error.status,
+    ...(retryAfterSeconds !== undefined && { retryAfterSeconds }),
+  };
 }

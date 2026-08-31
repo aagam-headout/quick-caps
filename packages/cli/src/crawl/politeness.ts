@@ -225,6 +225,12 @@ export const DEFAULT_CONCURRENCY = 1;
  * keeps hammering a host that is failing is the behaviour that gets tools
  * blocked. */
 export const DEFAULT_MAX_CONSECUTIVE_ERRORS = 5;
+/** How many hosts must be failing at once for the whole-crawl stop to trip.
+ * Three rather than two, so a crawl of one or two hosts is left to the per-host
+ * ladder — the instrument built for it — and this condition only speaks when a
+ * crawl is broad enough that "none of them is answering" says something the
+ * per-host counters cannot. */
+export const MAX_FAILING_HOSTS = 3;
 export const BACKOFF_BASE_MS = 1_000;
 /** A minute is long enough to ride out a deploy and short enough that a
  * resumed crawl is not indistinguishable from a hung one. */
@@ -255,12 +261,59 @@ export type RequestOutcome = {
   retryAfterSeconds?: number;
 };
 
-export type StopReason = {
-  kind: 'consecutive-errors';
-  /** The host whose failure tripped it. */
-  host: string;
-  count: number;
-};
+/**
+ * A `Retry-After` header as seconds, measured from `nowMs`. Both legal forms
+ * are honoured: delay-seconds, and an HTTP-date.
+ *
+ * Pure, and given the clock rather than reading one, for the same reason the
+ * rest of this unit is: the runner has the header, this decides what it means.
+ *
+ * A value that cannot be read returns undefined so the caller falls back to
+ * its own ladder. Reading it as zero would turn one garbled header into a
+ * crawler that retries a failing host with no backoff at all, which is the
+ * behaviour the ladder exists to prevent.
+ */
+export function parseRetryAfterSeconds(
+  value: string | null | undefined,
+  nowMs: number,
+): number | undefined {
+  if (value === null || value === undefined) return undefined;
+  const trimmed = value.trim();
+  // delay-seconds first: Date.parse would read a bare number as a year.
+  if (/^\d+$/.test(trimmed)) return Number(trimmed);
+  // Numeric-looking but not legal delay-seconds — negative, or fractional — is
+  // not a date either, and Date.parse reads `-5` as the year 5 BC rather than
+  // refusing it.
+  if (/^[+-]?[\d.]+$/.test(trimmed)) return undefined;
+  const at = Date.parse(trimmed);
+  if (Number.isNaN(at)) return undefined;
+  // A date already past means "now", not a negative wait — a wait below zero
+  // would read as "the server asked for no backoff", which it did not.
+  return Math.max(0, (at - nowMs) / 1_000);
+}
+
+export type StopReason =
+  /** One host failed this many times in a row. Per host, like every other
+   * decision in this unit: two unrelated hosts failing once each is two hosts
+   * with one problem, not one host with two, and a stop that summed them would
+   * end the crawl naming a host that never reached its own limit. */
+  | {
+      kind: 'consecutive-errors';
+      /** The host whose failure tripped it. */
+      host: string;
+      count: number;
+    }
+  /** Every host the crawl has actually requested is failing at once. A
+   * deliberately separate condition from the per-host one, and counted in
+   * hosts rather than in errors so it can never be the per-host counter in
+   * disguise: a crawl fanned out across several hosts where none of them is
+   * answering is a crawl with a problem of its own, and should stop even
+   * though no single host has spent its own budget. */
+  | {
+      kind: 'all-hosts-failing';
+      /** How many hosts are failing — all of the ones tried, by definition. */
+      hosts: number;
+    };
 
 /**
  * Whether a request to a host may go now, and if not, why not. One decision
@@ -404,13 +457,14 @@ export class Politeness {
     state.inFlight = Math.max(0, state.inFlight - 1);
 
     if (outcome.ok) {
-      // Any success says the host is healthy, so the backoff ladder and the
-      // stop counter both reset. Nothing else clears them.
+      // A success says *this* host is healthy, so its backoff ladder and its
+      // stop counter both reset. Only its own: another host's failures are
+      // that host's, and clearing them here is what made a stop attributable
+      // to nobody.
       state.consecutiveErrors = 0;
       // Deleted rather than set to undefined: exactOptionalPropertyTypes makes
       // "no backoff" the absence of the field, not a field holding undefined.
       delete state.retryAtMs;
-      for (const other of this.hosts.values()) other.consecutiveErrors = 0;
       return;
     }
     if (!isHostFailure(outcome)) return;
@@ -427,15 +481,33 @@ export class Politeness {
         : ladder;
     state.retryAtMs = this.clock.now() + backoffMs;
 
-    const consecutive = [...this.hosts.values()].reduce(
-      (total, other) => total + other.consecutiveErrors,
-      0,
-    );
-    if (consecutive >= this.maxConsecutiveErrors) {
+    if (state.consecutiveErrors >= this.maxConsecutiveErrors) {
       this.stopReason = {
         kind: 'consecutive-errors',
-        host,
-        count: consecutive,
+        host: host.toLowerCase(),
+        count: state.consecutiveErrors,
+      };
+      return;
+    }
+    // The whole-crawl condition, checked only once no single host has tripped
+    // its own: a crawl where nothing it has tried is answering should stop,
+    // and saying so as itself keeps the per-host reason honest. Nothing is
+    // summed across hosts here — breadth is the signal, which is what keeps
+    // this from being the per-host counter under another name.
+    //
+    // Only hosts actually requested count. `permit` creates a host's state on
+    // first sight, so a host merely asked about would otherwise sit at zero
+    // errors and hold this condition off forever.
+    const attempted = [...this.hosts.values()].filter(
+      (other) => other.lastRequestAtMs !== undefined,
+    );
+    if (
+      attempted.length >= MAX_FAILING_HOSTS &&
+      attempted.every((other) => other.consecutiveErrors > 0)
+    ) {
+      this.stopReason = {
+        kind: 'all-hosts-failing',
+        hosts: attempted.length,
       };
     }
   }

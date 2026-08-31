@@ -205,10 +205,21 @@ agent may run unattended against somebody else's server:
 - **Backoff on 429 and 5xx**, doubling from one second to a one-minute
   ceiling, and only for statuses the host is responsible for: a 404 is a fact
   about one URL and neither slows the crawl nor counts toward stopping it. A
-  success anywhere resets the ladder.
-- **A stop after five consecutive host-level failures**, with that reason in
-  the summary. A crawler that keeps hammering a host that is already failing
-  is the behaviour that gets tools blocked.
+  host's own success resets its ladder.
+- **A `Retry-After` is preferred over that ladder**, in either legal form —
+  delay-seconds or an HTTP-date — because it is the one pacing instruction a
+  server sends deliberately rather than something the crawler has to guess. A
+  value that cannot be read falls back to the ladder.
+- **A stop after five consecutive failures on one host**, with that reason in
+  the summary. Per host, like everything else here: two unrelated hosts
+  failing once each is two hosts with one problem, not one host with two. A
+  crawler that keeps hammering a host that is already failing is the behaviour
+  that gets tools blocked.
+- **A separate stop when every host the crawl has tried is failing at once**,
+  once there are at least three of them — counted in hosts, not in errors
+  summed across them. A crawl fanned out over several hosts where none is
+  answering has a problem of its own, and it ends saying so rather than
+  blaming whichever host failed last.
 - **`--ignore-robots` exists and has to be typed.** It waives robots
   _rules_ — for your own staging site, a local fixture, a contractual crawl —
   and not `crawl-delay`, which is still read from the same file.
@@ -235,7 +246,10 @@ summary's `unread` row as an unparseable line and the scan continues past it;
 
 Each record carries the URL, its depth, the timestamp of the fetch attempt,
 the outcome, the requested domains' reports, and any extract warnings for that
-page. A page that 404s, times out, or fails to parse is a record with its
+page. `content` and `design` extract from each page as fetched, with no live
+page to compute styles from, so a record that requested either carries the same
+warning `pc data` prints — the absence of a natural image size or a loaded font
+means "not measured", and a record has to say so itself. A page that 404s, times out, or fails to parse is a record with its
 error rather than an absence, on the principle the rest of the tool follows: a
 gap a caller can see is a fact, a gap it cannot see is a lie.
 
@@ -353,10 +367,6 @@ setup, the test suite, and the release process.
   computed style — an image's natural size, the fonts actually loaded — are
   therefore never reported by this command, on a browser-backed session or a
   static one. The report names what it skipped.
-- `crawl`'s `content` and `design` domains extract from the serialized DOM,
-  the same way `data`'s do, so the fields that would need a computed style are
-  absent from a crawl record too — and unlike `pc data`, a record carries no
-  warning saying so. Read the absence as "not measured", not as "not there".
 - No CDP attach to a real running browser — every `open`/`capture` starts
   from a clean, unauthenticated browser context or a plain fetch. Real
   cookies/sessions are never available to this tool.
