@@ -1,6 +1,6 @@
 {
   "name": "quick-caps-core",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Rendered-DOM page distillation engine for quick-caps-cli \u2014 PageIR, design-token extraction, single-file/zip capture bundling.",
   "license": "MIT",
   "repository": {

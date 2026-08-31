@@ -2,7 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
-## 0.1.1 (unreleased)
+## 0.2.0 (unreleased)
+
+A minor rather than a patch: this release adds public API — two commands,
+two MCP tools, several `quick-caps-core` subpath exports, and a capture
+setting — on top of published packages.
 
 Page data extraction: what a page _contains_, alongside what it looks like.
 
