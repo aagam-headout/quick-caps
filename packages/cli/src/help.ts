@@ -24,6 +24,13 @@ Commands:
   pc tokens                     Colors, type scale, spacing, and radii.
   pc scrape <shape>             Extract fields per a JSON {field: selector}
                                 shape; "sel@attr" reads an attribute.
+  pc data [url] [--structured] [--entities] [--content] [--design]
+          [--links] [--all] [--json]
+                                Report the data the page contains: declared
+                                structured data, entities, content quality,
+                                design system, link graph. With no domain flag,
+                                prints which domains found something and how
+                                much. With a url, opens it first.
   pc capture [--zip] [--out <dir>]
                                 Write a self-contained archive of the page.
   pc mcp                        Serve every command above as an MCP tool over
@@ -34,6 +41,10 @@ Notes:
   layout, tokens, and capture need real layout geometry and computed styles,
   so they upgrade a static session to a browser-backed one, which re-numbers
   every handle.
+
+  data never upgrades a static session, precisely so it keeps the handles
+  you already have. Fields needing computed styles are skipped instead, and
+  the report names them.
 
   next replaces the current handles rather than adding to them: act on the
   numbers from the most recent output, not an earlier slice.

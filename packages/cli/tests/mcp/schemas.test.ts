@@ -9,6 +9,7 @@ import {
   layoutInputSchema,
   tokensInputSchema,
   scrapeInputSchema,
+  dataInputSchema,
   captureInputSchema,
 } from '../../src/mcp/schemas.js';
 
@@ -80,5 +81,23 @@ describe('capture schema', () => {
       zip: true,
       outDir: '/tmp/x',
     });
+  });
+});
+
+describe('data schema', () => {
+  it('accepts no fields, a domain list, and a url', () => {
+    expect(z.object(dataInputSchema).parse({})).toEqual({});
+    expect(
+      z.object(dataInputSchema).parse({ domains: ['links', 'entities'] }),
+    ).toEqual({ domains: ['links', 'entities'] });
+    expect(
+      z.object(dataInputSchema).parse({ url: 'https://example.com' }),
+    ).toEqual({ url: 'https://example.com' });
+  });
+
+  it('rejects a domain that is not one of the five', () => {
+    expect(() =>
+      z.object(dataInputSchema).parse({ domains: ['prices'] }),
+    ).toThrow();
   });
 });

@@ -8,6 +8,7 @@ import { runFind } from '../commands/find.js';
 import { runLayout } from '../commands/layout.js';
 import { runTokens } from '../commands/tokens.js';
 import { runScrape } from '../commands/scrape.js';
+import { runData } from '../commands/data.js';
 import { runCapture } from '../commands/capture.js';
 import { toToolResult } from './tool-result.js';
 import {
@@ -19,6 +20,7 @@ import {
   layoutInputSchema,
   tokensInputSchema,
   scrapeInputSchema,
+  dataInputSchema,
   captureInputSchema,
 } from './schemas.js';
 import {
@@ -128,6 +130,26 @@ export function buildMcpServer(): McpServer {
       inputSchema: scrapeInputSchema,
     },
     async (args) => toToolResult(() => runScrape(args.shape, cwd)),
+  );
+
+  server.registerTool(
+    'pc_data',
+    {
+      title: 'Extract page data',
+      description:
+        'Report the data the current page contains: declared structured data, entities, content quality, design system, link graph. Omit domains for an availability summary first.',
+      inputSchema: dataInputSchema,
+    },
+    async (args) =>
+      toToolResult(() =>
+        runData(
+          {
+            ...(args.url !== undefined && { url: args.url }),
+            domains: args.domains ?? [],
+          },
+          cwd,
+        ),
+      ),
   );
 
   server.registerTool(

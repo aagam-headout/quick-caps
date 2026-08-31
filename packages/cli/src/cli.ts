@@ -6,8 +6,10 @@ import { runFind } from './commands/find.js';
 import { runLayout } from './commands/layout.js';
 import { runTokens } from './commands/tokens.js';
 import { runScrape } from './commands/scrape.js';
+import { runData } from './commands/data.js';
 import { runCapture, type CaptureArgs } from './commands/capture.js';
 import { startMcpServer } from './mcp/server.js';
+import { EXTRACT_DOMAINS } from 'quick-caps-core/extract';
 import { HELP_TEXT } from './help.js';
 import { CliError } from './errors.js';
 
@@ -70,6 +72,23 @@ export async function dispatch(
       if (!shape) throw new CliError('Usage: pc scrape <shape>');
       return runScrape(shape, cwd);
     }
+    case 'data': {
+      // No domain flag is a request for the availability summary, not for
+      // everything — runData reads an empty list that way.
+      const all = rest.includes('--all');
+      const domains = EXTRACT_DOMAINS.filter(
+        (domain) => all || rest.includes(`--${domain}`),
+      );
+      const url = rest.find((arg) => !arg.startsWith('--'));
+      return runData(
+        {
+          ...(url !== undefined && { url }),
+          domains: [...domains],
+          json: rest.includes('--json'),
+        },
+        cwd,
+      );
+    }
     case 'capture': {
       const args: CaptureArgs = {};
       if (rest.includes('--zip')) args.zip = true;
@@ -87,7 +106,7 @@ export async function dispatch(
       return '';
     default:
       throw new CliError(
-        `Unknown command: ${command}. Expected one of: open, do, read, find, next, layout, tokens, scrape, capture, mcp — run 'pc --help' for usage.`,
+        `Unknown command: ${command}. Expected one of: open, do, read, find, next, layout, tokens, scrape, data, capture, mcp — run 'pc --help' for usage.`,
       );
   }
 }

@@ -25,6 +25,9 @@ vi.mock('../src/commands/tokens.js', () => ({
 vi.mock('../src/commands/scrape.js', () => ({
   runScrape: vi.fn(async (shape: string) => `scraped ${shape}`),
 }));
+vi.mock('../src/commands/data.js', () => ({
+  runData: vi.fn(async () => 'data report'),
+}));
 vi.mock('../src/commands/capture.js', () => ({
   runCapture: vi.fn(async () => 'capture message'),
 }));
@@ -92,6 +95,40 @@ describe('dispatch — extended commands', () => {
     );
   });
 
+  it('routes "data" with no domain flag to runData with an empty domain list', async () => {
+    const { runData } = await import('../src/commands/data.js');
+    expect(await dispatch(['data'])).toBe('data report');
+    expect(runData).toHaveBeenCalledWith(
+      { domains: [], json: false },
+      expect.any(String),
+    );
+  });
+
+  it('routes "data" domain flags in canonical order, and a bare argument as the url', async () => {
+    const { runData } = await import('../src/commands/data.js');
+    await dispatch(['data', 'https://example.com', '--links', '--structured']);
+    expect(runData).toHaveBeenCalledWith(
+      {
+        url: 'https://example.com',
+        domains: ['structured', 'links'],
+        json: false,
+      },
+      expect.any(String),
+    );
+  });
+
+  it('routes "data --all --json" to every domain in machine form', async () => {
+    const { runData } = await import('../src/commands/data.js');
+    await dispatch(['data', '--all', '--json']);
+    expect(runData).toHaveBeenCalledWith(
+      {
+        domains: ['structured', 'entities', 'content', 'design', 'links'],
+        json: true,
+      },
+      expect.any(String),
+    );
+  });
+
   it('routes "capture" to runCapture with parsed --zip and --out flags', async () => {
     const { runCapture } = await import('../src/commands/capture.js');
     await dispatch(['capture', '--zip', '--out', './somewhere']);
@@ -155,6 +192,7 @@ describe('dispatch — extended commands', () => {
       'layout',
       'tokens',
       'scrape',
+      'data',
       'capture',
       'mcp',
     ]) {

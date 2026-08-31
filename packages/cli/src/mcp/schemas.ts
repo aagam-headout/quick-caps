@@ -67,3 +67,19 @@ export const captureInputSchema = {
       'Directory to write the capture into. Defaults to the MCP artifact root, not the process cwd.',
     ),
 };
+
+export const dataInputSchema = {
+  domains: z
+    .array(z.enum(['structured', 'entities', 'content', 'design', 'links']))
+    .optional()
+    .describe(
+      'Domains to extract. Omit for a cheap availability summary naming which domains found something, and how much.',
+    ),
+  url: z
+    .string()
+    .url()
+    .optional()
+    .describe(
+      'Open this url first, then extract from it. Omit to use the current session.',
+    ),
+};

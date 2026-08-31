@@ -79,13 +79,14 @@ async function connect(): Promise<{
 }
 
 describe('pc mcp (end-to-end over stdio)', () => {
-  it('lists the nine pc_* tools', async () => {
+  it('lists every pc_* tool', async () => {
     const { client, transport } = await connect();
     try {
       const { tools } = await client.listTools();
       expect(tools.map((t) => t.name).sort()).toEqual(
         [
           'pc_capture',
+          'pc_data',
           'pc_do',
           'pc_find',
           'pc_layout',

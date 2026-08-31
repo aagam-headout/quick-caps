@@ -5,7 +5,7 @@
  *
  * Starts an MCP server over stdio, exposing every command below as a typed
  * tool (`pc_open`, `pc_do`, `pc_read`, `pc_find`, `pc_next`, `pc_layout`,
- * `pc_tokens`, `pc_scrape`, `pc_capture`). Same session file, same
+ * `pc_tokens`, `pc_scrape`, `pc_data`, `pc_capture`). Same session file, same
  * `.quick-caps/session.json` in the process's working directory — a `pc open`
  * in a shell and a `pc_open` tool call in the same directory share state.
  *
@@ -43,6 +43,7 @@ export {
 export { runLayout } from './commands/layout.js';
 export { runTokens } from './commands/tokens.js';
 export { runScrape, splitSelectorAttr } from './commands/scrape.js';
+export { runData, type DataArgs } from './commands/data.js';
 export { runCapture, type CaptureArgs } from './commands/capture.js';
 export { interact, type InteractAction } from './interact.js';
 export { ensurePlaywrightSession } from './ensure-playwright.js';
