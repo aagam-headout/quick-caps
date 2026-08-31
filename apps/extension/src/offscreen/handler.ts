@@ -48,6 +48,9 @@ export async function handleOffscreenRequest(
             byteLength: result.byteLength,
             objectUrl: result.objectUrl,
             warnings: result.warnings,
+            ...(result.dataSummary === undefined
+              ? {}
+              : { dataSummary: result.dataSummary }),
           },
         };
       }

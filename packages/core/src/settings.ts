@@ -16,6 +16,13 @@ export const captureSettingsSchema = z.object({
       /** A lightweight performance snapshot from the page's own
        * Navigation/Paint/Resource Timing entries — not a Lighthouse audit. */
       perf: z.boolean().default(false),
+      /**
+       * The extraction layer's report: structured data, entities, content
+       * quality, design system, and link graph. One flag rather than one per
+       * domain — the settings panel is already twelve rows, and a caller who
+       * wants a subset has `pc data`'s per-domain flags.
+       */
+      data: z.boolean().default(false),
     })
     .prefault({}),
   scrollToLoadLazy: z.boolean().default(true),

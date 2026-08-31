@@ -35,6 +35,10 @@ function revokeObjectUrl(url: string): void {
 function captureDeps(): CaptureDeps {
   return {
     fetchText: (url, options) => fetchAssetText(url, options),
+    // The extract layer needs a parsed document and core deliberately cannot
+    // parse HTML itself; this document is the only place in the extension that
+    // has a DOMParser at bundling time.
+    parseDocument: (html) => new DOMParser().parseFromString(html, 'text/html'),
     stitch: (input) => stitchFrames(input),
     createObjectUrl: async (bytes, mimeType) =>
       createObjectUrl(bytes, mimeType),

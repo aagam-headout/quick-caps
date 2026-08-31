@@ -35,6 +35,10 @@ export type OffscreenCaptureResult = {
   byteLength: number;
   objectUrl: string;
   warnings: Warning[];
+  /** Summary of the extracted-data report, when that toggle was on. Passed as
+   * text rather than the report itself: the popup shows two lines, and the
+   * report is already in the archive. */
+  dataSummary?: string;
 };
 
 export type OffscreenRequest =
@@ -107,6 +111,7 @@ export type WorkerToPopup =
       filename: string;
       byteLength: number;
       warnings: CaptureWarningView[];
+      dataSummary?: string;
     }
   | { type: 'capture:failed'; reason: string; recoverable: boolean };
 

@@ -103,6 +103,7 @@ describe('popup', () => {
     for (const label of [
       /screenshot/i,
       /Design tokens/,
+      /Extracted data/,
       /Metadata/,
       /Console \+ network/,
       /Raw network sources/,
@@ -227,6 +228,21 @@ describe('popup', () => {
       await screen.findByText('example.com-20260827-100000.html'),
     ).toBeDefined();
     expect(screen.getByText(/1 warning/)).toBeDefined();
+  });
+
+  it('shows the extracted-data summary when the capture carried one', async () => {
+    render(<App />);
+    await clickCapture();
+    emit({
+      type: 'capture:done',
+      filename: 'example.com-20260827-100000.html',
+      byteLength: 2048,
+      warnings: [],
+      dataSummary: 'Found: 1 product, price $49.99, 2 authors, 14 links.',
+    });
+    expect(
+      await screen.findByText(/1 product, price \$49\.99, 2 authors, 14 links/),
+    ).toBeDefined();
   });
 
   it('shows a restricted-page failure as an alert', async () => {

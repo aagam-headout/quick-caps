@@ -85,6 +85,11 @@ const EXTRA_TOGGLES: Toggle[] = [
     hint: 'Load and rendering timings, a quick gauge, not a full audit',
   },
   {
+    key: 'data',
+    label: 'Extracted data (JSON)',
+    hint: "The facts on the page as data: prices, authors, dates, headings, and the page's links",
+  },
+  {
     key: 'rawSources',
     label: 'Raw network sources',
     hint: "The page's original files as the server sent them, before any JavaScript ran",
@@ -133,6 +138,7 @@ const PRESETS: { value: string; label: string; include: Include }[] = [
       logs: true,
       rawSources: true,
       perf: true,
+      data: true,
     },
   },
   {
@@ -150,6 +156,7 @@ const PRESETS: { value: string; label: string; include: Include }[] = [
       logs: false,
       rawSources: false,
       perf: false,
+      data: false,
     },
   },
   {
@@ -167,6 +174,7 @@ const PRESETS: { value: string; label: string; include: Include }[] = [
       logs: false,
       rawSources: false,
       perf: true,
+      data: false,
     },
   },
   {
@@ -184,6 +192,7 @@ const PRESETS: { value: string; label: string; include: Include }[] = [
       logs: false,
       rawSources: false,
       perf: false,
+      data: false,
     },
   },
   {
@@ -201,6 +210,7 @@ const PRESETS: { value: string; label: string; include: Include }[] = [
       logs: false,
       rawSources: true,
       perf: false,
+      data: false,
     },
   },
 ];
@@ -580,6 +590,11 @@ export function App() {
                 <p className="text-[10.5px] text-[var(--text-secondary)]">
                   {formatSize(result.byteLength)} saved to Downloads
                 </p>
+                {result.dataSummary ? (
+                  <p className="mt-[4px] text-[10.5px] leading-[1.45] whitespace-pre-line text-[var(--text-secondary)]">
+                    {result.dataSummary}
+                  </p>
+                ) : null}
               </div>
             </div>
             <WarningList warnings={result.warnings} />

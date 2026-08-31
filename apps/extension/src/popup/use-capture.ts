@@ -10,6 +10,7 @@ export type CaptureResultView = {
   filename: string;
   byteLength: number;
   warnings: CaptureWarningView[];
+  dataSummary?: string;
 };
 
 const ALL_URLS: chrome.permissions.Permissions = { origins: ['<all_urls>'] };

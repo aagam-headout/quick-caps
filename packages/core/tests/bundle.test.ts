@@ -9,6 +9,23 @@ import {
 import { defaultSettings } from '../src/settings.js';
 import { emptyTally } from '../src/collect.js';
 import type { PageIR } from '../src/ir.js';
+import type { LinkReport } from '../src/extract/types.js';
+
+const linkReport: LinkReport = {
+  links: [
+    {
+      href: 'https://example.com/a',
+      text: 'a',
+      internal: true,
+      zone: 'content',
+      rel: [],
+      host: 'example.com',
+    },
+  ],
+  internalCount: 1,
+  externalCount: 0,
+  byHost: {},
+};
 
 const ir: PageIR = {
   metadata: {
@@ -213,6 +230,22 @@ describe('buildSingleFile', () => {
     expect(text).not.toContain('data-capture="perf"');
   });
 
+  it('embeds an inert data block when an extracted-data report is supplied', () => {
+    const text = new TextDecoder().decode(
+      buildSingleFile({ ...input, data: { warnings: [], links: linkReport } })
+        .bytes,
+    );
+    expect(text).toContain(
+      '<script type="application/json" data-capture="data">',
+    );
+    expect(text).toContain('"internalCount":1');
+  });
+
+  it('omits the data block when no extracted-data report is supplied', () => {
+    const text = new TextDecoder().decode(buildSingleFile(input).bytes);
+    expect(text).not.toContain('data-capture="data"');
+  });
+
   it('omits the viewer panel by default', () => {
     const text = new TextDecoder().decode(buildSingleFile(input).bytes);
     expect(text).not.toContain('data-quick-caps-viewer');
@@ -297,6 +330,20 @@ describe('buildZip', () => {
     const files = unzipSync(buildZip({ ...input, ir: { ...ir, perf } }).bytes);
     expect(Object.keys(files)).toContain('perf.json');
     expect(JSON.parse(strFromU8(files['perf.json']!)).ttfbMs).toBe(25);
+  });
+
+  it('includes data.json only when an extracted-data report was supplied', () => {
+    expect(Object.keys(unzipSync(buildZip(input).bytes))).not.toContain(
+      'data.json',
+    );
+    const files = unzipSync(
+      buildZip({ ...input, data: { warnings: [], links: linkReport } }).bytes,
+    );
+    expect(Object.keys(files)).toContain('data.json');
+    expect(
+      (JSON.parse(strFromU8(files['data.json']!)) as { links: LinkReport })
+        .links.internalCount,
+    ).toBe(1);
   });
 
   it('includes screenshot.png only when a screenshot was captured', () => {

@@ -10,6 +10,7 @@ describe('capture settings', () => {
     expect(defaultSettings.include.html).toBe(true);
     expect(defaultSettings.include.screenshot).toBe(false);
     expect(defaultSettings.include.perf).toBe(false);
+    expect(defaultSettings.include.data).toBe(false);
     expect(defaultSettings.inertSnapshot).toBe(true);
     expect(defaultSettings.embedViewer).toBe(false);
     expect(defaultSettings.output).toBe('single-file');

@@ -2,6 +2,9 @@ import { strToU8, zipSync } from 'fflate';
 import type { AssetKind, PageIR } from './ir.js';
 import type { CaptureSettings } from './settings.js';
 import type { TokenReport } from './tokens.js';
+// Type-only, so this stays erased at build time: the extract layer must not
+// become reachable from this barrel's runtime graph. See index.ts.
+import type { DataReport } from './extract/types.js';
 import { viewerPanelBlock } from './viewer.js';
 
 export type BundleInput = {
@@ -13,6 +16,9 @@ export type BundleInput = {
    */
   html: string;
   tokens?: TokenReport | undefined;
+  /** The extraction report, when the host ran it. Partial because a failed
+   * domain is absent rather than empty. */
+  data?: Partial<DataReport> | undefined;
   screenshot?: Uint8Array | undefined;
   rawSources?: Map<string, string> | undefined;
 };
@@ -159,6 +165,10 @@ export function buildSingleFile(input: BundleInput): BundleOutput {
     parts.push(jsonBlock('tokens', input.tokens));
     hasDataBlock = true;
   }
+  if (input.data) {
+    parts.push(jsonBlock('data', input.data));
+    hasDataBlock = true;
+  }
   if (input.settings.include.logs && input.ir.logs) {
     parts.push(jsonBlock('logs', input.ir.logs));
     hasDataBlock = true;
@@ -207,6 +217,9 @@ export function buildZip(input: BundleInput): BundleOutput {
   }
   if (input.tokens) {
     entries['tokens.json'] = strToU8(JSON.stringify(input.tokens, null, 2));
+  }
+  if (input.data) {
+    entries['data.json'] = strToU8(JSON.stringify(input.data, null, 2));
   }
   if (input.settings.include.logs && input.ir.logs) {
     entries['logs.json'] = strToU8(JSON.stringify(input.ir.logs, null, 2));

@@ -13,6 +13,7 @@ const NAMES: Record<string, string> = {
   tokens: 'Design tokens',
   logs: 'Console + network log',
   perf: 'Performance snapshot',
+  data: 'Extracted data',
   raw: 'Raw sources',
 };
 

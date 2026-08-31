@@ -1,3 +1,10 @@
+/**
+ * @vitest-environment jsdom
+ *
+ * runCapture needs a DOMParser for the extract layer's document, exactly as
+ * the offscreen document supplies one; the rest of the suite is
+ * environment-agnostic.
+ */
 import { describe, expect, it, vi } from 'vitest';
 import { unzipSync, strFromU8 } from 'fflate';
 import { defaultSettings, emptyTally, type PageIR } from 'quick-caps-core';
@@ -31,8 +38,13 @@ const ir: PageIR = {
 
 const SERIALIZED = '<!doctype html><html><body><h1>Hi</h1></body></html>';
 
+/** Same call the offscreen document makes. */
+const parseDocument = (html: string): Document =>
+  new DOMParser().parseFromString(html, 'text/html');
+
 function deps(overrides: Partial<CaptureDeps> = {}): CaptureDeps {
   return {
+    parseDocument,
     fetchText: vi.fn(async () => 'raw source'),
     stitch: vi.fn(async () => new Uint8Array([137, 80])),
     createObjectUrl: vi.fn(async () => 'blob:fake'),
@@ -42,6 +54,16 @@ function deps(overrides: Partial<CaptureDeps> = {}): CaptureDeps {
 }
 
 const input = { ir, html: SERIALIZED, settings: defaultSettings };
+
+/** Enough real structured data for the extract layer to find something. */
+const DATA_PAGE = `<!doctype html><html><head>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"Product","name":"Widget","offers":{"@type":"Offer","price":"49.99","priceCurrency":"USD"}}</script>
+</head><body><h1>Widget</h1><a href="https://example.com/next">Next</a></body></html>`;
+
+/** The packaged bytes, read back off the createObjectUrl mock. */
+const bytesFrom = (d: CaptureDeps): Uint8Array =>
+  (d.createObjectUrl as ReturnType<typeof vi.fn>).mock
+    .calls[0]![0] as Uint8Array;
 
 describe('runCapture', () => {
   it('produces a filename, size, and object url', async () => {
@@ -329,5 +351,97 @@ describe('runCapture empty input', () => {
     );
     expect(result.byteLength).toBeGreaterThan(0);
     expect(result.warnings).toEqual([]);
+  });
+  it('writes data.json into the zip only when extracted data is on', async () => {
+    const on = deps();
+    await runCapture(
+      {
+        ...input,
+        html: DATA_PAGE,
+        settings: {
+          ...defaultSettings,
+          output: 'zip',
+          include: { ...defaultSettings.include, data: true },
+        },
+      },
+      on,
+    );
+    expect(Object.keys(unzipSync(bytesFrom(on)))).toContain('data.json');
+
+    const off = deps();
+    await runCapture(
+      {
+        ...input,
+        html: DATA_PAGE,
+        settings: { ...defaultSettings, output: 'zip' },
+      },
+      off,
+    );
+    expect(Object.keys(unzipSync(bytesFrom(off)))).not.toContain('data.json');
+  });
+
+  it('embeds an inert data block in single-file output', async () => {
+    const d = deps();
+    await runCapture(
+      {
+        ...input,
+        html: DATA_PAGE,
+        settings: {
+          ...defaultSettings,
+          include: { ...defaultSettings.include, data: true },
+        },
+      },
+      d,
+    );
+    const text = new TextDecoder().decode(bytesFrom(d));
+    expect(text).toContain(
+      '<script type="application/json" data-capture="data">',
+    );
+    expect(text).toContain('"jsonLd"');
+  });
+
+  it('summarizes what extraction found, for the popup', async () => {
+    const result = await runCapture(
+      {
+        ...input,
+        html: DATA_PAGE,
+        settings: {
+          ...defaultSettings,
+          include: { ...defaultSettings.include, data: true },
+        },
+      },
+      deps(),
+    );
+    expect(result.dataSummary).toContain('49.99');
+    expect(result.dataSummary).toMatch(/link/);
+  });
+
+  it('has no summary when extracted data is off', async () => {
+    const result = await runCapture({ ...input, html: DATA_PAGE }, deps());
+    expect(result.dataSummary).toBeUndefined();
+  });
+
+  it('warns rather than failing when extraction throws', async () => {
+    const result = await runCapture(
+      {
+        ...input,
+        html: DATA_PAGE,
+        settings: {
+          ...defaultSettings,
+          include: { ...defaultSettings.include, data: true },
+        },
+      },
+      deps({
+        parseDocument: vi.fn(() => {
+          throw new Error('no parser here');
+        }),
+      }),
+    );
+    expect(result.filename).toBeTruthy();
+    expect(
+      result.warnings.some(
+        (w) => w.phase === 'extract' && w.reason.includes('no parser here'),
+      ),
+    ).toBe(true);
   });
 });

@@ -7,7 +7,13 @@ import {
   type PageIR,
   type Warning,
 } from 'quick-caps-core';
+import {
+  extractData,
+  EXTRACT_DOMAINS,
+  type DataReport,
+} from 'quick-caps-core/extract';
 import type { CaptureProgress } from './messages.js';
+import { summarizeData } from './data-summary.js';
 
 export type Frame = { dataUrl: string; offsetY: number };
 
@@ -38,6 +44,12 @@ export type CaptureInput = {
 
 export type CaptureDeps = {
   fetchText: (url: string, options: FetchOptions) => Promise<string>;
+  /**
+   * Parses the serialized page for the extract layer. Injected for the same
+   * reason the others are: this module has to stay loadable in Node, where
+   * DOMParser does not exist.
+   */
+  parseDocument: (html: string) => Document;
   stitch: (input: {
     frames: Frame[];
     width: number;
@@ -55,6 +67,8 @@ export type CaptureResult = {
   objectUrl: string;
   warnings: Warning[];
   hasTokens: boolean;
+  /** A couple of lines for the popup, when extracted data was included. */
+  dataSummary?: string;
 };
 
 /**
@@ -207,6 +221,31 @@ export async function runCapture(
     screenshot = undefined;
   }
 
+  // Extracted from the serialized page rather than the live DOM: this is the
+  // document the archive ships, so data.json always describes page.html - and
+  // runCapture runs in the offscreen document, which never had the page's DOM
+  // to begin with. No `computedStyle` is passed for the same reason: a parsed,
+  // unrendered document would return unstyled defaults, and every extractor is
+  // documented to degrade on an absent one rather than trust a fake.
+  let data: Partial<DataReport> | undefined;
+  if (settings.include.data) {
+    try {
+      const doc = deps.parseDocument(input.html);
+      data = extractData({ doc, ir }, [...EXTRACT_DOMAINS]);
+      // The registry already turned each domain's failure into a warning on
+      // the report; surfacing them here puts them in the same channel as every
+      // other optional output's degradation.
+      warnings.push(...(data.warnings ?? []));
+    } catch (error) {
+      warnings.push({
+        phase: 'extract',
+        reason: error instanceof Error ? error.message : String(error),
+        detail:
+          'the extracted data was omitted; the rest of the capture is intact',
+      });
+    }
+  }
+
   report('bundling');
   const tokens = settings.include.tokens
     ? buildTokens(ir.styleTally, { minCount: 2, maxPerGroup: 24 })
@@ -217,6 +256,7 @@ export async function runCapture(
     settings,
     html: input.html,
     tokens,
+    ...(data ? { data } : {}),
     screenshot,
     rawSources,
   };
@@ -254,5 +294,6 @@ export async function runCapture(
     objectUrl,
     warnings,
     hasTokens: tokens !== undefined,
+    ...(data ? { dataSummary: summarizeData(data) } : {}),
   };
 }

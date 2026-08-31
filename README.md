@@ -78,6 +78,7 @@ the popup to open it again.
 | Fonts                      | Inline `@font-face` sources.                                                                                                                                |
 | Full-page screenshot (PNG) | Capture a stitched full-page screenshot, saved as `screenshot.png` (zip) or an inert JSON block (single-file).                                              |
 | Design tokens (JSON)       | Extract colours, type scale, and spacing used on the page into `tokens.json`.                                                                               |
+| Extracted data (JSON)      | Extract the facts the page contains — structured data, prices, authors, dates, content quality, design system, link graph — into `data.json`.               |
 | Metadata                   | Save the page URL, capture time, warnings, and the settings used, as `metadata.json`.                                                                       |
 | Console + network log      | Include the console and network activity recorded since the page loaded. Needs the page to have been open since load — if you just opened it, reload first. |
 | Raw network sources        | Re-fetch the document and every linked script/stylesheet exactly as the server sent them, before any JavaScript ran, saved under `raw/`.                    |
@@ -94,9 +95,9 @@ Two more settings apply regardless of what's included:
 ### Output formats
 
 **Single file** (`.html`) — one self-contained file. Every asset is inlined.
-Metadata, tokens, logs, and raw sources (if included) ride along as inert
-`<script type="application/json" data-capture="…">` blocks at the end of
-`<body>` — present, machine-extractable, never executed.
+Metadata, tokens, extracted data, logs, and raw sources (if included) ride
+along as inert `<script type="application/json" data-capture="…">` blocks
+at the end of `<body>` — present, machine-extractable, never executed.
 
 **Zip** (`.zip`):
 
@@ -104,6 +105,7 @@ Metadata, tokens, logs, and raw sources (if included) ride along as inert
 page.html         the capture, same as the single-file output
 metadata.json     if "Metadata" is on
 tokens.json       if "Design tokens" is on
+data.json         if "Extracted data" is on
 logs.json         if "Console + network log" is on
 screenshot.png    if "Full-page screenshot" is on
 raw/…             if "Raw network sources" is on, one file per source

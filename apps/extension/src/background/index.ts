@@ -468,6 +468,9 @@ async function runCapture(params: {
       filename: result.filename,
       byteLength: result.byteLength,
       warnings: result.warnings,
+      ...(result.dataSummary === undefined
+        ? {}
+        : { dataSummary: result.dataSummary }),
     });
   } catch (error) {
     post({
