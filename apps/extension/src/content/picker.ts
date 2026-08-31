@@ -5,6 +5,9 @@
  * one-element capture - no CSS knowledge required.
  */
 
+// Narrow subpath, not the root barrel — see popup/use-settings.ts.
+import { lightTheme } from 'quick-caps-core/theme';
+
 /**
  * A selector that finds `el` again via `document.querySelector`, independent
  * of the page's own ids/classes.
@@ -46,13 +49,23 @@ export function describeElement(el: Element): string {
   return firstClass ? `${tag}.${firstClass}` : tag;
 }
 
-// Matches the extension's own --accent / dark-surface tokens (see
-// src/styles/tokens.css) so the picker reads as part of one product instead
-// of a generic overlay dropped onto someone else's page. The bar stays dark
+// Pulled from the same source as --accent in src/styles/tokens.css (rather
+// than a copied literal) so the picker can't drift out of sync with the rest
+// of the product if that palette is ever retuned. The bar stays dark
 // regardless of the host page's own theme, for contrast against arbitrary
 // backgrounds.
-const ACCENT = '#0072f5';
-const ACCENT_SOFT = 'rgba(0,114,245,0.15)';
+const ACCENT = lightTheme['blue-600']!;
+const ACCENT_SOFT = hexToRgba(ACCENT, 0.15);
+
+function hexToRgba(hex: string, alpha: number): string {
+  const match = /^#([0-9a-f]{6})$/i.exec(hex);
+  if (!match) return hex;
+  const value = Number.parseInt(match[1]!, 16);
+  const r = (value >> 16) & 0xff;
+  const g = (value >> 8) & 0xff;
+  const b = value & 0xff;
+  return `rgba(${r},${g},${b},${alpha})`;
+}
 
 const HIGHLIGHT_STYLE: Partial<CSSStyleDeclaration> = {
   position: 'fixed',

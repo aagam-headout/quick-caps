@@ -17,7 +17,26 @@ const KIND_LABEL: Record<'html' | 'zip' | 'preview', string> = {
   preview: 'Preview',
 };
 
-export function RecentList({ entries }: { entries: HistoryEntry[] }) {
+const FolderIcon = () => (
+  <svg viewBox="0 0 14 14" aria-hidden="true" className="h-[11px] w-[11px]">
+    <path
+      d="M1.5 3.5a1 1 0 0 1 1-1h2.6l1 1.2h5.4a1 1 0 0 1 1 1v6.3a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1V3.5Z"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.2"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+export function RecentList({
+  entries,
+  ready = true,
+}: {
+  entries: HistoryEntry[];
+  /** False while history is still loading from chrome.storage.local. */
+  ready?: boolean;
+}) {
   const [error, setError] = useState<string | null>(null);
 
   /**
@@ -33,6 +52,23 @@ export function RecentList({ entries }: { entries: HistoryEntry[] }) {
         setError(
           `${filename} could not be opened - it may have been moved or deleted.`,
         );
+      });
+  };
+
+  // Reveals the Quick-Caps download folder in the OS file manager. There's
+  // no "open this folder path" API - chrome.downloads.show anchors on a
+  // specific download and reveals its containing folder, so the newest entry
+  // with a live downloadId stands in for "the folder".
+  const folderAnchor = entries.find((entry) => entry.downloadId !== undefined)
+    ?.downloadId;
+
+  const openFolder = (): void => {
+    if (folderAnchor === undefined) return;
+    setError(null);
+    void Promise.resolve()
+      .then(() => chrome.downloads.show(folderAnchor))
+      .catch(() => {
+        setError('Could not open the Quick-Caps folder.');
       });
   };
 
@@ -61,7 +97,16 @@ export function RecentList({ entries }: { entries: HistoryEntry[] }) {
         ) : null}
       </summary>
       <div className="pc-collapse">
-        {entries.length === 0 ? (
+        {!ready ? (
+          <ul className="flex flex-col gap-[4px] pt-[6px]">
+            {[0, 1].map((index) => (
+              <li
+                key={index}
+                className="h-[32px] animate-pulse rounded-[var(--radius-control)] bg-[var(--surface-raised)]"
+              />
+            ))}
+          </ul>
+        ) : entries.length === 0 ? (
           <p className="pt-[6px] text-[11px] text-[var(--text-secondary)]">
             No captures yet.
           </p>
@@ -83,6 +128,11 @@ export function RecentList({ entries }: { entries: HistoryEntry[] }) {
                         open(downloadId, entry.filename);
                     }}
                     aria-label={`Open ${entry.filename}`}
+                    title={
+                      downloadId === undefined
+                        ? "Chrome no longer has this download on record, so it can't be reopened"
+                        : undefined
+                    }
                     className="block w-full rounded-[var(--radius-control)] px-[6px] py-[5px] text-left transition-colors duration-[var(--duration-fast)] enabled:cursor-pointer enabled:hover:bg-[var(--surface-raised)] disabled:cursor-default"
                   >
                     <span className="flex items-center gap-[5px]">
@@ -107,6 +157,16 @@ export function RecentList({ entries }: { entries: HistoryEntry[] }) {
             })}
           </ul>
         )}
+        {ready && folderAnchor !== undefined ? (
+          <button
+            type="button"
+            onClick={openFolder}
+            className="mt-[6px] flex cursor-pointer items-center gap-[5px] rounded-[var(--radius-control)] px-[6px] py-[4px] text-[10.5px] font-medium text-[var(--text-secondary)] transition-colors duration-[var(--duration-fast)] hover:bg-[var(--surface-raised)] hover:text-[var(--text-primary)]"
+          >
+            <FolderIcon />
+            Open Quick-Caps folder
+          </button>
+        ) : null}
         {error ? (
           <p
             role="alert"
