@@ -41,6 +41,10 @@
     "./collect": {
       "types": "./dist/collect.d.ts",
       "default": "./dist/collect.js"
+    },
+    "./extract": {
+      "types": "./dist/extract/index.d.ts",
+      "default": "./dist/extract/index.js"
     }
   },
   "files": [

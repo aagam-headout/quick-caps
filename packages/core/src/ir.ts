@@ -7,7 +7,8 @@ export type WarningPhase =
   | 'styles'
   | 'screenshot'
   | 'bundle'
-  | 'download';
+  | 'download'
+  | 'extract';
 
 export type Warning = {
   phase: WarningPhase;

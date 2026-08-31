@@ -59,3 +59,8 @@ export {
   type RawPaintEntry,
   type RawResourceTiming,
 } from './perf.js';
+// The extract layer is reachable only through the './extract' subpath, never
+// from this barrel — the same rule distill/layout/tokenize already follow.
+// content.ts reaches distill for flattenRegions, which transitively pulls
+// gpt-tokenizer's BPE table, and anything in this barrel lands in the
+// extension's collector bundle. collector-bundle.test.ts enforces the size.
