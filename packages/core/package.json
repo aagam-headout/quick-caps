@@ -1,6 +1,6 @@
 {
   "name": "quick-caps-core",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Rendered-DOM page distillation engine for quick-caps-cli \u2014 PageIR, design-token extraction, single-file/zip capture bundling.",
   "license": "MIT",
   "repository": {
@@ -41,6 +41,38 @@
     "./collect": {
       "types": "./dist/collect.d.ts",
       "default": "./dist/collect.js"
+    },
+    "./extract": {
+      "types": "./dist/extract/index.d.ts",
+      "default": "./dist/extract/index.js"
+    },
+    "./http": {
+      "types": "./dist/http.d.ts",
+      "default": "./dist/http.js"
+    },
+    "./settings": {
+      "types": "./dist/settings.d.ts",
+      "default": "./dist/settings.js"
+    },
+    "./bundle": {
+      "types": "./dist/bundle.d.ts",
+      "default": "./dist/bundle.js"
+    },
+    "./tokens": {
+      "types": "./dist/tokens.d.ts",
+      "default": "./dist/tokens.js"
+    },
+    "./perf": {
+      "types": "./dist/perf.d.ts",
+      "default": "./dist/perf.js"
+    },
+    "./theme": {
+      "types": "./dist/theme.d.ts",
+      "default": "./dist/theme.js"
+    },
+    "./observe": {
+      "types": "./dist/observe/index.d.ts",
+      "default": "./dist/observe/index.js"
     }
   },
   "files": [

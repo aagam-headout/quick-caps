@@ -19,6 +19,24 @@ describe('manifest', () => {
     ]);
   });
 
+  /**
+   * Named individually as well as by the exact list above, because these two
+   * are the ones an observation feature keeps asking for. `cookies` would let
+   * the extension read HttpOnly cookies and `debugger` would let it record
+   * response bodies; both are rejected in the observation-collectors design,
+   * and both would put a permission warning (and a "started debugging this
+   * browser" banner) in front of a user whose reason for installing this is
+   * that it asks for nothing. The cookie inventory is partial by construction
+   * instead, and says so via CookieJar.complete.
+   */
+  it('never asks for cookies or debugger, whatever an observer would gain', () => {
+    for (const rejected of ['cookies', 'debugger', 'webRequest']) {
+      expect(manifest.permissions).not.toContain(rejected);
+      expect(manifest.optional_host_permissions).not.toContain(rejected);
+      expect('optional_permissions' in manifest).toBe(false);
+    }
+  });
+
   it('declares the keyboard shortcut for a popup-free capture', () => {
     expect(manifest.commands['capture-page']?.suggested_key?.default).toBe(
       'Ctrl+Shift+U',
@@ -42,11 +60,15 @@ describe('manifest', () => {
     expect(manifest.background.service_worker).toBe('src/background/index.ts');
   });
 
-  it('registers the recorder at document_start in the main world', () => {
-    const script = manifest.content_scripts[0]!;
-    expect(script.run_at).toBe('document_start');
-    expect(script.world).toBe('MAIN');
-    expect(script.matches).toEqual(['<all_urls>']);
+  /**
+   * The recorder is registered from the service worker instead, and only while
+   * a setting consumes what it observes - see
+   * background/recorder-registration.ts. A static entry here would run it on
+   * every page the user visits regardless, which is what this asserts is gone:
+   * a MAIN-world script has no chrome.* and so cannot check a setting itself.
+   */
+  it('declares no content script, so nothing runs on a page unasked', () => {
+    expect('content_scripts' in manifest).toBe(false);
   });
 
   it('declares all six icon sizes', () => {

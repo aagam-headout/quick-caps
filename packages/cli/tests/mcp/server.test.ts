@@ -26,6 +26,9 @@ vi.mock('../../src/commands/tokens.js', () => ({
 vi.mock('../../src/commands/scrape.js', () => ({
   runScrape: vi.fn(async (shape: string) => `scraped ${shape}`),
 }));
+vi.mock('../../src/commands/data.js', () => ({
+  runData: vi.fn(async () => '{"links":{}}'),
+}));
 vi.mock('../../src/commands/capture.js', () => ({
   runCapture: vi.fn(
     async (args: { outDir?: string }) =>
@@ -59,13 +62,15 @@ async function connectedClient() {
 }
 
 describe('buildMcpServer', () => {
-  it('lists all nine pc_* tools', async () => {
+  it('lists every pc_* tool', async () => {
     const client = await connectedClient();
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
     expect(names).toEqual(
       [
         'pc_capture',
+        'pc_crawl',
+        'pc_data',
         'pc_do',
         'pc_find',
         'pc_layout',
@@ -91,6 +96,54 @@ describe('buildMcpServer', () => {
     expect(result.content).toEqual([
       { type: 'text', text: 'opened https://example.com' },
     ]);
+  });
+
+  it('passes pc_open its record flag through, which forces a browser session', async () => {
+    const client = await connectedClient();
+    await client.callTool({
+      name: 'pc_open',
+      arguments: { url: 'https://example.com', record: true },
+    });
+    expect(runOpen).toHaveBeenCalledWith(
+      { url: 'https://example.com', static: undefined, record: true },
+      expect.any(String),
+    );
+  });
+
+  it('routes pc_data to runData, defaulting domains to the availability summary', async () => {
+    const { runData } = await import('../../src/commands/data.js');
+    const client = await connectedClient();
+    await client.callTool({ name: 'pc_data', arguments: {} });
+    expect(runData).toHaveBeenCalledWith(
+      { domains: [], json: true },
+      expect.any(String),
+    );
+  });
+
+  it('passes pc_data its requested domains and url through', async () => {
+    const { runData } = await import('../../src/commands/data.js');
+    const client = await connectedClient();
+    await client.callTool({
+      name: 'pc_data',
+      arguments: { domains: ['links'], url: 'https://example.com' },
+    });
+    expect(runData).toHaveBeenCalledWith(
+      { domains: ['links'], url: 'https://example.com', json: true },
+      expect.any(String),
+    );
+  });
+
+  it('passes pc_data the three observation domains through', async () => {
+    const { runData } = await import('../../src/commands/data.js');
+    const client = await connectedClient();
+    await client.callTool({
+      name: 'pc_data',
+      arguments: { domains: ['network', 'stack', 'vitals'] },
+    });
+    expect(runData).toHaveBeenCalledWith(
+      { domains: ['network', 'stack', 'vitals'], json: true },
+      expect.any(String),
+    );
   });
 
   it('defaults pc_capture outDir to the artifact root, not cwd', async () => {

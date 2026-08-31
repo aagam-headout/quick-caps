@@ -9,6 +9,7 @@ import {
   layoutInputSchema,
   tokensInputSchema,
   scrapeInputSchema,
+  dataInputSchema,
   captureInputSchema,
 } from '../../src/mcp/schemas.js';
 
@@ -20,6 +21,19 @@ describe('open schema', () => {
       url: 'https://example.com',
     });
     expect(() => z.object(openInputSchema).parse({})).toThrow();
+  });
+
+  it('accepts an optional record boolean', () => {
+    expect(
+      z
+        .object(openInputSchema)
+        .parse({ url: 'https://example.com', record: true }),
+    ).toEqual({ url: 'https://example.com', record: true });
+    expect(() =>
+      z
+        .object(openInputSchema)
+        .parse({ url: 'https://example.com', record: 'yes' }),
+    ).toThrow();
   });
 });
 
@@ -72,6 +86,12 @@ describe('scrape schema', () => {
 });
 
 describe('capture schema', () => {
+  it('accepts an optional record boolean', () => {
+    expect(z.object(captureInputSchema).parse({ record: true })).toEqual({
+      record: true,
+    });
+  });
+
   it('zip and outDir are both optional', () => {
     expect(z.object(captureInputSchema).parse({})).toEqual({});
     expect(
@@ -80,5 +100,31 @@ describe('capture schema', () => {
       zip: true,
       outDir: '/tmp/x',
     });
+  });
+});
+
+describe('data schema', () => {
+  it('accepts no fields, a domain list, and a url', () => {
+    expect(z.object(dataInputSchema).parse({})).toEqual({});
+    expect(
+      z.object(dataInputSchema).parse({ domains: ['links', 'entities'] }),
+    ).toEqual({ domains: ['links', 'entities'] });
+    expect(
+      z.object(dataInputSchema).parse({ url: 'https://example.com' }),
+    ).toEqual({ url: 'https://example.com' });
+  });
+
+  it('accepts the three observation domains', () => {
+    expect(
+      z
+        .object(dataInputSchema)
+        .parse({ domains: ['network', 'stack', 'vitals'] }),
+    ).toEqual({ domains: ['network', 'stack', 'vitals'] });
+  });
+
+  it('rejects a domain that is not one of the eight', () => {
+    expect(() =>
+      z.object(dataInputSchema).parse({ domains: ['prices'] }),
+    ).toThrow();
   });
 });

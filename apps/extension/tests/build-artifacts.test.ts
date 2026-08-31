@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -45,11 +45,43 @@ describe('build artifacts', () => {
     }
   });
 
-  it('registers the recorder content script in the built manifest', () => {
+  /**
+   * The offscreen chunk is where core's './extract' subpath lands, and it
+   * regressed to ~2.08 MB once when extract/content.ts imported flattenRegions
+   * from distill.ts and transitively pulled gpt-tokenizer's BPE table. Vite's
+   * own 500 kB warning only prints; this is the guard that fails — the same
+   * class of regression collector-bundle.test.ts watches for.
+   */
+  it('keeps the offscreen chunk free of a heavyweight vendor dependency', () => {
+    const chunk = readdirSync(join(dist, 'assets')).find(
+      (name) => name.startsWith('offscreen-') && name.endsWith('.js'),
+    );
+    expect(chunk, 'no offscreen chunk in dist/assets').toBeDefined();
+    // Measured at ~57 kB: ~45 kB after the flatten.ts split, plus ~11 kB of
+    // hand-written extractors when Piece 2 added network/stack/vitals. This is
+    // that plus ~15% headroom, not a pin on the exact byte count. Raise it only
+    // for growth you can name, in the way this comment names it — the point is
+    // to catch a vendored dependency arriving unnoticed, and a cap quietly
+    // moved to accommodate one would defeat the guard entirely.
+    expect(statSync(join(dist, 'assets', chunk!)).size).toBeLessThan(66_000);
+  });
+
+  it('builds the dynamically registered recorder', () => {
+    // Must match RECORDER_SCRIPT's js entry in
+    // src/background/recorder-registration.ts. Nothing type-checks that string
+    // against the build output, and a missing file here means the log, perf and
+    // data toggles silently produce nothing.
+    expect(existsSync(join(dist, 'recorder.js'))).toBe(true);
+  });
+
+  it('ships a built manifest with no content script at all', () => {
+    // The counterpart of the check above: the recorder used to be a manifest
+    // content script matching <all_urls>, which patched console, fetch and
+    // XMLHttpRequest on every page visited whether or not a setting consumed
+    // it. It must not come back through the crxjs build.
     const manifest = JSON.parse(
       readFileSync(join(dist, 'manifest.json'), 'utf8'),
-    ) as { content_scripts: { js: string[]; world: string }[] };
-    expect(manifest.content_scripts[0]!.world).toBe('MAIN');
-    expect(manifest.content_scripts[0]!.js.length).toBeGreaterThan(0);
+    ) as Record<string, unknown>;
+    expect('content_scripts' in manifest).toBe(false);
   });
 });

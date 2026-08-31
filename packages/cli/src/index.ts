@@ -5,9 +5,14 @@
  *
  * Starts an MCP server over stdio, exposing every command below as a typed
  * tool (`pc_open`, `pc_do`, `pc_read`, `pc_find`, `pc_next`, `pc_layout`,
- * `pc_tokens`, `pc_scrape`, `pc_capture`). Same session file, same
- * `.quick-caps/session.json` in the process's working directory — a `pc open`
- * in a shell and a `pc_open` tool call in the same directory share state.
+ * `pc_tokens`, `pc_scrape`, `pc_data`, `pc_crawl`, `pc_capture`). Same session
+ * file, same `.quick-caps/session.json` in the process's working directory — a
+ * `pc open` in a shell and a `pc_open` tool call in the same directory share
+ * state.
+ *
+ * `pc_crawl` returns the crawl's summary and the path to its store, never the
+ * dataset: a 200-page dataset is not a tool result, and the store is on disk
+ * for a follow-up to read what it wants.
  *
  * `pc_capture` defaults its output directory to an MCP-specific artifact
  * root instead of the working directory, since MCP clients don't have a
@@ -43,6 +48,33 @@ export {
 export { runLayout } from './commands/layout.js';
 export { runTokens } from './commands/tokens.js';
 export { runScrape, splitSelectorAttr } from './commands/scrape.js';
+export { runData, type DataArgs } from './commands/data.js';
+export {
+  runCrawl,
+  renderCrawlSummary,
+  CRAWL_DOMAINS,
+  type CrawlArgs,
+} from './commands/crawl.js';
+export {
+  CrawlStore,
+  createCrawlState,
+  deriveCrawlName,
+  latestCrawlName,
+  listCrawls,
+  readCrawlRecords,
+  scanCrawlRecords,
+  summarizeCrawl,
+  type CrawlRecord,
+  type CrawlState,
+  type CrawlSummary,
+} from './crawl/store.js';
+export {
+  executeCrawl,
+  fetchAndExtract,
+  type ExecuteCrawlOptions,
+  type FrontierLike,
+  type PolitenessLike,
+} from './crawl/runner.js';
 export { runCapture, type CaptureArgs } from './commands/capture.js';
 export { interact, type InteractAction } from './interact.js';
 export { ensurePlaywrightSession } from './ensure-playwright.js';

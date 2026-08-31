@@ -6,6 +6,10 @@ import { ensurePlaywrightSession } from '../ensure-playwright.js';
 export type CaptureArgs = {
   zip?: boolean;
   outDir?: string;
+  /** Arms observation for this capture. Re-collects the page through a real
+   * browser even when the session already has one, because a recording has to
+   * be armed before the load it observes — see ensurePlaywrightSession. */
+  record?: boolean;
 };
 
 /**
@@ -18,7 +22,9 @@ export async function runCapture(
   args: CaptureArgs,
   cwd: string,
 ): Promise<string> {
-  const session = await ensurePlaywrightSession(cwd);
+  const session = await ensurePlaywrightSession(cwd, {
+    record: args.record === true,
+  });
   const output = args.zip
     ? buildZip({
         ir: session.ir,

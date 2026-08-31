@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { HistoryEntry } from '../use-history.js';
 import { formatSize } from '../lib/format-size.js';
 
@@ -17,8 +17,40 @@ const KIND_LABEL: Record<'html' | 'zip' | 'preview', string> = {
   preview: 'Preview',
 };
 
-export function RecentList({ entries }: { entries: HistoryEntry[] }) {
+// Marks the folder row as "opens in a new place" (the OS file manager),
+// same shorthand as an external link.
+const ExternalLinkIcon = () => (
+  <svg viewBox="0 0 12 12" aria-hidden="true" className="h-[10px] w-[10px]">
+    <path
+      d="M5 2.5H2.5a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V7M7 2h3v3M9.7 2.3 5.5 6.5"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.1"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+export function RecentList({
+  entries,
+  ready = true,
+}: {
+  entries: HistoryEntry[];
+  /** False while history is still loading from chrome.storage.local. */
+  ready?: boolean;
+}) {
   const [error, setError] = useState<string | null>(null);
+  const detailsRef = useRef<HTMLDetailsElement>(null);
+
+  // Opening the accordion in a short popup can leave the newly-revealed
+  // entries and the folder button below the fold. Scroll it into view once
+  // it opens, rather than leaving the user to notice and scroll themselves.
+  const handleToggle = (): void => {
+    if (detailsRef.current?.open) {
+      detailsRef.current.scrollIntoView?.({ block: 'nearest' });
+    }
+  };
 
   /**
    * Opening a captured file can fail long after it was saved - the user moved
@@ -36,8 +68,30 @@ export function RecentList({ entries }: { entries: HistoryEntry[] }) {
       });
   };
 
+  // Reveals the Quick-Caps download folder in the OS file manager. There's
+  // no "open this folder path" API - chrome.downloads.show anchors on a
+  // specific download and reveals its containing folder, so the newest entry
+  // with a live downloadId stands in for "the folder".
+  const folderAnchor = entries.find(
+    (entry) => entry.downloadId !== undefined,
+  )?.downloadId;
+
+  const openFolder = (): void => {
+    if (folderAnchor === undefined) return;
+    setError(null);
+    void Promise.resolve()
+      .then(() => chrome.downloads.show(folderAnchor))
+      .catch(() => {
+        setError('Could not open the Quick-Caps folder.');
+      });
+  };
+
   return (
-    <details className="group px-[var(--space-2)]">
+    <details
+      ref={detailsRef}
+      onToggle={handleToggle}
+      className="group px-[var(--space-2)]"
+    >
       <summary className="flex cursor-pointer list-none items-center gap-[6px] rounded-[var(--radius-control)] py-[3px] text-[10.5px] font-medium uppercase tracking-[0.06em] text-[var(--text-secondary)] transition-colors duration-[var(--duration-fast)] hover:text-[var(--text-primary)] [&::-webkit-details-marker]:hidden">
         <svg
           viewBox="0 0 12 12"
@@ -61,13 +115,32 @@ export function RecentList({ entries }: { entries: HistoryEntry[] }) {
         ) : null}
       </summary>
       <div className="pc-collapse">
-        {entries.length === 0 ? (
+        {ready && folderAnchor !== undefined ? (
+          <button
+            type="button"
+            onClick={openFolder}
+            className="mt-[6px] flex w-full cursor-pointer items-center justify-between gap-[5px] rounded-[var(--radius-control)] bg-[var(--surface-raised)] px-[6px] py-[4px] text-[10.5px] font-medium text-[var(--text-secondary)] transition-colors duration-[var(--duration-fast)] hover:bg-[var(--border)] hover:text-[var(--text-primary)]"
+          >
+            Open Quick-Caps folder
+            <ExternalLinkIcon />
+          </button>
+        ) : null}
+        {!ready ? (
+          <ul className="flex flex-col gap-[4px] pt-[6px]">
+            {[0, 1].map((index) => (
+              <li
+                key={index}
+                className="h-[32px] animate-pulse rounded-[var(--radius-control)] bg-[var(--surface-raised)]"
+              />
+            ))}
+          </ul>
+        ) : entries.length === 0 ? (
           <p className="pt-[6px] text-[11px] text-[var(--text-secondary)]">
             No captures yet.
           </p>
         ) : (
           <ul className="pt-[6px]">
-            {entries.slice(0, 8).map((entry) => {
+            {entries.slice(0, 10).map((entry) => {
               const downloadId = entry.downloadId;
               return (
                 <li key={`${entry.filename}-${entry.at}`}>
@@ -83,9 +156,18 @@ export function RecentList({ entries }: { entries: HistoryEntry[] }) {
                         open(downloadId, entry.filename);
                     }}
                     aria-label={`Open ${entry.filename}`}
+                    title={
+                      downloadId === undefined
+                        ? "Chrome no longer has this download on record, so it can't be reopened"
+                        : undefined
+                    }
                     className="block w-full rounded-[var(--radius-control)] px-[6px] py-[5px] text-left transition-colors duration-[var(--duration-fast)] enabled:cursor-pointer enabled:hover:bg-[var(--surface-raised)] disabled:cursor-default"
                   >
                     <span className="flex items-center gap-[5px]">
+                      <span
+                        aria-hidden="true"
+                        className="h-[4px] w-[4px] shrink-0 rounded-full bg-[var(--accent)]"
+                      />
                       <span className="block truncate font-mono text-[11px] text-[var(--text-primary)]">
                         {entry.filename}
                       </span>

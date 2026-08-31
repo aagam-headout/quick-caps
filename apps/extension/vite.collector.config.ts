@@ -10,6 +10,9 @@ import { defineConfig } from 'vite';
  * would break the popup and the service worker, both of which must stay ESM.
  */
 export default defineConfig({
+  // Silences an unreachable-code warning: a vendored dep reads
+  // import.meta.url, which IIFE format has no equivalent for.
+  define: { 'import.meta.url': 'undefined' },
   build: {
     target: 'chrome116',
     outDir: 'dist',

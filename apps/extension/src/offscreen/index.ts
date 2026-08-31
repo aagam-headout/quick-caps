@@ -1,5 +1,6 @@
 import { runCapture, type CaptureDeps } from '../lib/capture.js';
-import { fetchAssetText } from 'quick-caps-core';
+// Narrow subpath, not the root barrel — see background/chrome-driver.ts.
+import { fetchAssetText } from 'quick-caps-core/http';
 import { stitchFrames } from './stitch.js';
 import { handleOffscreenRequest, isOffscreenRequest } from './handler.js';
 import type { OffscreenProgress, OffscreenResponse } from '../lib/messages.js';
@@ -35,6 +36,10 @@ function revokeObjectUrl(url: string): void {
 function captureDeps(): CaptureDeps {
   return {
     fetchText: (url, options) => fetchAssetText(url, options),
+    // The extract layer needs a parsed document and core deliberately cannot
+    // parse HTML itself; this document is the only place in the extension that
+    // has a DOMParser at bundling time.
+    parseDocument: (html) => new DOMParser().parseFromString(html, 'text/html'),
     stitch: (input) => stitchFrames(input),
     createObjectUrl: async (bytes, mimeType) =>
       createObjectUrl(bytes, mimeType),

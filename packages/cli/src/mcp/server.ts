@@ -8,6 +8,8 @@ import { runFind } from '../commands/find.js';
 import { runLayout } from '../commands/layout.js';
 import { runTokens } from '../commands/tokens.js';
 import { runScrape } from '../commands/scrape.js';
+import { runData } from '../commands/data.js';
+import { runCrawl } from '../commands/crawl.js';
 import { runCapture } from '../commands/capture.js';
 import { toToolResult } from './tool-result.js';
 import {
@@ -19,6 +21,8 @@ import {
   layoutInputSchema,
   tokensInputSchema,
   scrapeInputSchema,
+  dataInputSchema,
+  crawlInputSchema,
   captureInputSchema,
 } from './schemas.js';
 import {
@@ -50,6 +54,7 @@ export function buildMcpServer(): McpServer {
           {
             url: args.url,
             ...(args.static !== undefined && { static: args.static }),
+            ...(args.record !== undefined && { record: args.record }),
           },
           cwd,
         ),
@@ -131,6 +136,68 @@ export function buildMcpServer(): McpServer {
   );
 
   server.registerTool(
+    'pc_data',
+    {
+      title: 'Extract page data',
+      description:
+        'Report the data the current page contains: declared structured data, entities, content quality, design system, link graph, plus recorded network traffic, third-party stack, and web vitals on a session opened with record. Omit domains for an availability summary first.',
+      inputSchema: dataInputSchema,
+    },
+    async (args) =>
+      toToolResult(() =>
+        runData(
+          {
+            ...(args.url !== undefined && { url: args.url }),
+            domains: args.domains ?? [],
+            // JSON, not the readable rendering: that form truncates values and
+            // elides long categories behind a "--json" hint, and a tool caller
+            // has no flag to follow it with. Withholding data an agent cannot
+            // then ask for is worse than spending the tokens.
+            json: true,
+          },
+          cwd,
+        ),
+      ),
+  );
+
+  server.registerTool(
+    'pc_crawl',
+    {
+      title: 'Crawl a site',
+      description:
+        "Walk a site from a seed URL and extract from every page into a resumable store on disk, one record per page. Returns the crawl's summary and the store path — never the dataset. Static by default, robots.txt honoured, one request per second per host. Use resume to continue an interrupted crawl, or report to summarize one.",
+      inputSchema: crawlInputSchema,
+    },
+    async (args) =>
+      toToolResult(() =>
+        runCrawl(
+          {
+            ...(args.url !== undefined && { url: args.url }),
+            ...(args.domains !== undefined && { domains: args.domains }),
+            ...(args.limit !== undefined && { limit: args.limit }),
+            ...(args.depth !== undefined && { depth: args.depth }),
+            ...(args.name !== undefined && { name: args.name }),
+            ...(args.rate !== undefined && { rate: args.rate }),
+            ...(args.concurrency !== undefined && {
+              concurrency: args.concurrency,
+            }),
+            ...(args.ignoreRobots !== undefined && {
+              ignoreRobots: args.ignoreRobots,
+            }),
+            ...(args.resume !== undefined && { resume: args.resume }),
+            ...(args.report !== undefined && { report: args.report }),
+            // The summary as JSON, and only the summary: the records stay on
+            // disk under the storePath this returns. Progress goes nowhere —
+            // an MCP client has no terminal to print it to.
+            json: true,
+            onProgress: () => undefined,
+          },
+          cwd,
+        ),
+      ),
+  );
+
+  server.registerTool(
     'pc_capture',
     {
       title: 'Full-page capture',
@@ -146,6 +213,7 @@ export function buildMcpServer(): McpServer {
         return runCapture(
           {
             ...(args.zip !== undefined && { zip: args.zip }),
+            ...(args.record !== undefined && { record: args.record }),
             outDir: args.outDir ?? root,
           },
           cwd,

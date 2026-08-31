@@ -4,7 +4,15 @@ import type {
   PageDriver,
   Viewport,
 } from 'quick-caps-core';
-import { fetchAssetBytes } from 'quick-caps-core';
+// Value imports come from narrow 'quick-caps-core/*' subpaths, not the root
+// barrel: the barrel also re-exports assertFetchableUrl (url-policy.ts), which
+// imports node:dns/promises. Vite/rolldown bundles this file for the browser,
+// so anything the barrel touches enters that module graph — Vite externalizes
+// the Node builtin to an empty module and warns on every build, and a bundler
+// that resolves it instead would fail outright. Same rule as
+// packages/cli/src/collector-entry.ts and the note in packages/core/src/index.ts.
+// Type-only imports may stay on the barrel: they are erased before bundling.
+import { fetchAssetBytes } from 'quick-caps-core/http';
 import {
   applyScroll,
   measureViewport,

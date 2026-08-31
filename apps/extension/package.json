@@ -1,15 +1,15 @@
 {
   "name": "@quick-caps/extension",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "pnpm run theme && vite build && vite build --config vite.collector.config.ts && vite build --config vite.picker.config.ts",
+    "build": "pnpm run theme && vite build && vite build --config vite.collector.config.ts && vite build --config vite.picker.config.ts && vite build --config vite.recorder.config.ts",
     "theme": "tsx scripts/generate-theme-css.ts",
     "icons": "tsx scripts/generate-icons.ts",
     "e2e": "playwright test",
-    "build:e2e": "PC_E2E=1 pnpm run theme && PC_E2E=1 vite build && PC_E2E=1 vite build --config vite.collector.config.ts && PC_E2E=1 vite build --config vite.picker.config.ts"
+    "build:e2e": "PC_E2E=1 pnpm run theme && PC_E2E=1 vite build && PC_E2E=1 vite build --config vite.collector.config.ts && PC_E2E=1 vite build --config vite.picker.config.ts && PC_E2E=1 vite build --config vite.recorder.config.ts"
   },
   "dependencies": {
     "quick-caps-core": "workspace:*",

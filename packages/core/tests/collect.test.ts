@@ -194,3 +194,65 @@ describe('collectFromDocument defensive paths', () => {
     ).toBe(true);
   });
 });
+
+describe('collectFromDocument base href', () => {
+  // A relative asset is the only thing that distinguishes one base from
+  // another: the static fixture's own urls are root-relative and so resolve
+  // the same way whatever the base's path is.
+  const withBase = (baseHref: string | null): Document => {
+    const doc = fixtureDocument('static');
+    if (baseHref !== null) {
+      const base = doc.createElement('base');
+      base.setAttribute('href', baseHref);
+      doc.head.append(base);
+    }
+    const img = doc.createElement('img');
+    img.setAttribute('src', 'photos/x.png');
+    doc.body.append(img);
+    return doc;
+  };
+
+  const nested = { ...options, pageUrl: 'https://example.com/a/b' };
+  const relativeAsset = (ir: ReturnType<typeof collectFromDocument>) =>
+    ir.assets.find((a) => a.url.endsWith('photos/x.png'))?.url;
+
+  it('resolves assets against an absolute base href', () => {
+    const ir = collectFromDocument(withBase('https://cdn.example/x/'), nested);
+    expect(relativeAsset(ir)).toBe('https://cdn.example/x/photos/x.png');
+  });
+
+  it('resolves a root-relative base href against the page url', () => {
+    const ir = collectFromDocument(withBase('/shop/'), nested);
+    expect(relativeAsset(ir)).toBe('https://example.com/shop/photos/x.png');
+    expect(ir.warnings).toEqual([]);
+  });
+
+  it("resolves a path-relative base href against the page's directory", () => {
+    const ir = collectFromDocument(withBase('sub/'), nested);
+    expect(relativeAsset(ir)).toBe('https://example.com/a/sub/photos/x.png');
+    expect(ir.warnings).toEqual([]);
+  });
+
+  it('resolves against the page url when no base is declared', () => {
+    const ir = collectFromDocument(withBase(null), nested);
+    expect(relativeAsset(ir)).toBe('https://example.com/a/photos/x.png');
+    expect(ir.warnings).toEqual([]);
+  });
+
+  it('falls back to the page url and warns once on an unparseable base', () => {
+    const ir = collectFromDocument(withBase('http://[bad'), nested);
+    expect(relativeAsset(ir)).toBe('https://example.com/a/photos/x.png');
+    expect(
+      ir.warnings.filter((w) => w.reason === 'base href could not be parsed'),
+    ).toHaveLength(1);
+  });
+
+  it('does not throw when both the page url and the base are unusable', () => {
+    const ir = collectFromDocument(withBase('/shop/'), {
+      ...options,
+      pageUrl: 'not a url',
+    });
+    expect(ir.metadata.title).toBe('Static Fixture');
+    expect(relativeAsset(ir)).toBeUndefined();
+  });
+});

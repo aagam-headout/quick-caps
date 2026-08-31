@@ -13,10 +13,20 @@ import { readSession, writeSession, type Session } from './session.js';
  * A no-op, returning the session unchanged, if it's already
  * playwright-backed — re-collecting a page that's already been rendered
  * would just be a slower way to get the same PageIR.
+ *
+ * `record: true` is the one case where an already-playwright session is still
+ * re-collected: observation has to be armed *before* the page loads, so a
+ * recording cannot be added to a load that already happened. The caller pays
+ * a re-numbered handle map for it, which is why it is opt-in.
  */
-export async function ensurePlaywrightSession(cwd: string): Promise<Session> {
+export async function ensurePlaywrightSession(
+  cwd: string,
+  opts: { record?: boolean } = {},
+): Promise<Session> {
   const session = await readSession(cwd);
-  if (session.driver === 'playwright') return session;
+  const needsRecording =
+    opts.record === true && session.ir.recording === undefined;
+  if (session.driver === 'playwright' && !needsRecording) return session;
 
   // Re-derive session state from the freshly-collected `ir` rather than
   // inheriting the old session's paging/handle state: region/action ids
@@ -25,7 +35,13 @@ export async function ensurePlaywrightSession(cwd: string): Promise<Session> {
   // `handles`/`page`/`hasMore`/`query`/`renderer` would point at nothing
   // real, or worse, at the wrong element in the new tree. This is a full
   // re-open in disguise, not a partial update.
-  const ir = await collectViaPlaywrightFor(session.url);
+  // Arming is forwarded, not just decided on: without it a `--record`
+  // escalation would re-collect the page with nobody watching. There is no
+  // `--no-redact` on this path — a capture-adjacent re-collection always
+  // redacts.
+  const ir = await collectViaPlaywrightFor(session.url, {
+    record: needsRecording,
+  });
   const d = distill(ir, { tokenBudget: 500, page: 0 });
   const escalated: Session = {
     url: ir.metadata.url,

@@ -1,5 +1,5 @@
 import { defineManifest } from '@crxjs/vite-plugin';
-import pkg from './package.json';
+import pkg from './package.json' with { type: 'json' };
 
 /**
  * Exported as a concrete object as well as through defineManifest. crxjs's
@@ -57,15 +57,13 @@ export const manifest = {
     ? { host_permissions: ['<all_urls>' as const] }
     : {}),
   background: { service_worker: 'src/background/index.ts', type: 'module' },
-  content_scripts: [
-    {
-      matches: ['<all_urls>'],
-      js: ['src/content/recorder-entry.ts'],
-      run_at: 'document_start' as const,
-      world: 'MAIN' as const,
-      all_frames: false,
-    },
-  ],
+  // No content_scripts. The MAIN-world recorder that console/network logs,
+  // web vitals and the data report read used to be registered here, which
+  // meant it patched console, fetch and XMLHttpRequest and started three
+  // PerformanceObservers on every page the user visited, whether or not any
+  // setting consumed it. It is registered dynamically from the service worker
+  // now, only while one of those settings is on - see
+  // background/recorder-registration.ts.
   icons: {
     '16': 'icons/icon-16.png',
     '32': 'icons/icon-32.png',

@@ -1,3 +1,6 @@
+import { readdirSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { ESLint } from 'eslint';
 
@@ -49,5 +52,25 @@ describe('core boundary rule', () => {
       'export const title = (doc: { title: string }) => doc.title;',
     );
     expect(result.errorCount).toBe(0);
+  });
+});
+
+describe('extract/ sources', () => {
+  it('reaches for no DOM global, taking its document as a parameter instead', async () => {
+    const dir = join(dirname(fileURLToPath(import.meta.url)), '../src/extract');
+    const files = readdirSync(dir)
+      .filter((name) => name.endsWith('.ts'))
+      .map((name) => join(dir, name));
+    // A silent zero-file lint would pass vacuously, which is the one way this
+    // test could stop protecting the boundary without anyone noticing.
+    expect(files.length).toBeGreaterThan(0);
+
+    const results = await new ESLint().lintFiles(files);
+    const violations = results.flatMap((result) =>
+      result.messages.map(
+        (message) => `${result.filePath}: ${message.message}`,
+      ),
+    );
+    expect(violations).toEqual([]);
   });
 });

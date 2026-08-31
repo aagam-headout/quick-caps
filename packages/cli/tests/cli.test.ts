@@ -25,6 +25,9 @@ vi.mock('../src/commands/tokens.js', () => ({
 vi.mock('../src/commands/scrape.js', () => ({
   runScrape: vi.fn(async (shape: string) => `scraped ${shape}`),
 }));
+vi.mock('../src/commands/data.js', () => ({
+  runData: vi.fn(async () => 'data report'),
+}));
 vi.mock('../src/commands/capture.js', () => ({
   runCapture: vi.fn(async () => 'capture message'),
 }));
@@ -44,7 +47,16 @@ describe('dispatch', () => {
     const { runOpen } = await import('../src/commands/open.js');
     await dispatch(['open', 'https://example.com', '--static']);
     expect(runOpen).toHaveBeenCalledWith(
-      { url: 'https://example.com', static: true },
+      { url: 'https://example.com', static: true, record: false },
+      expect.any(String),
+    );
+  });
+
+  it('routes "open <url> --record" with the flag set', async () => {
+    const { runOpen } = await import('../src/commands/open.js');
+    await dispatch(['open', 'https://example.com', '--record']);
+    expect(runOpen).toHaveBeenCalledWith(
+      { url: 'https://example.com', static: false, record: true },
       expect.any(String),
     );
   });
@@ -92,11 +104,72 @@ describe('dispatch — extended commands', () => {
     );
   });
 
+  it('routes "data" with no domain flag to runData with an empty domain list', async () => {
+    const { runData } = await import('../src/commands/data.js');
+    expect(await dispatch(['data'])).toBe('data report');
+    expect(runData).toHaveBeenCalledWith(
+      { domains: [], json: false },
+      expect.any(String),
+    );
+  });
+
+  it('routes "data" domain flags in canonical order, and a bare argument as the url', async () => {
+    const { runData } = await import('../src/commands/data.js');
+    await dispatch(['data', 'https://example.com', '--links', '--structured']);
+    expect(runData).toHaveBeenCalledWith(
+      {
+        url: 'https://example.com',
+        domains: ['structured', 'links'],
+        json: false,
+      },
+      expect.any(String),
+    );
+  });
+
+  it('routes "data --all --json" to every domain in machine form', async () => {
+    const { runData } = await import('../src/commands/data.js');
+    await dispatch(['data', '--all', '--json']);
+    expect(runData).toHaveBeenCalledWith(
+      {
+        domains: [
+          'structured',
+          'entities',
+          'content',
+          'design',
+          'links',
+          'network',
+          'stack',
+          'vitals',
+        ],
+        json: true,
+      },
+      expect.any(String),
+    );
+  });
+
+  it('routes the three observation domain flags, in canonical order', async () => {
+    const { runData } = await import('../src/commands/data.js');
+    await dispatch(['data', '--vitals', '--network', '--stack']);
+    expect(runData).toHaveBeenCalledWith(
+      { domains: ['network', 'stack', 'vitals'], json: false },
+      expect.any(String),
+    );
+  });
+
   it('routes "capture" to runCapture with parsed --zip and --out flags', async () => {
     const { runCapture } = await import('../src/commands/capture.js');
     await dispatch(['capture', '--zip', '--out', './somewhere']);
     expect(runCapture).toHaveBeenCalledWith(
       { zip: true, outDir: './somewhere' },
+      expect.any(String),
+    );
+  });
+
+  it('routes "capture --record" to runCapture with the flag set', async () => {
+    const { runCapture } = await import('../src/commands/capture.js');
+    await dispatch(['capture', '--record']);
+    expect(runCapture).toHaveBeenCalledWith(
+      { record: true },
       expect.any(String),
     );
   });
@@ -144,6 +217,24 @@ describe('dispatch — extended commands', () => {
     expect(await dispatch([])).toBe(await dispatch(['--help']));
   });
 
+  it('documents --record on both the commands that take it', async () => {
+    const help = await dispatch(['--help']);
+    expect(help).toMatch(/^\s+pc open <url> \[--static\] \[--record\]/m);
+    expect(help).toMatch(/^\s+pc capture \[--zip\] \[--record\]/m);
+    // Stated in Notes the same way layout/tokens/capture's upgrade is: this
+    // is the one flag that changes which driver a session gets.
+    expect(help).toMatch(/--record does the same/);
+    expect(help).toMatch(/re-numbers every handle/);
+    expect(help).toMatch(/not recorded/);
+  });
+
+  it('names the three observation domains among the data flags', async () => {
+    const help = await dispatch(['--help']);
+    expect(help).toContain('--network');
+    expect(help).toContain('--stack');
+    expect(help).toContain('--vitals');
+  });
+
   it('lists every dispatchable command in the help text', async () => {
     const help = await dispatch(['--help']);
     for (const command of [
@@ -155,6 +246,7 @@ describe('dispatch — extended commands', () => {
       'layout',
       'tokens',
       'scrape',
+      'data',
       'capture',
       'mcp',
     ]) {

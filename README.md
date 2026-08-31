@@ -30,7 +30,20 @@ follows it, `pc find <query>` re-ranks the page, `pc capture` archives it.
 Static fetch first; it escalates to a real browser only when the page looks
 like an unrendered shell.
 
-Wire the same nine commands into an MCP client as tools:
+`pc data` answers a different question — not what the page looks like, but
+what it contains: declared structured data, entities like prices and
+authors, content quality, design system, link graph. Called with no domain
+flag it prints only what each domain found and how much, so a caller can see
+whether a page is worth the tokens before spending them.
+
+`pc crawl <url>` asks that same question of a whole site: it walks
+same-origin links and pagination from a seed, extracts from every page, and
+writes one JSON Lines record per page into a resumable store under
+`.quick-caps/crawls/`. It is polite by default — robots.txt honoured
+including `crawl-delay`, one request per second, one request at a time — and
+every way of opting out of that has to be typed.
+
+Wire the same eleven commands into an MCP client as tools:
 
 ```bash
 claude mcp add quick-caps -- npx -y quick-caps-cli mcp
@@ -69,20 +82,22 @@ the popup to open it again.
 
 ### Settings
 
-| Toggle                     | What it does                                                                                                                                                |
-| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| HTML / DOM                 | Always captured; this toggle is reserved for a future partial-capture mode and currently has no effect.                                                     |
-| Stylesheets                | Inline the page's CSS. Off strips styles from the archive.                                                                                                  |
-| Scripts                    | Keep scripts in the archive. Has no effect while **inert snapshot** (below) is on, since that always strips/blocks scripts.                                 |
-| Images                     | Inline `<img>` and CSS background images as data URIs.                                                                                                      |
-| Fonts                      | Inline `@font-face` sources.                                                                                                                                |
-| Full-page screenshot (PNG) | Capture a stitched full-page screenshot, saved as `screenshot.png` (zip) or an inert JSON block (single-file).                                              |
-| Design tokens (JSON)       | Extract colours, type scale, and spacing used on the page into `tokens.json`.                                                                               |
-| Metadata                   | Save the page URL, capture time, warnings, and the settings used, as `metadata.json`.                                                                       |
-| Console + network log      | Include the console and network activity recorded since the page loaded. Needs the page to have been open since load — if you just opened it, reload first. |
-| Raw network sources        | Re-fetch the document and every linked script/stylesheet exactly as the server sent them, before any JavaScript ran, saved under `raw/`.                    |
+| Toggle                      | What it does                                                                                                                                                                                                                                                                               |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| HTML / DOM                  | Always captured; this toggle is reserved for a future partial-capture mode and currently has no effect.                                                                                                                                                                                    |
+| Stylesheets                 | Inline the page's CSS. Off strips styles from the archive.                                                                                                                                                                                                                                 |
+| Scripts                     | Keep scripts in the archive. Has no effect while **inert snapshot** (below) is on, since that always strips/blocks scripts.                                                                                                                                                                |
+| Images                      | Inline `<img>` and CSS background images as data URIs.                                                                                                                                                                                                                                     |
+| Fonts                       | Inline `@font-face` sources.                                                                                                                                                                                                                                                               |
+| Full-page screenshot (PNG)  | Capture a stitched full-page screenshot, saved as `screenshot.png` (zip) or an inert JSON block (single-file).                                                                                                                                                                             |
+| Design tokens (JSON)        | Extract colours, type scale, and spacing used on the page into `tokens.json`.                                                                                                                                                                                                              |
+| Performance snapshot (JSON) | A lightweight load/render timing snapshot from the page's own Navigation/Paint/Resource Timing entries, into `perf.json`. Not a Lighthouse audit.                                                                                                                                          |
+| Extracted data (JSON)       | Extract the facts the page contains — structured data, prices, authors, dates, content quality, design system, link graph, plus the observed network requests, the inferred third-party stack, and web vitals — into `data.json`.                                                          |
+| Metadata                    | Save the page URL, capture time, warnings, and the settings used, as `metadata.json`.                                                                                                                                                                                                      |
+| Console + network log       | Include the console and network activity recorded since the page loaded. Nothing is recorded on any page until this setting (or Performance snapshot, or the data report) is on, and recording starts at a page's _next_ load — so switch it on first, then reload the page, then capture. |
+| Raw network sources         | Re-fetch the document and every linked script/stylesheet exactly as the server sent them, before any JavaScript ran, saved under `raw/`.                                                                                                                                                   |
 
-Two more settings apply regardless of what's included:
+Three more settings apply regardless of what's included:
 
 - **Scroll to load lazy content** — steps down the page before capture so
   lazy-loaded images and infinite-scroll content are materialized, then
@@ -90,13 +105,17 @@ Two more settings apply regardless of what's included:
 - **Inert snapshot** — strips and blocks scripts in the archive so a
   reopened capture never re-runs analytics or trackers. On by default; turn
   it off only if you specifically want live scripts preserved.
+- **Embed viewer panel** — adds Quick-Caps's own small viewer to single-file
+  output, so whoever reopens the capture can browse the metadata, tokens,
+  logs and raw blocks instead of digging them out of the markup. Off by
+  default.
 
 ### Output formats
 
 **Single file** (`.html`) — one self-contained file. Every asset is inlined.
-Metadata, tokens, logs, and raw sources (if included) ride along as inert
-`<script type="application/json" data-capture="…">` blocks at the end of
-`<body>` — present, machine-extractable, never executed.
+Metadata, tokens, extracted data, logs, and raw sources (if included) ride
+along as inert `<script type="application/json" data-capture="…">` blocks
+at the end of `<body>` — present, machine-extractable, never executed.
 
 **Zip** (`.zip`):
 
@@ -104,6 +123,8 @@ Metadata, tokens, logs, and raw sources (if included) ride along as inert
 page.html         the capture, same as the single-file output
 metadata.json     if "Metadata" is on
 tokens.json       if "Design tokens" is on
+perf.json         if "Performance snapshot" is on
+data.json         if "Extracted data" is on
 logs.json         if "Console + network log" is on
 screenshot.png    if "Full-page screenshot" is on
 raw/…             if "Raw network sources" is on, one file per source

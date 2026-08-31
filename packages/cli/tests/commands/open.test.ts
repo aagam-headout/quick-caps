@@ -61,4 +61,28 @@ describe('runOpen', () => {
     expect(session.driver).toBe('static');
     expect(session.page).toBe(0);
   });
+
+  /**
+   * The fixture is a real article, so the escalation heuristic would leave it
+   * on StaticDriver — which is what makes it the right page to prove --record
+   * forces a browser regardless of what the heuristic thinks.
+   */
+  it('--record forces a browser session on a page that would have stayed static', async () => {
+    const withoutRecord = await mkdtemp(join(tmpdir(), 'quick-caps-open-'));
+    try {
+      await runOpen({ url: baseUrl }, withoutRecord);
+      expect((await readSession(withoutRecord)).driver).toBe('static');
+    } finally {
+      await rm(withoutRecord, { recursive: true, force: true });
+    }
+
+    await runOpen({ url: baseUrl, record: true }, cwd);
+    expect((await readSession(cwd)).driver).toBe('playwright');
+  }, 30_000);
+
+  it('refuses --record together with --static rather than picking a driver', async () => {
+    await expect(
+      runOpen({ url: baseUrl, record: true, static: true }, cwd),
+    ).rejects.toThrow(/--record needs a real browser/);
+  });
 });

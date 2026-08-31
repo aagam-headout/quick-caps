@@ -25,6 +25,17 @@ export const FETCH_RESOURCE = '__quick-caps-fetch-resource';
  */
 export const SERIALIZE_PROGRESS = '__quick-caps-serialize-progress';
 
+/**
+ * DOM attribute the MAIN-world recorder flushes its over-time observations
+ * into: the paint/layout metrics no single sample can see, plus the request
+ * metadata it witnessed.
+ *
+ * Separate from LOGS_ATTRIBUTE rather than one merged payload, so the log
+ * attribute's shape stays exactly what the embedded viewer already renders and
+ * what every existing reader parses.
+ */
+export const OBSERVATIONS_ATTRIBUTE = 'data-quick-caps-observations';
+
 /** Event the recorder listens for, to flush synchronously. */
 export const FLUSH_EVENT = '__quick-caps-flush-logs';
 

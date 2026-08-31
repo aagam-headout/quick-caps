@@ -1,6 +1,6 @@
 {
   "name": "quick-caps-cli",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Distill any rendered web page into a few hundred tokens of numbered regions and actions, or capture it to disk - a CLI and MCP server for agents.",
   "license": "MIT",
   "repository": {

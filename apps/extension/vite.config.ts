@@ -12,6 +12,14 @@ export default defineConfig({
     // We target Chrome 116+, which supports modulepreload natively. Shipping
     // Vite's polyfill only produces an unused-preload warning in the popup.
     modulePreload: { polyfill: false },
+    // No chunkSizeWarningLimit override: the offscreen chunk used to sit at
+    // ~2.08 MB, ~93% of it gpt-tokenizer's o200k BPE table reached via
+    // capture.ts -> core's './extract' -> extract/content.ts -> distill.ts ->
+    // tokenize.ts. content.ts only ever wanted flattenRegions, which now lives
+    // in core's flatten.ts, so that chunk is ~45 kB and every chunk here is
+    // comfortably under Vite's 500 kB default. Leaving the default in place
+    // means the warning fires again if a heavyweight dependency reappears;
+    // build-artifacts.test.ts owns the hard ceiling.
     rollupOptions: {
       // The offscreen document is opened by chrome.offscreen.createDocument,
       // and the onboarding page by chrome.tabs.create — neither is referenced

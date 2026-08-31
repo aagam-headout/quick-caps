@@ -5,8 +5,10 @@ import {
   FLUSH_EVENT,
   IR_KEY,
   LOGS_ATTRIBUTE,
+  OBSERVATIONS_ATTRIBUTE,
   SETTINGS_KEY,
 } from '../src/content/protocol.js';
+import type { RecorderObservations } from '../src/content/recorder.js';
 
 type Entry = typeof import('../src/content/collector.js');
 
@@ -135,6 +137,186 @@ describe('runCollector', () => {
     expect(ir.perf?.firstContentfulPaintMs).toBe(150);
     expect(ir.perf?.largestContentfulPaintMs).toBe(300);
     expect(ir.perf?.transferSizeBytes).toBe(5500);
+  });
+
+  // -------------------------------------------------------------------------
+  // The over-time observations. The MAIN-world recorder is stood in for here
+  // exactly as it is for logs: answer the flush synchronously.
+  // -------------------------------------------------------------------------
+
+  /** Answers the flush with a recorder payload. `undefined` stands for "no
+   * recorder ever ran", which must stay distinguishable from an empty one. */
+  function standInRecorder(observations: Partial<RecorderObservations>): void {
+    document.addEventListener(FLUSH_EVENT, () => {
+      document.documentElement.setAttribute(LOGS_ATTRIBUTE, '[]');
+      document.documentElement.setAttribute(
+        OBSERVATIONS_ATTRIBUTE,
+        JSON.stringify({
+          startedAt: '2026-08-31T00:00:00.000Z',
+          requests: [],
+          vitals: { unsupportedEntryTypes: [] },
+          ...observations,
+        }),
+      );
+    });
+  }
+
+  const withPerf = (settings: CaptureSettings): CaptureSettings => ({
+    ...settings,
+    include: { ...settings.include, perf: true },
+  });
+  const withData = (settings: CaptureSettings): CaptureSettings => ({
+    ...settings,
+    include: { ...settings.include, data: true },
+  });
+
+  it('leaves an unobserved CLS absent rather than reporting zero', async () => {
+    installPage('<html><body></body></html>');
+    standInRecorder({});
+    const { runCollector } = await loadEntry();
+    const ir = runCollector(withPerf(defaultSettings));
+    expect('cumulativeLayoutShift' in ir.perf!).toBe(false);
+    expect('interactionToNextPaintMs' in ir.perf!).toBe(false);
+  });
+
+  it('carries an observed CLS of zero through as zero', async () => {
+    installPage('<html><body></body></html>');
+    standInRecorder({
+      vitals: { cumulativeLayoutShift: 0, unsupportedEntryTypes: [] },
+    });
+    const { runCollector } = await loadEntry();
+    const ir = runCollector(withPerf(defaultSettings));
+    expect(ir.perf?.cumulativeLayoutShift).toBe(0);
+  });
+
+  it('carries a small CLS through unrounded', async () => {
+    installPage('<html><body></body></html>');
+    standInRecorder({
+      vitals: { cumulativeLayoutShift: 0.1, unsupportedEntryTypes: [] },
+    });
+    const { runCollector } = await loadEntry();
+    const ir = runCollector(withPerf(defaultSettings));
+    expect(ir.perf?.cumulativeLayoutShift).toBeCloseTo(0.1, 10);
+  });
+
+  it('reports an entry type the browser did not support', async () => {
+    installPage('<html><body></body></html>');
+    standInRecorder({
+      vitals: { unsupportedEntryTypes: ['layout-shift'] },
+    });
+    const { runCollector } = await loadEntry();
+    const ir = runCollector(withPerf(defaultSettings));
+    expect(ir.perf?.unsupportedEntryTypes).toEqual(['layout-shift']);
+  });
+
+  it('omits unsupportedEntryTypes when every type was supported', async () => {
+    installPage('<html><body></body></html>');
+    standInRecorder({});
+    const { runCollector } = await loadEntry();
+    const ir = runCollector(withPerf(defaultSettings));
+    expect('unsupportedEntryTypes' in ir.perf!).toBe(false);
+  });
+
+  it('prefers the observed LCP over a sampled one', async () => {
+    installPage('<html><body></body></html>');
+    Object.assign(globalThis, {
+      performance: {
+        getEntriesByType: (type: string) =>
+          type === 'largest-contentful-paint' ? [{ startTime: 300 }] : [],
+      },
+    });
+    standInRecorder({
+      vitals: {
+        largestContentfulPaintMs: 920,
+        unsupportedEntryTypes: [],
+      },
+    });
+    const { runCollector } = await loadEntry();
+    const ir = runCollector(withPerf(defaultSettings));
+    expect(ir.perf?.largestContentfulPaintMs).toBe(920);
+  });
+
+  it('omits the recording when extracted data is off', async () => {
+    installPage('<html><body></body></html>');
+    standInRecorder({});
+    const { runCollector } = await loadEntry();
+    expect(runCollector(defaultSettings).recording).toBeUndefined();
+  });
+
+  it('supplies a cookie jar marked incomplete, since HttpOnly is invisible', async () => {
+    installPage('<html><body></body></html>');
+    Object.defineProperty(document, 'cookie', {
+      value: 'sid=abc123; _ga=GA1.2.3',
+      configurable: true,
+    });
+    standInRecorder({});
+    const { runCollector } = await loadEntry();
+    const jar = runCollector(withData(defaultSettings)).recording?.cookies;
+    expect(jar?.complete).toBe(false);
+    expect(jar?.cookies.map((c) => c.name)).toEqual(['sid', '_ga']);
+    // The name is inventory; the value is the credential and is never read.
+    expect(JSON.stringify(jar)).not.toContain('abc123');
+    // A flag the host cannot see is absent, never guessed.
+    expect('httpOnly' in jar!.cookies[0]!).toBe(false);
+  });
+
+  it('reports the requests it witnessed, with redacted urls and no bodies', async () => {
+    installPage('<html><body></body></html>');
+    standInRecorder({
+      requests: [
+        {
+          at: 12,
+          method: 'POST',
+          url: 'https://api.example.com/cart?access_token=live-secret',
+          status: 201,
+          resourceType: 'xhr',
+          requestHeaders: {},
+          responseHeaders: {},
+          durationMs: 40,
+          transferSizeBytes: 120,
+          body: { kept: false, reason: 'unreadable' },
+        },
+      ],
+    });
+    const { runCollector } = await loadEntry();
+    const recording = runCollector(withData(defaultSettings)).recording;
+    expect(recording?.requests).toHaveLength(1);
+    expect(recording?.requests[0]?.url).not.toContain('live-secret');
+    expect(recording?.redacted).toBe(true);
+    expect(recording?.bodyBytes).toBe(0);
+    expect(recording?.startedAt).toBe('2026-08-31T00:00:00.000Z');
+  });
+
+  it('warns that its network observation is partial rather than implying it is whole', async () => {
+    installPage('<html><body></body></html>');
+    standInRecorder({});
+    const { runCollector } = await loadEntry();
+    const ir = runCollector(withData(defaultSettings));
+    expect(
+      ir.warnings.some((w) => /fetch and XMLHttpRequest/.test(w.reason)),
+    ).toBe(true);
+  });
+
+  it('leaves no flushed attribute behind to be serialized into the page', async () => {
+    installPage('<html><body></body></html>');
+    standInRecorder({});
+    const { runCollector } = await loadEntry();
+    runCollector(withData(withPerf(defaultSettings)));
+    expect(document.documentElement.hasAttribute(LOGS_ATTRIBUTE)).toBe(false);
+    expect(document.documentElement.hasAttribute(OBSERVATIONS_ATTRIBUTE)).toBe(
+      false,
+    );
+  });
+
+  it('degrades to a warning rather than failing when observations are unparseable', async () => {
+    installPage('<html><body></body></html>');
+    document.addEventListener(FLUSH_EVENT, () => {
+      document.documentElement.setAttribute(OBSERVATIONS_ATTRIBUTE, 'not json');
+    });
+    const { runCollector } = await loadEntry();
+    const ir = runCollector(withData(withPerf(defaultSettings)));
+    expect(ir.metadata.url).toBe('https://example.com/page');
+    expect('cumulativeLayoutShift' in ir.perf!).toBe(false);
   });
 
   it('survives a recorder that writes unparseable output', async () => {
