@@ -14,7 +14,7 @@ import {
   it,
 } from 'vitest';
 import { stat } from 'node:fs/promises';
-import { distillWithScoring, distill } from 'quickcaps-core/distill';
+import { distillWithScoring, distill } from 'quick-caps-core/distill';
 import { runOpen } from '../src/commands/open.js';
 import { runDo } from '../src/commands/do.js';
 import { runRead } from '../src/commands/read.js';
@@ -64,7 +64,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  cwd = await mkdtemp(join(tmpdir(), 'quickcaps-sequence-'));
+  cwd = await mkdtemp(join(tmpdir(), 'quick-caps-sequence-'));
 });
 
 afterEach(async () => {

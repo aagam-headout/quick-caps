@@ -18,7 +18,7 @@ const fixtureHtml = readFileSync(
 let cwd: string;
 
 beforeEach(async () => {
-  cwd = await mkdtemp(join(tmpdir(), 'quickcaps-scrape-'));
+  cwd = await mkdtemp(join(tmpdir(), 'quick-caps-scrape-'));
 });
 
 afterEach(async () => {

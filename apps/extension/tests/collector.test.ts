@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseHTML } from 'linkedom';
-import { defaultSettings, type CaptureSettings } from 'quickcaps-core';
+import { defaultSettings, type CaptureSettings } from 'quick-caps-core';
 import {
   FLUSH_EVENT,
   IR_KEY,

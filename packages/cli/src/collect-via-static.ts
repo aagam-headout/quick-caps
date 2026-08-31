@@ -3,7 +3,7 @@ import {
   collectFromDocument,
   defaultSettings,
   type PageIR,
-} from 'quickcaps-core';
+} from 'quick-caps-core';
 import { StaticDriver } from './drivers/static-driver.js';
 import { CliError } from './errors.js';
 
@@ -18,7 +18,9 @@ export async function collectViaStatic(url: string): Promise<PageIR> {
     try {
       await assertFetchableUrl(driver.url);
     } catch (error) {
-      throw new CliError(error instanceof Error ? error.message : String(error));
+      throw new CliError(
+        error instanceof Error ? error.message : String(error),
+      );
     }
   }
   const viewport = await driver.viewport();
@@ -26,7 +28,7 @@ export async function collectViaStatic(url: string): Promise<PageIR> {
   return collectFromDocument(driver.document, {
     settings: defaultSettings,
     pageUrl: driver.url ?? url,
-    userAgent: 'quickcaps-cli/static',
+    userAgent: 'quick-caps-cli/static',
     viewport: { width: viewport.width, height: viewport.height },
     documentSize: {
       width: viewport.documentWidth,

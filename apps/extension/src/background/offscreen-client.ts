@@ -65,7 +65,7 @@ export class OffscreenClient {
         () =>
           reject(
             new Error(
-              `QuickCaps' background helper stopped responding (${what}). Try again.`,
+              `Quick-Caps' background helper stopped responding (${what}). Try again.`,
             ),
           ),
         this.timeoutMs,
@@ -85,7 +85,7 @@ export class OffscreenClient {
     // that reads as a bug rather than as the transient it is.
     if (!response) {
       throw new Error(
-        'QuickCaps lost its background helper mid-capture. Try again.',
+        'Quick-Caps lost its background helper mid-capture. Try again.',
       );
     }
     if (!response.ok) throw new Error(response.error);

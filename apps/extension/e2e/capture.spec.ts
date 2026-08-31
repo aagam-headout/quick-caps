@@ -154,7 +154,7 @@ async function capture(
       warnings?: { reason: string }[];
       reason?: string;
     }>((resolve) => {
-      const port = chrome.runtime.connect({ name: 'quickcaps' });
+      const port = chrome.runtime.connect({ name: 'quick-caps' });
       port.onMessage.addListener((message: Record<string, unknown>) => {
         if (message['type'] === 'capture:done') {
           resolve({
@@ -292,7 +292,7 @@ test('refuses a tab that no longer exists, in plain words', async () => {
   const reason = await driver.evaluate(
     async () =>
       await new Promise<string>((resolve) => {
-        const port = chrome.runtime.connect({ name: 'quickcaps' });
+        const port = chrome.runtime.connect({ name: 'quick-caps' });
         port.onMessage.addListener((message: Record<string, unknown>) => {
           if (message['type'] === 'capture:failed') {
             resolve(message['reason'] as string);

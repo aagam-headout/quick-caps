@@ -1,8 +1,8 @@
-# Chrome Web Store listing — QuickCaps
+# Chrome Web Store listing — Quick-Caps
 
 ## Name
 
-QuickCaps
+Quick-Caps
 
 ## Short description (max 132 characters)
 
@@ -10,7 +10,7 @@ Save any page's full front-end — HTML, CSS, JS, images, fonts — to your own 
 
 ## Full description
 
-QuickCaps saves a web page exactly as your browser rendered it — HTML,
+Quick-Caps saves a web page exactly as your browser rendered it — HTML,
 CSS, JavaScript, images, and fonts — into a single self-contained file or zip
 archive on your own disk.
 
@@ -42,7 +42,7 @@ Developer Tools
 
 ## Single purpose statement
 
-QuickCaps's single purpose is to save the currently open web page's
+Quick-Caps's single purpose is to save the currently open web page's
 rendered front-end — its DOM, styles, scripts, and assets — to a file on the
 user's local disk.
 

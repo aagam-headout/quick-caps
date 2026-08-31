@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { PageDriver } from 'quickcaps-core';
+import type { PageDriver } from 'quick-caps-core';
 
 export type ConformanceFactory = () => Promise<{
   driver: PageDriver;

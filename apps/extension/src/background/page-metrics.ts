@@ -1,4 +1,4 @@
-import type { Viewport } from 'quickcaps-core';
+import type { Viewport } from 'quick-caps-core';
 
 /**
  * Viewport plus the size of the box that actually scrolls. When an app shell

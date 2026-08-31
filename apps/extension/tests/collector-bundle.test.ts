@@ -23,7 +23,7 @@ describe('built collector artifact', () => {
   it('exists after a build', () => {
     expect(
       existsSync(artifact),
-      'run `pnpm --filter @quickcaps/extension build` first',
+      'run `pnpm --filter @quick-caps/extension build` first',
     ).toBe(true);
   });
 
@@ -42,13 +42,13 @@ describe('built collector artifact', () => {
   });
 
   it('resolves no workspace package at runtime', () => {
-    expect(code).not.toContain('quickcaps-core');
+    expect(code).not.toContain('quick-caps-core');
     expect(code).not.toContain('single-file-core/single-file.js');
   });
 
   it('inlines both the core logic and the serializer it depends on', () => {
     // Proof it is genuinely self-contained rather than accidentally empty.
-    expect(code).toContain('data-quickcaps-logs');
+    expect(code).toContain('data-quick-caps-logs');
     // single-file-core is ~900 kB; anything much smaller means it was not
     // bundled and injection would fail at runtime.
     expect(code.length).toBeGreaterThan(500_000);
@@ -56,7 +56,7 @@ describe('built collector artifact', () => {
 
   it('does not pull in an unused heavyweight dependency (e.g. a tokenizer BPE table)', () => {
     // Verified build size at time of writing is ~907 kB (single-file-core
-    // dominates). A prior regression had `quickcaps-core`'s barrel export
+    // dominates). A prior regression had `quick-caps-core`'s barrel export
     // re-exporting `distill` (unused by the extension), which transitively
     // pulled in `gpt-tokenizer`'s vocab table and roughly doubled this file
     // to ~1.89 MB. This ceiling — current size plus ~20% headroom — is

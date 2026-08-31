@@ -1,21 +1,21 @@
 /**
- * @module quickcaps-cli
+ * @module quick-caps-cli
  *
  * ### `pc mcp`
  *
  * Starts an MCP server over stdio, exposing every command below as a typed
  * tool (`pc_open`, `pc_do`, `pc_read`, `pc_find`, `pc_next`, `pc_layout`,
  * `pc_tokens`, `pc_scrape`, `pc_capture`). Same session file, same
- * `.quickcaps/session.json` in the process's working directory — a `pc open`
+ * `.quick-caps/session.json` in the process's working directory — a `pc open`
  * in a shell and a `pc_open` tool call in the same directory share state.
  *
  * `pc_capture` defaults its output directory to an MCP-specific artifact
  * root instead of the working directory, since MCP clients don't have a
  * notion of "current shell directory" the way a terminal user does:
  *
- * - `QUICKCAPS_MCP_ARTIFACT_ROOT` — where capture files land by default.
- *   Defaults to a per-user directory under the OS temp directory (e.g., `<os tmpdir>/quickcaps-mcp-artifacts-<uid>`).
- * - `QUICKCAPS_MCP_ARTIFACT_RETENTION_MS` — files older than this are swept
+ * - `QUICK_CAPS_MCP_ARTIFACT_ROOT` — where capture files land by default.
+ *   Defaults to a per-user directory under the OS temp directory (e.g., `<os tmpdir>/quick-caps-mcp-artifacts-<uid>`).
+ * - `QUICK_CAPS_MCP_ARTIFACT_RETENTION_MS` — files older than this are swept
  *   before each `pc_capture` call, so an agent capturing in a loop doesn't
  *   fill the disk. Defaults to 24 hours.
  *

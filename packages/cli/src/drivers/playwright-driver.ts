@@ -5,7 +5,7 @@ import {
   type FetchOptions,
   type PageDriver,
   type Viewport,
-} from 'quickcaps-core';
+} from 'quick-caps-core';
 
 /**
  * PageDriver over a live Playwright page. Every core function already proven

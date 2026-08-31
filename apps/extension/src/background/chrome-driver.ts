@@ -3,8 +3,8 @@ import type {
   FetchOptions,
   PageDriver,
   Viewport,
-} from 'quickcaps-core';
-import { fetchAssetBytes } from 'quickcaps-core';
+} from 'quick-caps-core';
+import { fetchAssetBytes } from 'quick-caps-core';
 import {
   applyScroll,
   measureViewport,
@@ -59,7 +59,7 @@ const CAPTURE_RETRIES = 2;
  * state, so the element found once by viewport() is tagged with this
  * attribute and re-found by attribute in every later scrollTo() call.
  */
-const SCROLL_ROOT_ATTR = 'data-quickcaps-scroll-root';
+const SCROLL_ROOT_ATTR = 'data-quick-caps-scroll-root';
 
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));

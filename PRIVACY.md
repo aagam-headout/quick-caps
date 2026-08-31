@@ -1,8 +1,8 @@
-# Privacy Policy — QuickCaps
+# Privacy Policy — Quick-Caps
 
 **Last updated:** 2026-08-27
 
-QuickCaps collects nothing, transmits nothing, and makes no network request
+Quick-Caps collects nothing, transmits nothing, and makes no network request
 other than fetching the assets of the page you explicitly capture.
 
 ## What the extension does

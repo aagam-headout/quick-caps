@@ -1,13 +1,13 @@
 {
-  "name": "quickcaps-core",
+  "name": "quick-caps-core",
   "version": "0.1.0",
-  "description": "Rendered-DOM page distillation engine for quickcaps-cli — PageIR, design-token extraction, single-file/zip capture bundling.",
+  "description": "Rendered-DOM page distillation engine for quick-caps-cli — PageIR, design-token extraction, single-file/zip capture bundling.",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/aagam-headout/quickcaps.git"
+    "url": "git+https://github.com/aagam-headout/quick-caps.git"
   },
-  "homepage": "https://github.com/aagam-headout/quickcaps#readme",
+  "homepage": "https://github.com/aagam-headout/quick-caps#readme",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

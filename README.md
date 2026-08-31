@@ -1,4 +1,4 @@
-# QuickCaps
+# Quick-Caps
 
 A Chrome extension that saves a page's full front-end — HTML, CSS,
 JavaScript, images, fonts — to your own disk. It captures the page as
@@ -24,7 +24,7 @@ can't read those itself due to CORS, so the extension fetches them on your
 behalf. Decline and the capture still completes; those assets are just
 skipped with a warning.
 
-The finished file downloads to a `QuickCaps` folder inside your Downloads
+The finished file downloads to a `Quick-Caps` folder inside your Downloads
 folder (on Mac, Windows, and Linux alike), named
 `<host>-<YYYYMMDD-HHmmss>.html` or `.zip`. Click any entry under "Recent" in
 the popup to open it again.
@@ -92,7 +92,7 @@ APIs and side effects live only in `*-entry` / `*-inject` files.
 ## Release
 
 `scripts/release.sh` runs every gate and produces
-`release/quickcaps-<version>.zip`, ready for Chrome Web Store upload.
+`release/quick-caps-<version>.zip`, ready for Chrome Web Store upload.
 
 ## License
 

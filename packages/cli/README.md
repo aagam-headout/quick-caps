@@ -1,4 +1,4 @@
-# quickcaps-cli
+# quick-caps-cli
 
 Distill any rendered web page into a few hundred tokens of numbered
 regions and actions — or capture it to disk. Built for agents: `open` a
@@ -10,12 +10,12 @@ tools over stdio (`pc mcp`).
 ## Install / run
 
 ```bash
-npx quickcaps-cli open https://example.com
+npx quick-caps-cli open https://example.com
 ```
 
-Note: the npm package is named `quickcaps-cli`, but the command it
-installs is `pc` — `npx quickcaps-cli <command>` runs `pc <command>`
-directly. A local or global install (`npm install -g quickcaps-cli`)
+Note: the npm package is named `quick-caps-cli`, but the command it
+installs is `pc` — `npx quick-caps-cli <command>` runs `pc <command>`
+directly. A local or global install (`npm install -g quick-caps-cli`)
 additionally exposes `pc` on your `PATH`.
 
 ## Commands
@@ -32,7 +32,7 @@ additionally exposes `pc` on your `PATH`.
 - `pc mcp` — the same nine tools, over an MCP stdio server.
 
 Every command is stateful across invocations within one directory: a
-`.quickcaps/session.json` file holds the current page, its numbered
+`.quick-caps/session.json` file holds the current page, its numbered
 action map, and the render cursor, so `do`/`read`/`find`/`next` resolve
 without re-fetching.
 
@@ -43,9 +43,9 @@ tool (`pc_open`, `pc_do`, `pc_read`, `pc_find`, `pc_next`, `pc_layout`,
 `pc_tokens`, `pc_scrape`, `pc_capture`). Two environment variables control
 `pc_capture`'s default output location:
 
-- `QUICKCAPS_MCP_ARTIFACT_ROOT` — defaults to a per-user directory under
-  the OS temp directory (e.g., `<os tmpdir>/quickcaps-mcp-artifacts-<uid>`).
-- `QUICKCAPS_MCP_ARTIFACT_RETENTION_MS` — files older than this are swept
+- `QUICK_CAPS_MCP_ARTIFACT_ROOT` — defaults to a per-user directory under
+  the OS temp directory (e.g., `<os tmpdir>/quick-caps-mcp-artifacts-<uid>`).
+- `QUICK_CAPS_MCP_ARTIFACT_RETENTION_MS` — files older than this are swept
   before each `pc_capture` call. Defaults to 24 hours.
 
 ## When to use `only-cli` instead
@@ -53,14 +53,14 @@ tool (`pc_open`, `pc_do`, `pc_read`, `pc_find`, `pc_next`, `pc_layout`,
 [`only-cli`](https://www.npmjs.com/package/@only-cli/oc) works from a
 static fetch with no browser — faster, lighter, no Chromium dependency.
 For plain article text where the page doesn't need client-side rendering,
-`only-cli` is the better tool. `quickcaps-cli`'s reason to exist is
+`only-cli` is the better tool. `quick-caps-cli`'s reason to exist is
 rendered-DOM fidelity and real design-token extraction: pages that need a
 real browser to produce their real content, and cases where you want
 actual computed colors/spacing/type scale, not just text.
 
 ## Local development
 
-Run `pnpm --filter quickcaps-cli dev -- <command>` (or `pnpm run dev -- <command>`
+Run `pnpm --filter quick-caps-cli dev -- <command>` (or `pnpm run dev -- <command>`
 from `packages/cli`) to run `src/cli.ts` directly via `tsx`, so edits under
 `src/` take effect immediately instead of silently running against a stale
 `dist/` build.

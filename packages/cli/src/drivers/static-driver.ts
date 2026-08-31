@@ -5,7 +5,7 @@ import {
   type FetchOptions,
   type PageDriver,
   type Viewport,
-} from 'quickcaps-core';
+} from 'quick-caps-core';
 
 /**
  * PageDriver over a linkedom-parsed document with no browser and no layout

@@ -1,4 +1,4 @@
-import { distillWithScoring, type Region } from 'quickcaps-core/distill';
+import { distillWithScoring, type Region } from 'quick-caps-core/distill';
 import { readSession, writeSession } from '../session.js';
 
 /** Dwarfs any role/density/action score, guaranteeing matches sort first. */

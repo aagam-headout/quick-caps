@@ -1,7 +1,7 @@
 import { access, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { PageIR } from 'quickcaps-core';
-import type { Handle } from 'quickcaps-core/distill';
+import type { PageIR } from 'quick-caps-core';
+import type { Handle } from 'quick-caps-core/distill';
 import { CliError } from './errors.js';
 
 export type Session = {
@@ -34,14 +34,14 @@ export class SessionNotFoundError extends Error {
 }
 
 function sessionDir(cwd: string): string {
-  return join(cwd, '.quickcaps');
+  return join(cwd, '.quick-caps');
 }
 
 function sessionFilePath(cwd: string): string {
   return join(sessionDir(cwd), 'session.json');
 }
 
-/** Ensures .quickcaps/ is gitignored on first write, matching a build-output
+/** Ensures .quick-caps/ is gitignored on first write, matching a build-output
  * directory's convention rather than a tracked artifact (spec §5.1). */
 async function ensureGitignore(cwd: string): Promise<void> {
   const path = join(sessionDir(cwd), '.gitignore');

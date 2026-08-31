@@ -3,7 +3,7 @@ import {
   defaultSettings,
   parseSettings,
   type CaptureSettings,
-} from 'quickcaps-core';
+} from 'quick-caps-core';
 
 const KEY = 'settings';
 

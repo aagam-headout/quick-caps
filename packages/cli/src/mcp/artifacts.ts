@@ -7,7 +7,7 @@ const DEFAULT_RETENTION_MS = 24 * 60 * 60 * 1000;
 /** Marks a directory as one this tool created, so `sweepArtifactRoot` will
  * only ever delete files from a root it can prove it owns — never from an
  * arbitrary/misconfigured directory that merely happens to exist. */
-const SENTINEL_FILE = '.quickcaps-mcp-artifacts';
+const SENTINEL_FILE = '.quick-caps-mcp-artifacts';
 
 /** Where `pc_capture` writes files by default when the caller doesn't pass
  * an explicit outDir. Configurable so an agent host can point it at a
@@ -15,10 +15,10 @@ const SENTINEL_FILE = '.quickcaps-mcp-artifacts';
 export function resolveArtifactRoot(
   env: NodeJS.ProcessEnv = process.env,
 ): string {
-  if (env.QUICKCAPS_MCP_ARTIFACT_ROOT) return env.QUICKCAPS_MCP_ARTIFACT_ROOT;
+  if (env.QUICK_CAPS_MCP_ARTIFACT_ROOT) return env.QUICK_CAPS_MCP_ARTIFACT_ROOT;
   const suffix =
     typeof process.getuid === 'function' ? `-${process.getuid()}` : '';
-  return join(tmpdir(), `quickcaps-mcp-artifacts${suffix}`);
+  return join(tmpdir(), `quick-caps-mcp-artifacts${suffix}`);
 }
 
 /** How long a capture file is kept before the next sweep deletes it.
@@ -27,14 +27,14 @@ export function resolveArtifactRoot(
 export function resolveRetentionMs(
   env: NodeJS.ProcessEnv = process.env,
 ): number {
-  const raw = env.QUICKCAPS_MCP_ARTIFACT_RETENTION_MS;
+  const raw = env.QUICK_CAPS_MCP_ARTIFACT_RETENTION_MS;
   const parsed = raw ? Number(raw) : NaN;
   return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_RETENTION_MS;
 }
 
 /** Marks `root` as ours only when doing so can't silently adopt a directory
  * someone else already put files in — e.g. a misconfigured
- * `QUICKCAPS_MCP_ARTIFACT_ROOT` pointing at `~/Documents`. The sentinel is
+ * `QUICK_CAPS_MCP_ARTIFACT_ROOT` pointing at `~/Documents`. The sentinel is
  * planted when `root` is freshly created, already empty, or already ours
  * (idempotent). If `root` pre-exists with other content and no sentinel,
  * it is left unmarked — permanently ineligible for `sweepArtifactRoot`,
@@ -90,7 +90,7 @@ export async function ensureArtifactRoot(root: string): Promise<void> {
  *
  * Refuses to touch anything unless `root` carries the sentinel file written
  * by `ensureArtifactRoot` — this confines deletion to directories this tool
- * created/marked itself, so a misconfigured `QUICKCAPS_MCP_ARTIFACT_ROOT`
+ * created/marked itself, so a misconfigured `QUICK_CAPS_MCP_ARTIFACT_ROOT`
  * pointing at an unrelated directory can't have its old files swept. */
 export async function sweepArtifactRoot(
   root: string,

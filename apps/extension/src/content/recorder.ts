@@ -1,4 +1,4 @@
-import type { LogEntry } from 'quickcaps-core';
+import type { LogEntry } from 'quick-caps-core';
 import { FLUSH_EVENT, LOGS_ATTRIBUTE } from './protocol.js';
 
 export const RECORDER_KEY = '__pageCaptureRecorder';

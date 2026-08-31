@@ -9,7 +9,7 @@ export type UrlPolicyOptions = {
 
 /** `node:dns/promises` is imported lazily, inside the function body, rather
  * than as a top-level static import. This module is reachable from
- * `quickcaps-core`'s root barrel, which apps/extension's browser content
+ * `quick-caps-core`'s root barrel, which apps/extension's browser content
  * script also bundles (via Vite/rollup) — a top-level `import ... from
  * 'node:dns/promises'` makes it a static dependency of the whole module
  * graph and the browser bundle fails to build ("lookup" is not exported by

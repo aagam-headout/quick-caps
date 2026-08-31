@@ -13,7 +13,7 @@ import {
   expect,
   it,
 } from 'vitest';
-import { distill, flattenRegions } from 'quickcaps-core/distill';
+import { distill, flattenRegions } from 'quick-caps-core/distill';
 import { runOpen } from '../src/commands/open.js';
 import { runNext } from '../src/commands/next.js';
 import { ensurePlaywrightSession } from '../src/ensure-playwright.js';
@@ -47,7 +47,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  cwd = await mkdtemp(join(tmpdir(), 'quickcaps-ensure-playwright-'));
+  cwd = await mkdtemp(join(tmpdir(), 'quick-caps-ensure-playwright-'));
 });
 
 afterEach(async () => {

@@ -46,7 +46,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  cwd = await mkdtemp(join(tmpdir(), 'quickcaps-bin-'));
+  cwd = await mkdtemp(join(tmpdir(), 'quick-caps-bin-'));
 });
 
 afterEach(async () => {

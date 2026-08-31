@@ -5,7 +5,7 @@ import {
   measureViewport,
 } from '../src/background/page-metrics.js';
 
-const ATTR = 'data-quickcaps-scroll-root';
+const ATTR = 'data-quick-caps-scroll-root';
 
 /** jsdom does no layout, so every box the code reads has to be declared. */
 function size(

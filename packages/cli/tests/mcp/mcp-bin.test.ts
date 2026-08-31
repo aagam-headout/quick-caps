@@ -46,8 +46,10 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  cwd = await mkdtemp(join(tmpdir(), 'quickcaps-mcp-bin-'));
-  artifactRoot = await mkdtemp(join(tmpdir(), 'quickcaps-mcp-artifacts-test-'));
+  cwd = await mkdtemp(join(tmpdir(), 'quick-caps-mcp-bin-'));
+  artifactRoot = await mkdtemp(
+    join(tmpdir(), 'quick-caps-mcp-artifacts-test-'),
+  );
 });
 
 afterEach(async () => {
@@ -69,7 +71,7 @@ async function connect(): Promise<{
     command: 'node',
     args: [binPath, 'mcp'],
     cwd,
-    env: { ...process.env, QUICKCAPS_MCP_ARTIFACT_ROOT: artifactRoot },
+    env: { ...process.env, QUICK_CAPS_MCP_ARTIFACT_ROOT: artifactRoot },
   });
   const client = new Client({ name: 'e2e-test', version: '0.0.0' });
   await client.connect(transport);
@@ -153,7 +155,7 @@ describe('pc mcp (end-to-end over stdio)', () => {
       expect(text).toContain(artifactRoot);
       const written = await readdir(artifactRoot);
       const captureFiles = written.filter(
-        (name) => name !== '.quickcaps-mcp-artifacts',
+        (name) => name !== '.quick-caps-mcp-artifacts',
       );
       expect(captureFiles.length).toBe(1);
     } finally {

@@ -33,7 +33,7 @@ export function usePreview() {
       // there used to read as success: the spinner stopped and no image
       // appeared.
       if (!response) {
-        setError('QuickCaps stopped responding. Try the preview again.');
+        setError('Quick-Caps stopped responding. Try the preview again.');
       } else if (!response.ok) {
         setError(response.error);
       }

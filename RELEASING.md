@@ -1,6 +1,6 @@
 # Releasing
 
-`quickcaps-core` and `quickcaps-cli` are versioned in lockstep — one
+`quick-caps-core` and `quick-caps-cli` are versioned in lockstep — one
 version number for both, bumped together even when only one has changes.
 Release is manual; there is no CI publish automation.
 
@@ -8,16 +8,16 @@ Release is manual; there is no CI publish automation.
    and `packages/cli/package.json`.
 2. Build both:
    ```bash
-   pnpm --filter quickcaps-core build
-   pnpm --filter quickcaps-cli build
+   pnpm --filter quick-caps-core build
+   pnpm --filter quick-caps-cli build
    ```
-3. Publish core first, then cli — cli's `quickcaps-core` dependency is
+3. Publish core first, then cli — cli's `quick-caps-core` dependency is
    `workspace:*`, and `pnpm publish` (not `npm publish`) rewrites that to
    the real published version automatically at publish time. Using plain
    `npm publish` instead would ship a broken `workspace:*` range.
    ```bash
-   pnpm --filter quickcaps-core publish
-   pnpm --filter quickcaps-cli publish
+   pnpm --filter quick-caps-core publish
+   pnpm --filter quick-caps-cli publish
    ```
 4. Tag the release in git:
    ```bash

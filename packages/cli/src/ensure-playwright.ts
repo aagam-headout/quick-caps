@@ -1,4 +1,4 @@
-import { distill } from 'quickcaps-core/distill';
+import { distill } from 'quick-caps-core/distill';
 import { collectViaPlaywrightFor } from './open.js';
 import { readSession, writeSession, type Session } from './session.js';
 

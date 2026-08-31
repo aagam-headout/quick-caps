@@ -1,6 +1,6 @@
 // @ts-expect-error single-file-core ships no type declarations
 import { init as sfInit, getPageData } from 'single-file-core/single-file.js';
-import type { CaptureSettings } from 'quickcaps-core';
+import type { CaptureSettings } from 'quick-caps-core';
 import { FETCH_RESOURCE } from './protocol.js';
 
 /**

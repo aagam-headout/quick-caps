@@ -10,16 +10,16 @@ import {
 } from '../../src/mcp/artifacts.js';
 
 describe('resolveArtifactRoot', () => {
-  it('defaults to a quickcaps-mcp-artifacts dir under the OS tmpdir', () => {
+  it('defaults to a quick-caps-mcp-artifacts dir under the OS tmpdir', () => {
     const path = resolveArtifactRoot({});
-    expect(path.startsWith(join(tmpdir(), 'quickcaps-mcp-artifacts'))).toBe(
+    expect(path.startsWith(join(tmpdir(), 'quick-caps-mcp-artifacts'))).toBe(
       true,
     );
   });
 
-  it('honors QUICKCAPS_MCP_ARTIFACT_ROOT when set', () => {
+  it('honors QUICK_CAPS_MCP_ARTIFACT_ROOT when set', () => {
     expect(
-      resolveArtifactRoot({ QUICKCAPS_MCP_ARTIFACT_ROOT: '/custom/root' }),
+      resolveArtifactRoot({ QUICK_CAPS_MCP_ARTIFACT_ROOT: '/custom/root' }),
     ).toBe('/custom/root');
   });
 
@@ -29,7 +29,7 @@ describe('resolveArtifactRoot', () => {
       expect(path).toContain(String(process.getuid()));
     } else {
       // Windows has no process.getuid — the default stays the fixed name.
-      expect(path).toContain('quickcaps-mcp-artifacts');
+      expect(path).toContain('quick-caps-mcp-artifacts');
     }
   });
 });
@@ -39,18 +39,18 @@ describe('resolveRetentionMs', () => {
     expect(resolveRetentionMs({})).toBe(24 * 60 * 60 * 1000);
   });
 
-  it('honors QUICKCAPS_MCP_ARTIFACT_RETENTION_MS when a positive number', () => {
+  it('honors QUICK_CAPS_MCP_ARTIFACT_RETENTION_MS when a positive number', () => {
     expect(
-      resolveRetentionMs({ QUICKCAPS_MCP_ARTIFACT_RETENTION_MS: '1000' }),
+      resolveRetentionMs({ QUICK_CAPS_MCP_ARTIFACT_RETENTION_MS: '1000' }),
     ).toBe(1000);
   });
 
   it('falls back to the default on garbage input', () => {
     expect(
-      resolveRetentionMs({ QUICKCAPS_MCP_ARTIFACT_RETENTION_MS: 'nope' }),
+      resolveRetentionMs({ QUICK_CAPS_MCP_ARTIFACT_RETENTION_MS: 'nope' }),
     ).toBe(24 * 60 * 60 * 1000);
     expect(
-      resolveRetentionMs({ QUICKCAPS_MCP_ARTIFACT_RETENTION_MS: '-5' }),
+      resolveRetentionMs({ QUICK_CAPS_MCP_ARTIFACT_RETENTION_MS: '-5' }),
     ).toBe(24 * 60 * 60 * 1000);
   });
 });
@@ -59,7 +59,7 @@ describe('sweepArtifactRoot', () => {
   let root: string;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), 'quickcaps-sweep-'));
+    root = await mkdtemp(join(tmpdir(), 'quick-caps-sweep-'));
   });
 
   afterEach(async () => {
@@ -102,7 +102,7 @@ describe('sweepArtifactRoot', () => {
 
   it('never deletes the sentinel file itself, regardless of age', async () => {
     await ensureArtifactRoot(root);
-    const sentinel = join(root, '.quickcaps-mcp-artifacts');
+    const sentinel = join(root, '.quick-caps-mcp-artifacts');
     const oldTime = new Date(Date.now() - 2 * 60 * 60 * 1000);
     await utimes(sentinel, oldTime, oldTime);
 
@@ -117,7 +117,7 @@ describe('ensureArtifactRoot — symlink refusal', () => {
   let parent: string;
 
   beforeEach(async () => {
-    parent = await mkdtemp(join(tmpdir(), 'quickcaps-symlink-'));
+    parent = await mkdtemp(join(tmpdir(), 'quick-caps-symlink-'));
   });
 
   afterEach(async () => {
@@ -135,7 +135,7 @@ describe('ensureArtifactRoot — symlink refusal', () => {
 
     // The sentinel must not have been planted in the real target either.
     await expect(
-      stat(join(realTarget, '.quickcaps-mcp-artifacts')),
+      stat(join(realTarget, '.quick-caps-mcp-artifacts')),
     ).rejects.toThrow();
   });
 });
@@ -144,7 +144,7 @@ describe('sweepArtifactRoot — lstat, not stat', () => {
   let root: string;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), 'quickcaps-lstat-'));
+    root = await mkdtemp(join(tmpdir(), 'quick-caps-lstat-'));
   });
 
   afterEach(async () => {
@@ -152,12 +152,15 @@ describe('sweepArtifactRoot — lstat, not stat', () => {
   });
 
   it('never deletes a symlink entry regardless of age', async () => {
-    const { symlink, writeFile: writeFileReal, utimes: utimesReal } =
-      await import('node:fs/promises');
+    const {
+      symlink,
+      writeFile: writeFileReal,
+      utimes: utimesReal,
+    } = await import('node:fs/promises');
     await ensureArtifactRoot(root);
 
     // A target file that is new (should NOT cause the link to survive).
-    const targetDir = await mkdtemp(join(tmpdir(), 'quickcaps-target-'));
+    const targetDir = await mkdtemp(join(tmpdir(), 'quick-caps-target-'));
     const target = join(targetDir, 'new-target.html');
     await writeFileReal(target, 'x');
 
@@ -186,7 +189,7 @@ describe('sweepArtifactRoot — lstat, not stat', () => {
 describe('ensureArtifactRoot', () => {
   it('creates the directory recursively if missing', async () => {
     const root = join(
-      await mkdtemp(join(tmpdir(), 'quickcaps-ensure-')),
+      await mkdtemp(join(tmpdir(), 'quick-caps-ensure-')),
       'nested',
       'dir',
     );
@@ -196,27 +199,27 @@ describe('ensureArtifactRoot', () => {
   });
 
   it('creates the sentinel file', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'quickcaps-ensure-'));
+    const root = await mkdtemp(join(tmpdir(), 'quick-caps-ensure-'));
     await ensureArtifactRoot(root);
     await expect(
-      stat(join(root, '.quickcaps-mcp-artifacts')),
+      stat(join(root, '.quick-caps-mcp-artifacts')),
     ).resolves.toBeDefined();
     await rm(root, { recursive: true, force: true });
   });
 
   it('is idempotent across repeated calls', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'quickcaps-ensure-'));
+    const root = await mkdtemp(join(tmpdir(), 'quick-caps-ensure-'));
     await ensureArtifactRoot(root);
     await expect(ensureArtifactRoot(root)).resolves.toBeUndefined();
     await rm(root, { recursive: true, force: true });
   });
 
   it('refuses to adopt a pre-existing directory that already has other files — never plants the sentinel there', async () => {
-    // Reproduces the misconfigured QUICKCAPS_MCP_ARTIFACT_ROOT scenario:
+    // Reproduces the misconfigured QUICK_CAPS_MCP_ARTIFACT_ROOT scenario:
     // pointing the artifact root at a directory the user already has real
     // files in (e.g. ~/Documents) must never make that directory eligible
     // for the sweep's bulk deletion, on this call or any future one.
-    const root = await mkdtemp(join(tmpdir(), 'quickcaps-ensure-'));
+    const root = await mkdtemp(join(tmpdir(), 'quick-caps-ensure-'));
     const victimFile = join(root, 'important.txt');
     await writeFile(victimFile, 'do not delete me');
     const oldTime = new Date(Date.now() - 2 * 60 * 60 * 1000);
@@ -227,7 +230,7 @@ describe('ensureArtifactRoot', () => {
     // The sentinel must NOT have been planted — this directory pre-existed
     // with foreign content, so it's never "ours" to sweep.
     await expect(
-      stat(join(root, '.quickcaps-mcp-artifacts')),
+      stat(join(root, '.quick-caps-mcp-artifacts')),
     ).rejects.toThrow();
 
     // Sweeping now (as pc_capture would, right after ensure) must still be

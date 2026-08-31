@@ -1,5 +1,5 @@
 import { parseHTML } from 'linkedom';
-import { flattenRegions } from 'quickcaps-core/distill';
+import { flattenRegions } from 'quick-caps-core/distill';
 import { readSession } from '../session.js';
 import { CliError } from './do.js';
 

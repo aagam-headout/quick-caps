@@ -2,7 +2,7 @@ import {
   captureFilename,
   parseSettings,
   type CaptureSettings,
-} from 'quickcaps-core';
+} from 'quick-caps-core';
 import { CaptureLock, type CaptureClaim } from './busy.js';
 import { ChromeDriver } from './chrome-driver.js';
 import { OffscreenClient } from './offscreen-client.js';
@@ -26,12 +26,12 @@ import {
   type PopupToWorker,
   type WorkerToPopup,
 } from '../lib/messages.js';
-import type { PageIR } from 'quickcaps-core';
+import type { PageIR } from 'quick-caps-core';
 
 const SETTINGS_KEY_STORAGE = 'settings';
 const HISTORY_KEY = 'history';
 const HISTORY_LIMIT = 50;
-const DOWNLOAD_FOLDER = 'QuickCaps';
+const DOWNLOAD_FOLDER = 'Quick-Caps';
 
 /**
  * The capture in flight, if any.
@@ -69,13 +69,13 @@ function friendlyError(error: unknown): string {
   // Chrome's own wording names the manifest, or an internal API, neither of
   // which helps someone who just needs to accept a prompt or reload a page.
   if (raw.includes('Cannot access contents') || raw.includes('host permission'))
-    return 'QuickCaps could not read this page. Click Capture again and choose Allow, or reload the page and retry.';
+    return 'Quick-Caps could not read this page. Click Capture again and choose Allow, or reload the page and retry.';
   if (raw.includes('No tab with id') || raw.includes('No window with id'))
     return 'That tab was closed before the capture finished. Try again.';
   if (raw.includes('Frame with ID') || raw.includes('Frame was removed'))
     return 'The page navigated away mid-capture. Reload it and try again.';
   if (raw.includes('Extension context invalidated'))
-    return 'QuickCaps was reloaded mid-capture. Try again.';
+    return 'Quick-Caps was reloaded mid-capture. Try again.';
   if (raw.includes('QUOTA') || raw.includes('quota'))
     return 'Chrome limited how fast pages can be screenshotted. Wait a moment and try again.';
   if (raw.includes('Download error') || raw.includes('USER_CANCELED'))
@@ -351,7 +351,7 @@ async function runCapture(params: {
       post({
         type: 'capture:failed',
         reason:
-          'QuickCaps needs permission to read this page. Click Capture again and choose Allow.',
+          'Quick-Caps needs permission to read this page. Click Capture again and choose Allow.',
         recoverable: true,
       });
       return;
@@ -503,7 +503,7 @@ function startCapture(params: {
   void runCapture({ ...params, claim });
 }
 
-const CONTEXT_MENU_ID = 'quickcaps-capture';
+const CONTEXT_MENU_ID = 'quick-caps-capture';
 
 function notify(title: string, message: string): void {
   void chrome.notifications.create({
@@ -573,7 +573,7 @@ function waitForTabLoad(tabId: number, timeoutMs = 15_000): Promise<void> {
 
 /**
  * Captures and stitches the tab's full page, opens it in a new tab, and
- * saves it to QuickCaps/previews alongside real captures (recorded in
+ * saves it to Quick-Caps/previews alongside real captures (recorded in
  * history, so it shows up in Recent too) - a quick look at the screenshot on
  * its own, independent of running (and downloading) a whole capture.
  *
@@ -697,12 +697,12 @@ chrome.runtime.onInstalled.addListener((details) => {
   chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({
       id: CONTEXT_MENU_ID,
-      title: 'Capture page with QuickCaps',
+      title: 'Capture page with Quick-Caps',
       contexts: ['page'],
     });
   });
 
-  // Explains what QuickCaps will ask permission for, and why, before Chrome's
+  // Explains what Quick-Caps will ask permission for, and why, before Chrome's
   // native prompt shows up unexplained on the first capture. Skipped on
   // update/browser-update reinstalls, which is not a first impression.
   if (details.reason === 'install') {

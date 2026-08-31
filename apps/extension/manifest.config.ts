@@ -9,8 +9,8 @@ import pkg from './package.json';
  */
 export const manifest = {
   manifest_version: 3 as const,
-  name: 'QuickCaps',
-  short_name: 'QuickCaps',
+  name: 'Quick-Caps',
+  short_name: 'Quick-Caps',
   description:
     "Save a page's full front-end - HTML, CSS, JavaScript, images, fonts - to your own disk. Nothing is uploaded.",
   version: pkg.version,
@@ -29,7 +29,7 @@ export const manifest = {
       // K and C-ish combos collide with Chrome/Firefox devtools bindings
       // (Ctrl+Shift+C/I/J, Firefox's console on K) — U is free on all three.
       suggested_key: { default: 'Ctrl+Shift+U', mac: 'Command+Shift+U' },
-      description: 'Capture the current page with QuickCaps',
+      description: 'Capture the current page with Quick-Caps',
     },
   },
   permissions: [
@@ -41,7 +41,7 @@ export const manifest = {
     // than only revealing it in its folder.
     'downloads.open',
     'offscreen',
-    // The right-click "Capture page with QuickCaps" menu entry.
+    // The right-click "Capture page with Quick-Caps" menu entry.
     'contextMenus',
     // Feedback for captures triggered without a popup open (shortcut, menu).
     'notifications',

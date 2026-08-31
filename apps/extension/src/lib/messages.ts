@@ -1,15 +1,15 @@
-import type { CaptureSettings, PageIR, Warning } from 'quickcaps-core';
+import type { CaptureSettings, PageIR, Warning } from 'quick-caps-core';
 import type { StitchRequest } from '../background/chrome-driver.js';
 import type { Frame } from './capture.js';
 
 /**
  * One-off request from the popup's "Preview screenshot" button: capture and
  * stitch the current tab's full page, open it in a new tab, and also save it
- * to QuickCaps/previews (recorded in history, so it shows up in Recent too).
+ * to Quick-Caps/previews (recorded in history, so it shows up in Recent too).
  * Independent of the "Full-page screenshot (PNG)" setting, which only
  * controls whether the screenshot rides along with an actual capture.
  */
-export const PREVIEW_SCREENSHOT = '__quickcaps-preview-screenshot';
+export const PREVIEW_SCREENSHOT = '__quick-caps-preview-screenshot';
 
 export type PreviewScreenshotResponse =
   { ok: true } | { ok: false; error: string };
@@ -119,4 +119,4 @@ export type OffscreenProgress = {
   progress: CaptureProgress;
 };
 
-export const CAPTURE_PORT = 'quickcaps';
+export const CAPTURE_PORT = 'quick-caps';

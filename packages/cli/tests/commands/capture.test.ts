@@ -46,7 +46,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  cwd = await mkdtemp(join(tmpdir(), 'quickcaps-capture-'));
+  cwd = await mkdtemp(join(tmpdir(), 'quick-caps-capture-'));
 });
 
 afterEach(async () => {
@@ -83,7 +83,7 @@ describe('runCapture', () => {
 
   it('respects --out to redirect the output directory', async () => {
     await runOpen({ url: baseUrl }, cwd);
-    const outDir = await mkdtemp(join(tmpdir(), 'quickcaps-capture-out-'));
+    const outDir = await mkdtemp(join(tmpdir(), 'quick-caps-capture-out-'));
     try {
       const message = await runCapture({ outDir }, cwd);
       const writtenPath = message.match(/Wrote (\S+)/)![1]!;

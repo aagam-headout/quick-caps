@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { CaptureSettings } from 'quickcaps-core';
+import type { CaptureSettings } from 'quick-caps-core';
 import { Checkbox } from './components/Checkbox.js';
 import { Section } from './components/Section.js';
 import { SingleSelectDropdown } from './components/SingleSelectDropdown.js';
@@ -330,7 +330,7 @@ export function App() {
             className="h-[18px] w-[18px] rounded-[5px]"
           />
           <h1 className="text-[13px] font-medium tracking-[-0.01em] text-[var(--text-primary)]">
-            QuickCaps
+            Quick-Caps
           </h1>
         </div>
         <SingleSelectDropdown
@@ -521,7 +521,7 @@ export function App() {
         {mode === 'snap' ? (
           <p className="text-[11px] text-[var(--text-secondary)]">
             One full-page PNG, top to bottom. Opens in a new tab and saves to
-            Downloads/QuickCaps/previews. No archive, no settings.
+            Downloads/Quick-Caps/previews. No archive, no settings.
           </p>
         ) : null}
 

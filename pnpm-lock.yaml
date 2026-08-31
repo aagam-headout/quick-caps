@@ -35,7 +35,7 @@ importers:
 
   apps/extension:
     dependencies:
-      quickcaps-core:
+      quick-caps-core:
         specifier: workspace:*
         version: link:../../packages/core
       react:
@@ -111,7 +111,7 @@ importers:
       playwright:
         specifier: ^1.48.0
         version: 1.62.1
-      quickcaps-core:
+      quick-caps-core:
         specifier: workspace:*
         version: link:../core
       zod:

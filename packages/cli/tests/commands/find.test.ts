@@ -13,7 +13,7 @@ import {
   expect,
   it,
 } from 'vitest';
-import { distill } from 'quickcaps-core/distill';
+import { distill } from 'quick-caps-core/distill';
 import { runOpen } from '../../src/commands/open.js';
 import { runFind } from '../../src/commands/find.js';
 import { readSession } from '../../src/session.js';
@@ -46,7 +46,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  cwd = await mkdtemp(join(tmpdir(), 'quickcaps-find-'));
+  cwd = await mkdtemp(join(tmpdir(), 'quick-caps-find-'));
 });
 
 afterEach(async () => {

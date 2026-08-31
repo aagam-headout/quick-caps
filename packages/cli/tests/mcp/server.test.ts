@@ -98,7 +98,7 @@ describe('buildMcpServer', () => {
     const result = await client.callTool({ name: 'pc_capture', arguments: {} });
     const [args] = vi.mocked(runCapture).mock.calls.at(-1)!;
     expect(args.outDir).not.toBe(process.cwd());
-    expect(args.outDir).toContain('quickcaps-mcp-artifacts');
+    expect(args.outDir).toContain('quick-caps-mcp-artifacts');
     expect(result.content).toContainEqual(
       expect.objectContaining({ type: 'text' }),
     );

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 version=$(node -p "require('./apps/extension/package.json').version")
-output="release/quickcaps-${version}.zip"
+output="release/quick-caps-${version}.zip"
 
 rm -rf apps/extension/dist release
 mkdir -p release

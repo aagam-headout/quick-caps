@@ -1,7 +1,7 @@
 /**
  * Opened once, in a new tab, the moment the extension is installed (see
  * chrome.runtime.onInstalled in src/background/index.ts). Its only job is to
- * say what QuickCaps will ask permission for and why, before Chrome's native
+ * say what Quick-Caps will ask permission for and why, before Chrome's native
  * permission dialog shows up unexplained on the first capture. It does not
  * request anything itself - chrome.permissions.request needs a user gesture
  * inside the popup, which is where that request already lives.
@@ -39,7 +39,7 @@ const SHORTCUT_KEYS = isMac
 const FEATURE_ITEMS = [
   {
     title: 'Right-click menu',
-    body: '“Capture page with QuickCaps” on any page’s right-click menu does the same thing.',
+    body: '“Capture page with Quick-Caps” on any page’s right-click menu does the same thing.',
   },
   {
     title: 'Pick just one element',
@@ -133,7 +133,7 @@ export function App() {
         />
         <div>
           <h1 className="text-[16px] font-medium tracking-[-0.01em] text-[var(--text-primary)]">
-            Welcome to QuickCaps
+            Welcome to Quick-Caps
           </h1>
           <p className="text-[13px] text-[var(--text-secondary)]">
             Save a page&rsquo;s HTML, CSS, JS, images, and fonts to your own

@@ -50,7 +50,7 @@ const sampleSession: Session = {
 };
 
 beforeEach(async () => {
-  cwd = await mkdtemp(join(tmpdir(), 'quickcaps-session-'));
+  cwd = await mkdtemp(join(tmpdir(), 'quick-caps-session-'));
 });
 
 afterEach(async () => {
@@ -68,10 +68,10 @@ describe('session', () => {
     expect(read).toEqual(sampleSession);
   });
 
-  it('creates a .gitignore in .quickcaps/ on first write', async () => {
+  it('creates a .gitignore in .quick-caps/ on first write', async () => {
     await writeSession(cwd, sampleSession);
     const gitignore = await readFile(
-      join(cwd, '.quickcaps', '.gitignore'),
+      join(cwd, '.quick-caps', '.gitignore'),
       'utf8',
     );
     expect(gitignore).toContain('*');

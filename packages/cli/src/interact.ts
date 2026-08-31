@@ -1,5 +1,5 @@
 import { chromium } from 'playwright';
-import { assertFetchableUrl, type PageIR } from 'quickcaps-core';
+import { assertFetchableUrl, type PageIR } from 'quick-caps-core';
 import { collectViaPlaywright } from './collect-via-playwright.js';
 import { CliError } from './errors.js';
 

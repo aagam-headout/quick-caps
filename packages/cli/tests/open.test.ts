@@ -3,8 +3,8 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { emptyTally, type PageIR, type Region } from 'quickcaps-core';
-import { flattenRegions } from 'quickcaps-core/distill';
+import { emptyTally, type PageIR, type Region } from 'quick-caps-core';
+import { flattenRegions } from 'quick-caps-core/distill';
 import { looksLikeEmptyShell, openUrl } from '../src/open.js';
 import { collectViaStatic } from '../src/collect-via-static.js';
 

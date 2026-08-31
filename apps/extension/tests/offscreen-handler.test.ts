@@ -4,7 +4,7 @@ import {
   isOffscreenRequest,
   type HandlerDeps,
 } from '../src/offscreen/handler.js';
-import { defaultSettings, emptyTally, type PageIR } from 'quickcaps-core';
+import { defaultSettings, emptyTally, type PageIR } from 'quick-caps-core';
 
 const ir: PageIR = {
   metadata: {

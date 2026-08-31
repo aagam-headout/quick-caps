@@ -14,7 +14,7 @@ import {
   expect,
   it,
 } from 'vitest';
-import { flattenRegions } from 'quickcaps-core/distill';
+import { flattenRegions } from 'quick-caps-core/distill';
 import { runOpen } from '../../src/commands/open.js';
 import { CliError, runDo } from '../../src/commands/do.js';
 import { readSession, writeSession } from '../../src/session.js';
@@ -53,7 +53,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  cwd = await mkdtemp(join(tmpdir(), 'quickcaps-do-'));
+  cwd = await mkdtemp(join(tmpdir(), 'quick-caps-do-'));
 });
 
 afterEach(async () => {
@@ -221,7 +221,7 @@ describe('runDo — button/input interaction', () => {
         (h) => h.kind === 'button',
       )!;
 
-      // Simulate a .quickcaps/session.json written before
+      // Simulate a .quick-caps/session.json written before
       // ActionRef.domPath existed (or any other cause of a missing
       // domPath): strip the owning action's domPath before writing back.
       for (const { region } of flattenRegions(session.ir.regions)) {

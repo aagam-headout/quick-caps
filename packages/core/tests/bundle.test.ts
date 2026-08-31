@@ -215,7 +215,7 @@ describe('buildSingleFile', () => {
 
   it('omits the viewer panel by default', () => {
     const text = new TextDecoder().decode(buildSingleFile(input).bytes);
-    expect(text).not.toContain('data-quickcaps-viewer');
+    expect(text).not.toContain('data-quick-caps-viewer');
   });
 
   it('embeds a viewer panel when embedViewer is on', () => {
@@ -225,7 +225,7 @@ describe('buildSingleFile', () => {
         settings: { ...defaultSettings, embedViewer: true },
       }).bytes,
     );
-    expect(text).toContain('data-quickcaps-viewer');
+    expect(text).toContain('data-quick-caps-viewer');
   });
 
   it('omits the viewer panel when embedViewer is on but nothing was captured', () => {
@@ -245,7 +245,7 @@ describe('buildSingleFile', () => {
         },
       }).bytes,
     );
-    expect(text).not.toContain('data-quickcaps-viewer');
+    expect(text).not.toContain('data-quick-caps-viewer');
   });
 });
 

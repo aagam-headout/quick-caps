@@ -6,7 +6,7 @@ let cached: string | null = null;
 /**
  * Bundles collector-entry.ts — and through it, collectFromDocument,
  * buildRegions, and tallyComputedStyles — into one zero-import IIFE
- * string that assigns `globalThis.__quickcapsCollect`. Built once per CLI
+ * string that assigns `globalThis.__quickCapsCollect`. Built once per CLI
  * process and cached in memory: the bundle's content never changes within
  * a process, so re-bundling per `page.evaluate` call would be pure waste.
  * Mirrors apps/extension/src/content/collector.ts's proven zero-import-

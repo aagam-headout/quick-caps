@@ -24,7 +24,7 @@ export const captureSettingsSchema = z.object({
    * Embeds a small self-contained viewer panel in single-file output so
    * whoever reopens the capture can browse the metadata/tokens/logs/raw
    * blocks that would otherwise just sit inert at the end of the document.
-   * Independent of inertSnapshot: this script is QuickCaps's own trusted
+   * Independent of inertSnapshot: this script is Quick-Caps's own trusted
    * code, not something the captured page supplied.
    */
   embedViewer: z.boolean().default(false),

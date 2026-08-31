@@ -1,4 +1,4 @@
-// Imported from the 'quickcaps-core/collect' subpath, not the root barrel:
+// Imported from the 'quick-caps-core/collect' subpath, not the root barrel:
 // the root barrel also re-exports assertFetchableUrl (url-policy.ts),
 // which imports node:dns/promises. This file is bundled by esbuild for
 // injection into a real browser page (collector-bundle.ts) — even though
@@ -7,7 +7,10 @@
 // tree-shaking and throws at runtime in the browser. Importing the
 // narrower subpath keeps url-policy.ts out of this bundle's module graph
 // entirely.
-import { collectFromDocument, type CollectOptions } from 'quickcaps-core/collect';
+import {
+  collectFromDocument,
+  type CollectOptions,
+} from 'quick-caps-core/collect';
 
 /** Mirrors apps/extension/src/content/collector.ts's own list — kept as a
  * separate copy rather than a shared import, since sharing it would mean
@@ -50,7 +53,7 @@ function readComputedStyle(el: Element): Record<string, string> {
  * constructed right here, inside the browser, and passed to
  * collectFromDocument directly, so no serialization of it is ever needed.
  */
-(globalThis as Record<string, unknown>)['__quickcapsCollect'] = (
+(globalThis as Record<string, unknown>)['__quickCapsCollect'] = (
   options: Omit<CollectOptions, 'computedStyle'>,
 ) =>
   collectFromDocument(document, {

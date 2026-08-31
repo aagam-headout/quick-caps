@@ -34,7 +34,7 @@ import {
  * pc_open tool call in the same directory share state. No transport
  * attached here so tests can drive it in-process (InMemoryTransport). */
 export function buildMcpServer(): McpServer {
-  const server = new McpServer({ name: 'quickcaps-pc', version: '1.0.0' });
+  const server = new McpServer({ name: 'quick-caps-pc', version: '1.0.0' });
   const cwd = process.cwd();
 
   server.registerTool(

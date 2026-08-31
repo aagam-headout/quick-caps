@@ -1,6 +1,6 @@
 import { chromium } from 'playwright';
-import { assertFetchableUrl, type PageIR } from 'quickcaps-core';
-import { flattenRegions } from 'quickcaps-core/distill';
+import { assertFetchableUrl, type PageIR } from 'quick-caps-core';
+import { flattenRegions } from 'quick-caps-core/distill';
 import { collectViaStatic } from './collect-via-static.js';
 import { collectViaPlaywright } from './collect-via-playwright.js';
 import { CliError } from './errors.js';

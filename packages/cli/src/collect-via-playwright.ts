@@ -1,5 +1,5 @@
 import type { Page } from 'playwright';
-import { defaultSettings, type PageIR } from 'quickcaps-core';
+import { defaultSettings, type PageIR } from 'quick-caps-core';
 import { collectorBundleSource } from './collector-bundle.js';
 
 /**
@@ -17,9 +17,9 @@ export async function collectViaPlaywright(page: Page): Promise<PageIR> {
   return page.evaluate((settings) => {
     const collect = (
       globalThis as unknown as {
-        __quickcapsCollect: (options: unknown) => unknown;
+        __quickCapsCollect: (options: unknown) => unknown;
       }
-    ).__quickcapsCollect;
+    ).__quickCapsCollect;
 
     return collect({
       settings,

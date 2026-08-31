@@ -3,9 +3,9 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { collectFromDocument } from 'quickcaps-core';
-import { defaultSettings } from 'quickcaps-core';
-import { flattenRegions } from 'quickcaps-core/distill';
+import { collectFromDocument } from 'quick-caps-core';
+import { defaultSettings } from 'quick-caps-core';
+import { flattenRegions } from 'quick-caps-core/distill';
 import { parseHTML } from 'linkedom';
 import { interact } from '../src/interact.js';
 

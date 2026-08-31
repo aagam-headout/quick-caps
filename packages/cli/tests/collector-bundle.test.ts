@@ -9,7 +9,7 @@ describe('collectorBundleSource', () => {
     expect(source).not.toMatch(/\brequire\(/);
   });
 
-  it('assigns a callable __quickcapsCollect when evaluated', async () => {
+  it('assigns a callable __quickCapsCollect when evaluated', async () => {
     const source = await collectorBundleSource();
     const globals: Record<string, unknown> = {};
     // eslint-disable-next-line @typescript-eslint/no-implied-eval -- this is
@@ -17,7 +17,7 @@ describe('collectorBundleSource', () => {
     // string's shape without a browser means evaluating it against a stand-in
     // global object the same way.
     new Function('globalThis', source)(globals);
-    expect(typeof globals['__quickcapsCollect']).toBe('function');
+    expect(typeof globals['__quickCapsCollect']).toBe('function');
   });
 
   it('caches the build — a second call returns the same string instance', async () => {
