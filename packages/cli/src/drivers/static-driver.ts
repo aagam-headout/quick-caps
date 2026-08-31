@@ -9,8 +9,8 @@ import {
 
 /**
  * PageDriver over a linkedom-parsed document with no browser and no layout
- * engine — the fast path for pages that don't need rendering (spec §12.1:
- * only-cli's ergonomics for the cases that don't need rendered-DOM fidelity).
+ * engine — the fast path for pages that don't need rendered-DOM fidelity
+ * (spec §12.1).
  *
  * `screenshotFullPage` throws rather than returning empty bytes: there is
  * nothing to screenshot, and a caller that asked for one has a real bug to

@@ -89,16 +89,6 @@ resolved from the server process's working directory and
 server from a project root shares one session with a `pc` invoked in that
 same directory from a shell.
 
-## When to use `only-cli` instead
-
-[`only-cli`](https://www.npmjs.com/package/@only-cli/oc) works from a
-static fetch with no browser — faster, lighter, no Chromium dependency.
-For plain article text where the page doesn't need client-side rendering,
-`only-cli` is the better tool. `quick-caps-cli`'s reason to exist is
-rendered-DOM fidelity and real design-token extraction: pages that need a
-real browser to produce their real content, and cases where you want
-actual computed colors/spacing/type scale, not just text.
-
 ## Local development
 
 See [CONTRIBUTING.md](../../CONTRIBUTING.md) in the repository root for

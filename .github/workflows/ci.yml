@@ -1,7 +1,8 @@
 name: CI
 on:
-  push:
-    branches: [main]
+  # PR-only by design: a merge into main lands code that already passed this
+  # exact workflow as a required check on an up-to-date branch, so re-running
+  # it on the merge commit would only burn minutes for an answer we have.
   pull_request:
 
 jobs:
