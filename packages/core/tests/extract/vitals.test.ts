@@ -51,6 +51,16 @@ describe('extractVitals', () => {
       interactionToNextPaintMs: null,
       ttfbMs: null,
       firstContentfulPaintMs: null,
+      // Five nulls, not five 'good's: a session nobody armed measured
+      // nothing, and a default-to-the-best-band scheme would report it as a
+      // page that measured well.
+      ratings: {
+        largestContentfulPaint: null,
+        cumulativeLayoutShift: null,
+        interactionToNextPaint: null,
+        ttfb: null,
+        firstContentfulPaint: null,
+      },
       perf: null,
       unsupportedEntryTypes: [],
     });
@@ -141,10 +151,11 @@ describe('extractVitals', () => {
   });
 
   describe('boundary values round-trip untouched', () => {
-    /** `VitalsReport` does not model a rating, so these assert the numbers a
-     * rating layer would read are reported exactly as observed. The CLS cases
-     * are the ones that would break first: it is a unitless ratio, and the
-     * millisecond rounding the other four get would flatten 0.1 to 0. */
+    /** The numbers the rating layer reads, asserted separately from the bands
+     * it derives: a rating can only be right if the value under it survived
+     * untouched. The CLS cases are the ones that would break first — it is a
+     * unitless ratio, and the millisecond rounding the other four get would
+     * flatten 0.1 to 0 and quietly turn a boundary into a perfect score. */
     const cases: Array<[string, OverTimePerf, number, number]> = [
       ['good/needs-improvement', GOOD_BOUNDARY_PERF, 0.1, 200],
       ['needs-improvement/poor', POOR_BOUNDARY_PERF, 0.25, 500],
@@ -182,6 +193,103 @@ describe('extractVitals', () => {
     for (const metric of ['LCP', 'CLS', 'INP', 'TTFB', 'FCP']) {
       expect(reasons(warnings)).toMatch(metric);
     }
+  });
+
+  describe('ratings', () => {
+    it('bands every observed metric', () => {
+      const { report } = run({ perf: EVERY_METRIC_PERF });
+
+      // LCP 2100 / CLS 0.04 / INP 140 / TTFB 120 / FCP 900 — all inside the
+      // good band on every axis.
+      expect(report.ratings).toEqual({
+        largestContentfulPaint: 'good',
+        cumulativeLayoutShift: 'good',
+        interactionToNextPaint: 'good',
+        ttfb: 'good',
+        firstContentfulPaint: 'good',
+      });
+    });
+
+    it('rates an unobserved metric null rather than good', () => {
+      const { report } = run({ perf: NO_INTERACTION_PERF });
+
+      // The distinction the whole field exists for: nobody interacted, so
+      // there is no response latency to score. Calling that 'good' would
+      // report an unmeasured page as a fast one.
+      expect(report.interactionToNextPaintMs).toBeNull();
+      expect(report.ratings?.interactionToNextPaint).toBeNull();
+      expect(report.ratings?.interactionToNextPaint).not.toBe('good');
+      // A CLS of 0.02 was genuinely observed and does get a band.
+      expect(report.ratings?.cumulativeLayoutShift).toBe('good');
+    });
+
+    it('rates an observed CLS of 0 good, since 0 is the best score there is', () => {
+      const { report } = run({ perf: CLS_ZERO_PERF });
+
+      expect(report.ratings?.cumulativeLayoutShift).toBe('good');
+    });
+
+    it('rates a metric the browser could not observe null', () => {
+      const { report } = run({ perf: CLS_ABSENT_PERF });
+
+      expect(report.ratings?.cumulativeLayoutShift).toBeNull();
+    });
+
+    it('rates a malformed metric null rather than scoring the garbage', () => {
+      const { report } = run({ perf: MALFORMED_PERF });
+
+      expect(report.ratings?.cumulativeLayoutShift).toBeNull();
+      expect(report.ratings?.interactionToNextPaint).toBeNull();
+    });
+
+    it('puts a value exactly on the good boundary in the good band', () => {
+      const { report } = run({ perf: GOOD_BOUNDARY_PERF });
+
+      // Both thresholds are inclusive ceilings, matching how web.dev states
+      // them ("2.5 seconds or less is good"), so a metric sitting on the
+      // boundary lands in the better band. This is the assertion that pins
+      // that choice.
+      expect(report.ratings).toEqual({
+        largestContentfulPaint: 'good',
+        cumulativeLayoutShift: 'good',
+        interactionToNextPaint: 'good',
+        ttfb: 'good',
+        firstContentfulPaint: 'good',
+      });
+    });
+
+    it('puts a value exactly on the poor boundary in needs-improvement', () => {
+      const { report } = run({ perf: POOR_BOUNDARY_PERF });
+
+      expect(report.ratings).toEqual({
+        largestContentfulPaint: 'needs-improvement',
+        cumulativeLayoutShift: 'needs-improvement',
+        interactionToNextPaint: 'needs-improvement',
+        ttfb: 'needs-improvement',
+        firstContentfulPaint: 'needs-improvement',
+      });
+    });
+
+    it('rates a value past the poor boundary poor', () => {
+      const { report } = run({
+        perf: {
+          ...POOR_BOUNDARY_PERF,
+          largestContentfulPaintMs: 4001,
+          cumulativeLayoutShift: 0.26,
+          interactionToNextPaintMs: 501,
+          ttfbMs: 1801,
+          firstContentfulPaintMs: 3001,
+        },
+      });
+
+      expect(report.ratings).toEqual({
+        largestContentfulPaint: 'poor',
+        cumulativeLayoutShift: 'poor',
+        interactionToNextPaint: 'poor',
+        ttfb: 'poor',
+        firstContentfulPaint: 'poor',
+      });
+    });
   });
 
   it('never throws on a hostile observation', () => {

@@ -353,9 +353,13 @@ describe('network recorder — redaction', () => {
     expect(request.url).toContain(`token=${REDACTED}`);
     expect(request.url).toContain('page=2');
     expect(request.requestHeaders['authorization']).toBe(REDACTED);
-    expect(request.requestHeaders['cookie']).toBe(REDACTED);
+    // The cookie headers keep their names and lose their values: the name is
+    // the inventory `pc data --stack` reports, and only the value is a
+    // credential. The stringify assertion above is what proves the secret is
+    // gone either way.
+    expect(request.requestHeaders['cookie']).toBe(`session=${REDACTED}`);
     expect(request.requestHeaders['accept']).toBe('application/json');
-    expect(request.responseHeaders['set-cookie']).toBe(REDACTED);
+    expect(request.responseHeaders['set-cookie']).toBe(`session=${REDACTED}`);
     expect(request.body.kept === true && request.body.text).toContain('ada');
   });
 

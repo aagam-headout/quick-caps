@@ -10,7 +10,9 @@ import {
   CLEAN_HTML,
   COOKIE_PROSE_HTML,
   COOKIE_REQUESTS,
+  FULL_JAR,
   GENERIC_BANNER_HTML,
+  PARTIAL_JAR,
   TRACKED_ASSETS,
   TRACKED_HTML,
   image,
@@ -48,7 +50,7 @@ describe('extractStack — the three states', () => {
       recorded: false,
       technologies: [],
       thirdPartyHosts: [],
-      cookies: { cookies: [], includesHttpOnly: false },
+      cookies: { cookies: [], includesHttpOnly: false, source: 'none' },
       consentBanner: { present: false },
     });
     expect(warnings).toEqual([]);
@@ -63,7 +65,11 @@ describe('extractStack — the three states', () => {
     expect(report.recorded).toBe(true);
     expect(report.technologies).toEqual([]);
     expect(report.thirdPartyHosts).toEqual([]);
-    expect(report.cookies).toEqual({ cookies: [], includesHttpOnly: false });
+    expect(report.cookies).toEqual({
+      cookies: [],
+      includesHttpOnly: false,
+      source: 'none',
+    });
     expect(warnings).toEqual([]);
   });
 
@@ -81,7 +87,11 @@ describe('extractStack — the three states', () => {
     expect(report.consentBanner.present).toBe(true);
     // Cookies are the one field that genuinely needs the recording, and an
     // unarmed session is the caller's choice rather than a fault.
-    expect(report.cookies).toEqual({ cookies: [], includesHttpOnly: false });
+    expect(report.cookies).toEqual({
+      cookies: [],
+      includesHttpOnly: false,
+      source: 'none',
+    });
     expect(warnings).toEqual([]);
   });
 });
@@ -345,7 +355,47 @@ describe('extractStack — cookies', () => {
     expect(report.cookies.cookies[0]?.httpOnly).toBe(true);
   });
 
-  it('says the inventory is partial when redaction removed the header', () => {
+  it('inventories a redacted recording, because redaction now keeps the metadata', () => {
+    // The regression this closes: `redactHeaders` used to replace the whole
+    // Set-Cookie value, so on the default (redacted) path this inventory was
+    // always empty and the feature was dead. The value is still gone; the
+    // name, domain, expiry, and flags are not secrets and now survive.
+    const { report, warnings } = run({
+      html: CLEAN_HTML,
+      recording: recording({
+        redacted: true,
+        requests: [
+          request({
+            url: 'https://example.com/api/session',
+            responseHeaders: {
+              server: 'cloudflare',
+              'set-cookie': `sid=${REDACTED}; Path=/; Expires=Wed, 09 Sep 2026 10:00:00 GMT; HttpOnly; Secure; SameSite=Lax`,
+            },
+          }),
+        ],
+      }),
+    });
+
+    expect(report.cookies.cookies).toEqual([
+      {
+        name: 'sid',
+        domain: 'example.com',
+        expires: '2026-09-09T10:00:00.000Z',
+        firstParty: true,
+        httpOnly: true,
+        secure: true,
+        sameSite: 'lax',
+      },
+    ]);
+    expect(report.cookies.includesHttpOnly).toBe(true);
+    expect(report.cookies.source).toBe('set-cookie');
+    expect(warnings).toEqual([]);
+    expect(tech(report, 'Cloudflare').category).toBe('cdn');
+  });
+
+  it('says the inventory is incomplete when a header failed closed', () => {
+    // A whole-value marker no longer means "redacted" — it means no parse of
+    // that header was safe, so it was collapsed rather than mis-split.
     const { report, warnings } = run({
       html: CLEAN_HTML,
       recording: recording({
@@ -360,12 +410,16 @@ describe('extractStack — cookies', () => {
     });
 
     expect(report.recorded).toBe(true);
-    expect(report.cookies).toEqual({ cookies: [], includesHttpOnly: false });
+    expect(report.cookies.cookies).toEqual([]);
+    expect(report.cookies.includesHttpOnly).toBe(false);
+    // The channel is still named: a header was there, it just could not be
+    // read, which is a different fact from no cookie evidence at all.
+    expect(report.cookies.source).toBe('set-cookie');
     // A cookie that was there and could not be read is a degradation, unlike
     // an unarmed session — so this one warns.
     expect(warnings).toHaveLength(1);
     expect(warnings[0]?.reason).toContain('cookie');
-    // The rest of the report is unaffected by the redaction.
+    // The rest of the report is unaffected.
     expect(tech(report, 'Cloudflare').category).toBe('cdn');
   });
 
@@ -373,6 +427,104 @@ describe('extractStack — cookies', () => {
     const { report, warnings } = run({ html: TRACKED_HTML });
 
     expect(report.cookies.includesHttpOnly).toBe(false);
+    expect(report.cookies.source).toBe('none');
+    expect(warnings).toEqual([]);
+  });
+});
+
+/**
+ * `Set-Cookie` observation only ever sees cookies set *during* the recording —
+ * never the session or consent record the page arrived carrying. A host that
+ * can read the real jar supplies one, and the report has to prefer it and say
+ * which channel it used, because the two silences mean different things.
+ */
+describe('extractStack — the cookie jar', () => {
+  it('prefers a complete jar and reports where the inventory came from', () => {
+    const { report, warnings } = run({
+      html: CLEAN_HTML,
+      recording: recording({ requests: [], cookies: FULL_JAR }),
+    });
+
+    expect(report.cookies.cookies).toEqual(FULL_JAR.cookies);
+    expect(report.cookies.source).toBe('cookie-jar');
+    // A real jar carries the flag, so an absent HttpOnly cookie here is a
+    // cookie that is genuinely not set.
+    expect(report.cookies.includesHttpOnly).toBe(true);
+    expect(warnings).toEqual([]);
+  });
+
+  it('ignores Set-Cookie observation entirely when a jar is present', () => {
+    // Not a merge: the jar is authoritative, and reconstruction from responses
+    // would at best duplicate it and at worst contradict it.
+    const { report } = run({
+      html: CLEAN_HTML,
+      recording: recording({ requests: COOKIE_REQUESTS, cookies: FULL_JAR }),
+    });
+
+    expect(report.cookies.cookies).toEqual(FULL_JAR.cookies);
+    expect(report.cookies.cookies.map((c) => c.name)).not.toContain('_fbp');
+  });
+
+  it('falls back to Set-Cookie observation when no jar was read', () => {
+    const { report } = run({
+      html: CLEAN_HTML,
+      recording: recording({ requests: COOKIE_REQUESTS }),
+    });
+
+    expect(report.cookies.source).toBe('set-cookie');
+    expect(report.cookies.cookies.map((c) => c.name)).toEqual([
+      'sid',
+      '_ga',
+      '_fbp',
+    ]);
+  });
+
+  it('says a partial jar is partial rather than presenting a subset whole', () => {
+    const { report, warnings } = run({
+      html: CLEAN_HTML,
+      recording: recording({ requests: [], cookies: PARTIAL_JAR }),
+    });
+
+    expect(report.cookies.cookies).toEqual(PARTIAL_JAR.cookies);
+    expect(report.cookies.source).toBe('cookie-jar');
+    // The extension's permanent case: document.cookie cannot see HttpOnly, so
+    // a cookie missing from this list may still exist.
+    expect(report.cookies.includesHttpOnly).toBe(false);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]?.reason).toContain('partial');
+  });
+
+  it('still detects a tracker from a cookie the jar carries', () => {
+    const { report } = run({
+      html: CLEAN_HTML,
+      recording: recording({ requests: [], cookies: PARTIAL_JAR }),
+    });
+
+    // `_fbp` names its setter, and the jar's own domain is the host to
+    // classify — there is no request to attribute it to.
+    expect(tech(report, 'Meta Pixel')).toMatchObject({
+      category: 'ad-network',
+      evidence: 'cookie',
+      matched: '_fbp',
+    });
+  });
+
+  it('treats an empty complete jar as a page with no cookies', () => {
+    const { report, warnings } = run({
+      html: CLEAN_HTML,
+      recording: recording({
+        requests: [],
+        cookies: { cookies: [], complete: true },
+      }),
+    });
+
+    // An empty jar someone actually read is an answer, not a gap: the flag was
+    // visible, there was just nothing in it.
+    expect(report.cookies).toEqual({
+      cookies: [],
+      includesHttpOnly: true,
+      source: 'cookie-jar',
+    });
     expect(warnings).toEqual([]);
   });
 });

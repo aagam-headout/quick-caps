@@ -30,17 +30,12 @@ export const FULL_PERF: PerfReport = {
 };
 
 /**
- * The metrics that only exist once something observed the page past first
- * paint. Written as a partial widening over `PerfReport` rather than as fields
- * on it: `perf.ts` normalizes the one-shot snapshot and is not this domain's
- * to change, and the IR these fixtures stand in for is JSON read back off
- * disk, which can carry more than core's own type spells out.
+ * A snapshot that may also carry the metrics which only exist once something
+ * observed the page past first paint. This used to be a local widening over
+ * `PerfReport`, because `PerfReport` did not name those three; it now does, so
+ * the alias is kept only as the name these fixtures already read by.
  */
-export type OverTimePerf = PerfReport & {
-  cumulativeLayoutShift?: number | null;
-  interactionToNextPaintMs?: number | null;
-  unsupportedEntryTypes?: string[];
-};
+export type OverTimePerf = PerfReport;
 
 /** Every metric present, all five in the good band. */
 export const EVERY_METRIC_PERF: OverTimePerf = {
@@ -70,9 +65,11 @@ export const CLS_ABSENT_PERF: OverTimePerf = {
 
 /**
  * Values sitting exactly on Google's published good/needs-improvement and
- * needs-improvement/poor boundaries. Ratings are not modelled by
- * `VitalsReport`, so these exist to pin that a boundary value round-trips
- * untouched — in particular that a CLS of 0.1 is not rounded to 0.
+ * needs-improvement/poor boundaries. These pin two things at once: that a
+ * boundary value round-trips untouched — in particular that a CLS of 0.1 is
+ * not rounded to 0 — and which side of each boundary is inclusive, since both
+ * ceilings are inclusive and every value here therefore rates in the better
+ * band.
  */
 export const GOOD_BOUNDARY_PERF: OverTimePerf = {
   ...FULL_PERF,

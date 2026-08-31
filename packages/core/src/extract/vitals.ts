@@ -1,21 +1,21 @@
 import type { PerfReport } from '../perf.js';
-import type { ExtractorMap, VitalsReport } from './types.js';
+import type {
+  ExtractorMap,
+  VitalsRating,
+  VitalsRatings,
+  VitalsReport,
+} from './types.js';
 
 /**
- * The over-time half of the field metrics, read as a widening over
- * `PerfReport` rather than as fields on it. `perf.ts` normalizes the one-shot
- * snapshot — navigation, paint, LCP, transfer size, resources — and stays
- * that: CLS and INP cannot be sampled once, they accumulate, so they reach
- * core only from a host whose `PerformanceObserver` outlived first paint. The
- * IR this reads is JSON off a session file, which can carry fields core's own
- * type does not yet spell out, so every one of them is validated below rather
- * than trusted.
+ * The five field metrics, read off `ir.perf` and banded against Google's
+ * thresholds.
+ *
+ * `perf.ts` owns normalization and names every field this reads, including the
+ * three that only exist when a host's `PerformanceObserver` outlived first
+ * paint. This module's job is the reporting layer over them: absence is
+ * preserved as absence, each absence is attributed, and nothing is defaulted —
+ * a metric nobody measured must never read as a metric that measured well.
  */
-type ObservedOverTime = {
-  cumulativeLayoutShift?: unknown;
-  interactionToNextPaintMs?: unknown;
-  unsupportedEntryTypes?: unknown;
-};
 
 /**
  * Which `PerformanceObserver` entry type each metric depends on, so an absence
@@ -58,8 +58,47 @@ function msOrNull(value: unknown): number | null {
   return metric === null ? null : Math.round(metric);
 }
 
+// ---------------------------------------------------------------------------
+// Rating thresholds
+//
+// Google's published Core Web Vitals boundaries, in one block because they are
+// external policy rather than something this codebase decides — and because
+// they *will* drift: Google has moved them before (FID gave way to INP
+// entirely) and will again. Changing a band is editing one row here.
+//
+// Each pair is [good ceiling, needs-improvement ceiling]. Both ceilings are
+// INCLUSIVE, matching how web.dev states them ("2.5 seconds or less"), so a
+// metric sitting exactly on a boundary lands in the *better* band. CLS is in
+// ratio units; every other row is milliseconds.
+// ---------------------------------------------------------------------------
+const RATING_THRESHOLDS: Record<
+  MetricLabel,
+  [good: number, needsImprovement: number]
+> = {
+  LCP: [2500, 4000],
+  CLS: [0.1, 0.25],
+  INP: [200, 500],
+  TTFB: [800, 1800],
+  FCP: [1800, 3000],
+};
+
+/** A metric that was never observed has no rating. Null rather than 'good',
+ * because "we did not measure it" and "it measured well" are the two answers
+ * this whole domain exists to keep apart. */
+function rate(label: MetricLabel, value: number | null): VitalsRating | null {
+  if (value === null) return null;
+  const [good, needsImprovement] = RATING_THRESHOLDS[label];
+  if (value <= good) return 'good';
+  if (value <= needsImprovement) return 'needs-improvement';
+  return 'poor';
+}
+
 export const extractVitals: ExtractorMap['vitals'] = (ctx) => {
-  const perf: (PerfReport & ObservedOverTime) | undefined = ctx.ir.perf;
+  // `PerfReport` names the over-time fields, so no local widening is needed —
+  // but they are still validated below rather than trusted: this IR is JSON
+  // read back off a session file, and a host (or a hand edit) can put a string
+  // or a NaN where the type promises a number.
+  const perf: PerfReport | undefined = ctx.ir.perf;
   const armed = perf !== undefined || ctx.ir.recording !== undefined;
 
   const report: VitalsReport = {
@@ -73,6 +112,15 @@ export const extractVitals: ExtractorMap['vitals'] = (ctx) => {
     interactionToNextPaintMs: null,
     ttfbMs: null,
     firstContentfulPaintMs: null,
+    // Five nulls, not five 'good's: an unarmed session measured nothing, and
+    // the ratings field has to say that as plainly as the metrics do.
+    ratings: {
+      largestContentfulPaint: null,
+      cumulativeLayoutShift: null,
+      interactionToNextPaint: null,
+      ttfb: null,
+      firstContentfulPaint: null,
+    },
     perf: null,
     unsupportedEntryTypes: [],
   };
@@ -96,6 +144,10 @@ export const extractVitals: ExtractorMap['vitals'] = (ctx) => {
       )
     : [];
 
+  // The one-shot snapshot, field by field. The three over-time fields
+  // `PerfReport` now also names are deliberately not restated here: they are
+  // top-level on this report, and carrying them twice would let the two copies
+  // disagree after validation rejected one of them.
   report.perf = {
     ttfbMs: perf.ttfbMs,
     domContentLoadedMs: perf.domContentLoadedMs,
@@ -121,6 +173,17 @@ export const extractVitals: ExtractorMap['vitals'] = (ctx) => {
     TTFB: report.ttfbMs,
     FCP: report.firstContentfulPaintMs,
   };
+  // Rated off the reported numbers rather than the raw ones, so a rating can
+  // never disagree with the value printed beside it.
+  const ratings: VitalsRatings = {
+    largestContentfulPaint: rate('LCP', observed.LCP),
+    cumulativeLayoutShift: rate('CLS', observed.CLS),
+    interactionToNextPaint: rate('INP', observed.INP),
+    ttfb: rate('TTFB', observed.TTFB),
+    firstContentfulPaint: rate('FCP', observed.FCP),
+  };
+  report.ratings = ratings;
+
   for (const [label, value] of Object.entries(observed) as Array<
     [MetricLabel, number | null]
   >) {

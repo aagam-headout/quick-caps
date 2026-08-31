@@ -429,4 +429,53 @@ describe('renderDataReport — observation domains', () => {
     expect(output).not.toContain('inp');
     expect(output).toMatch(/unsupported\s+interaction/);
   });
+
+  it('prints a rating beside each metric that has one', () => {
+    const vitals = emptyVitals(true);
+    vitals.largestContentfulPaintMs = 4200;
+    vitals.cumulativeLayoutShift = 0.04;
+    vitals.ratings = {
+      largestContentfulPaint: 'poor',
+      cumulativeLayoutShift: 'good',
+      // Unobserved, so unrated — and the row is absent anyway. A band here
+      // would be the one thing this domain must never print.
+      interactionToNextPaint: null,
+      ttfb: null,
+      firstContentfulPaint: null,
+    };
+
+    const output = renderDataReport({ vitals, warnings: [] }, ['vitals']);
+
+    expect(output).toMatch(/lcp\s+4200ms poor/);
+    expect(output).toMatch(/cls\s+0\.04 good/);
+    expect(output).not.toContain('needs-improvement');
+  });
+
+  it('names a Set-Cookie-derived cookie inventory as the weaker source', () => {
+    const stack = emptyStack(true);
+    stack.cookies = {
+      includesHttpOnly: true,
+      source: 'set-cookie',
+      cookies: [{ name: 'sid', domain: 'example.com', firstParty: true }],
+    };
+
+    const output = renderDataReport({ stack, warnings: [] }, ['stack']);
+
+    // Observation sees only what was set while someone was watching, so the
+    // reader has to know the logged-in session may simply not be listed.
+    expect(output).toMatch(/cookies\s+1, 0 third-party \(from Set-Cookie/);
+  });
+
+  it('says nothing extra about a complete jar, which needs no caveat', () => {
+    const stack = emptyStack(true);
+    stack.cookies = {
+      includesHttpOnly: true,
+      source: 'cookie-jar',
+      cookies: [{ name: 'sid', domain: 'example.com', firstParty: true }],
+    };
+
+    const output = renderDataReport({ stack, warnings: [] }, ['stack']);
+
+    expect(output).toMatch(/cookies\s+1, 0 third-party$/m);
+  });
 });

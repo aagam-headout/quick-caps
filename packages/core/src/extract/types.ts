@@ -1,6 +1,10 @@
 import type { PageIR, Warning } from '../ir.js';
 import type { PerfReport } from '../perf.js';
-import type { BodySkipReason, RecordedRequest } from '../observe/types.js';
+import type {
+  BodySkipReason,
+  CookieRecord,
+  RecordedRequest,
+} from '../observe/types.js';
 
 /** Where a value came from. Ordered loosely from declared to guessed, which
  * is also the tiering order below. */
@@ -445,20 +449,23 @@ export type ThirdPartyHost = {
   classification: HostClassification;
 };
 
-export type CookieRecord = {
-  name: string;
-  domain: string;
-  /** ISO expiry. Absent for a session cookie, which is a different thing from
-   * one that expires at an unknown time. */
-  expires?: string;
-  /** Against the page origin, not against the cookie's own domain. */
-  firstParty: boolean;
-  /** Absent when the host could not see the flag at all — see
-   * `CookieInventory.includesHttpOnly`. */
-  httpOnly?: boolean;
-  secure?: boolean;
-  sameSite?: 'strict' | 'lax' | 'none';
-};
+/** A cookie now travels in both directions — a host writes it into
+ * `Recording.cookies`, this report reads it back — so the type lives in
+ * `observe/`, where the host-facing half of the contract is. Re-exported here
+ * under the same name so a consumer that imports it from the extract subpath
+ * is unaffected. */
+export type { CookieRecord };
+
+/**
+ * Where the inventory came from, which decides how much its silence means.
+ *
+ * `cookie-jar` is the whole jar as the host read it, including cookies the
+ * page arrived with. `set-cookie` is reconstruction from recorded responses,
+ * which by construction sees only what was set *during* the recording — a
+ * logged-in session cookie set an hour ago is invisible to it. `none` is no
+ * cookie evidence at all.
+ */
+export type CookieInventorySource = 'cookie-jar' | 'set-cookie' | 'none';
 
 export type CookieInventory = {
   cookies: CookieRecord[];
@@ -470,6 +477,12 @@ export type CookieInventory = {
    * presenting a subset as a whole.
    */
   includesHttpOnly: boolean;
+  /**
+   * Always set by `extractStack`. Optional only because `CookieInventory` is
+   * a published type and adding a required member would break a consumer that
+   * constructs one.
+   */
+  source?: CookieInventorySource;
 };
 
 export type ConsentBanner = {
@@ -488,6 +501,26 @@ export type StackReport = ObservationReport & {
 
 // --- vitals ----------------------------------------------------------------
 
+/** Google's three bands for a Core Web Vital. The boundaries live in one
+ * named block in `extract/vitals.ts`. */
+export type VitalsRating = 'good' | 'needs-improvement' | 'poor';
+
+/**
+ * One rating per metric, `null` where the metric was never observed.
+ *
+ * Null rather than a band is the whole design of this type: an absent metric
+ * has no rating, and scoring it `good` — which is what any "default to the
+ * best band" scheme amounts to — would report a page that was never measured
+ * as a page that measured well.
+ */
+export type VitalsRatings = {
+  largestContentfulPaint: VitalsRating | null;
+  cumulativeLayoutShift: VitalsRating | null;
+  interactionToNextPaint: VitalsRating | null;
+  ttfb: VitalsRating | null;
+  firstContentfulPaint: VitalsRating | null;
+};
+
 export type VitalsReport = ObservationReport & {
   /** The five field metrics, null where the browser never reported one — an
    * INP of null means no interaction happened, not an INP of zero. */
@@ -496,6 +529,13 @@ export type VitalsReport = ObservationReport & {
   interactionToNextPaintMs: number | null;
   ttfbMs: number | null;
   firstContentfulPaintMs: number | null;
+  /**
+   * Each of the five metrics banded against Google's published thresholds,
+   * null where it was not observed. Always set by `extractVitals`; optional
+   * only because `VitalsReport` is a published type and adding a required
+   * member would break a consumer that constructs one.
+   */
+  ratings?: VitalsRatings;
   /** The navigation and resource summary `buildPerfReport` already produces,
    * carried whole rather than re-flattened: this domain adds observation over
    * time, it does not replace the one-shot snapshot. */

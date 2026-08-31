@@ -499,9 +499,15 @@ function stackRows(report: StackReport): Row[] {
     const partial = report.cookies.includesHttpOnly
       ? ''
       : ' (document.cookie only — no HttpOnly)';
+    // Reconstruction from responses sees only what was set while someone was
+    // watching, so its silence is weaker than a jar's and has to say so.
+    const via =
+      report.cookies.source === 'set-cookie'
+        ? ' (from Set-Cookie — cookies the page arrived with are not listed)'
+        : '';
     rows.push({
       label: 'cookies',
-      value: `${report.cookies.cookies.length}, ${third} third-party${partial}`,
+      value: `${report.cookies.cookies.length}, ${third} third-party${partial}${via}`,
     });
   }
   if (report.consentBanner.present) {
@@ -514,16 +520,46 @@ function stackRows(report: StackReport): Row[] {
 }
 
 function vitalsRows(report: VitalsReport): Row[] {
-  const metrics: [string, number | null, string][] = [
-    ['lcp', report.largestContentfulPaintMs, 'ms'],
-    ['cls', report.cumulativeLayoutShift, ''],
-    ['inp', report.interactionToNextPaintMs, 'ms'],
-    ['ttfb', report.ttfbMs, 'ms'],
-    ['fcp', report.firstContentfulPaintMs, 'ms'],
+  const ratings = report.ratings;
+  // The rating rides along with the number rather than getting its own row: a
+  // band is only meaningful next to the value it bands, and a metric with no
+  // rating prints none — an unobserved metric is not a 'good' one.
+  const metrics: [string, number | null, string, string | null][] = [
+    [
+      'lcp',
+      report.largestContentfulPaintMs,
+      'ms',
+      ratings?.largestContentfulPaint ?? null,
+    ],
+    [
+      'cls',
+      report.cumulativeLayoutShift,
+      '',
+      ratings?.cumulativeLayoutShift ?? null,
+    ],
+    [
+      'inp',
+      report.interactionToNextPaintMs,
+      'ms',
+      ratings?.interactionToNextPaint ?? null,
+    ],
+    ['ttfb', report.ttfbMs, 'ms', ratings?.ttfb ?? null],
+    [
+      'fcp',
+      report.firstContentfulPaintMs,
+      'ms',
+      ratings?.firstContentfulPaint ?? null,
+    ],
   ];
   const rows: Row[] = metrics
-    .filter((metric): metric is [string, number, string] => metric[1] !== null)
-    .map(([label, value, unit]) => ({ label, value: `${value}${unit}` }));
+    .filter(
+      (metric): metric is [string, number, string, string | null] =>
+        metric[1] !== null,
+    )
+    .map(([label, value, unit, rating]) => ({
+      label,
+      value: `${value}${unit}${rating === null ? '' : ` ${rating}`}`,
+    }));
 
   if (report.perf !== null) {
     rows.push({

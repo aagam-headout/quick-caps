@@ -65,6 +65,8 @@ export {
 // records has to pay for them.
 export type {
   BodySkipReason,
+  CookieJar,
+  CookieRecord,
   RecordedBody,
   RecordedRequest,
   Recording,

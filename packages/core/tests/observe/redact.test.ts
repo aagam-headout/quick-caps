@@ -40,17 +40,25 @@ describe('redactHeaders', () => {
 
     expect(redacted).toEqual({
       Authorization: REDACTED,
-      Cookie: REDACTED,
-      'Set-Cookie': REDACTED,
+      // The two cookie headers keep their structure and lose their values —
+      // see the cookie suite below for why the metadata is not a secret.
+      Cookie: `sid=${REDACTED}`,
+      'Set-Cookie': `sid=${REDACTED}; HttpOnly`,
       'Content-Type': 'application/json',
     });
+    for (const value of Object.values(redacted)) {
+      expect(value).not.toContain('abc123');
+    }
   });
 
   it('matches header names case-insensitively, as HTTP does', () => {
     expect(redactHeaders({ authorization: 'Bearer x' }).authorization).toBe(
       REDACTED,
     );
-    expect(redactHeaders({ COOKIE: 'sid=1' }).COOKIE).toBe(REDACTED);
+    expect(redactHeaders({ COOKIE: 'sid=1' }).COOKIE).toBe(`sid=${REDACTED}`);
+    expect(redactHeaders({ 'SET-COOKIE': 'sid=1' })['SET-COOKIE']).toBe(
+      `sid=${REDACTED}`,
+    );
   });
 
   it('covers the common token headers, not only the RFC ones', () => {
@@ -85,6 +93,155 @@ describe('redactHeaders', () => {
 
     expect(headers.Authorization).toBe('Bearer x');
     expect(redacted).not.toBe(headers);
+  });
+});
+
+/**
+ * The cookie headers are the one family where blanket redaction is safe and
+ * useless: the value is the credential, and everything around it is the
+ * inventory `stack` reports. These cases pin both halves — the secret is gone,
+ * the metadata is intact — and pin the direction the parser errs in when it
+ * cannot tell which is which.
+ */
+describe('redactHeaders — cookies', () => {
+  const setCookie = (value: string): string =>
+    redactHeaders({ 'Set-Cookie': value })['Set-Cookie']!;
+  const cookie = (value: string): string =>
+    redactHeaders({ Cookie: value }).Cookie!;
+
+  describe('Set-Cookie keeps its metadata and loses its value', () => {
+    it('redacts the value and preserves every attribute', () => {
+      const redacted = setCookie(
+        'session=abc123; Domain=.shop.example; Path=/; HttpOnly; SameSite=Lax',
+      );
+
+      expect(redacted).toBe(
+        `session=${REDACTED}; Domain=.shop.example; Path=/; HttpOnly; SameSite=Lax`,
+      );
+      // Stated separately from the equality above because it is the whole
+      // point: the inventory is readable and the credential is not.
+      expect(redacted).not.toContain('abc123');
+      expect(redacted).toContain('session=');
+      expect(redacted).toContain('HttpOnly');
+    });
+
+    it('redacts a cookie with no attributes at all', () => {
+      expect(setCookie('sid=s%3AZ9y.live')).toBe(`sid=${REDACTED}`);
+    });
+
+    it('redacts a value containing = rather than keeping half of it', () => {
+      // Base64 padding and signed cookies both put `=` inside the value; the
+      // first `=` is the delimiter and everything after it is the secret.
+      const redacted = setCookie('jwt=aGVsbG8=.sig=9f2; Path=/');
+
+      expect(redacted).toBe(`jwt=${REDACTED}; Path=/`);
+      expect(redacted).not.toContain('aGVsbG8');
+      expect(redacted).not.toContain('9f2');
+    });
+
+    it('keeps the quotes of a quoted value, which are syntax not secret', () => {
+      const redacted = setCookie('pref="a1b2c3"; Path=/; Secure');
+
+      expect(redacted).toBe(`pref="${REDACTED}"; Path=/; Secure`);
+      expect(redacted).not.toContain('a1b2c3');
+    });
+
+    it('leaves an empty value empty, because a deletion is not a secret', () => {
+      // `name=;` with a past expiry is how a server deletes a cookie. Writing
+      // a marker in would fabricate a value and hide the deletion.
+      expect(setCookie('sid=; Path=/; Max-Age=0')).toBe(
+        'sid=; Path=/; Max-Age=0',
+      );
+    });
+
+    it('preserves Max-Age and an Expires date with its comma intact', () => {
+      expect(
+        setCookie('_ga=GA1.1.9; Domain=.example.com; Max-Age=63072000'),
+      ).toBe(`_ga=${REDACTED}; Domain=.example.com; Max-Age=63072000`);
+      // The date's own comma is why Set-Cookie cannot be comma-split; the
+      // attribute tail is copied through byte-for-byte.
+      expect(
+        setCookie('sid=x; Expires=Wed, 09 Sep 2026 10:00:00 GMT; HttpOnly'),
+      ).toBe(
+        `sid=${REDACTED}; Expires=Wed, 09 Sep 2026 10:00:00 GMT; HttpOnly`,
+      );
+    });
+
+    it('handles repeated Set-Cookie headers collapsed onto separate lines', () => {
+      const redacted = setCookie('a=1; Path=/\nb=2; HttpOnly');
+
+      expect(redacted).toBe(`a=${REDACTED}; Path=/\nb=${REDACTED}; HttpOnly`);
+    });
+
+    it('fails closed on a malformed header rather than leaking it', () => {
+      // No assignment to find, so nothing here can be named safely.
+      expect(setCookie('justatokenstring')).toBe(REDACTED);
+      expect(setCookie('opaque-blob; Path=/')).toBe(REDACTED);
+      // An empty name would publish the value under a name we invented.
+      expect(setCookie('=abc123; Path=/')).toBe(REDACTED);
+      expect(setCookie('   =abc123')).toBe(REDACTED);
+      for (const malformed of [
+        'justatokenstring',
+        'opaque-blob; Path=/',
+        '=abc123; Path=/',
+      ]) {
+        expect(setCookie(malformed)).not.toContain('abc123');
+      }
+    });
+
+    it('costs only the line it cannot parse when others are fine', () => {
+      const redacted = setCookie('opaque-blob\nsid=live; HttpOnly');
+
+      expect(redacted).toBe(`${REDACTED}\nsid=${REDACTED}; HttpOnly`);
+    });
+
+    it('is idempotent, so a re-redacted recording is unchanged', () => {
+      const once = setCookie('sid=live; Path=/; HttpOnly');
+      expect(setCookie(once)).toBe(once);
+    });
+  });
+
+  describe('Cookie keeps its names and loses its values', () => {
+    it('preserves every name and redacts every value', () => {
+      const redacted = cookie('sid=abc123; _ga=GA1.1.99; consent=yes');
+
+      expect(redacted).toBe(
+        `sid=${REDACTED}; _ga=${REDACTED}; consent=${REDACTED}`,
+      );
+      expect(redacted).not.toContain('abc123');
+      expect(redacted).not.toContain('GA1.1.99');
+    });
+
+    it('redacts a lone pair and a value containing =', () => {
+      expect(cookie('sid=abc')).toBe(`sid=${REDACTED}`);
+      expect(cookie('jwt=aGVsbG8=')).toBe(`jwt=${REDACTED}`);
+    });
+
+    it('passes a trailing separator through without failing the header', () => {
+      expect(cookie('sid=abc; ')).toBe(`sid=${REDACTED}; `);
+    });
+
+    it('fails closed on the whole header when a segment has no assignment', () => {
+      // One unnameable segment means we cannot trust the split anywhere in
+      // this header, and a Cookie header has no attributes to explain it.
+      const redacted = cookie('sid=abc123; opaquevalue; _ga=GA1.1.99');
+
+      expect(redacted).toBe(REDACTED);
+      expect(redacted).not.toContain('abc123');
+      expect(redacted).not.toContain('GA1.1.99');
+    });
+
+    it('is idempotent, so a re-redacted recording is unchanged', () => {
+      const once = cookie('sid=live; _ga=GA1.1.9');
+      expect(cookie(once)).toBe(once);
+    });
+  });
+
+  it('gives a header that merely contains "cookie" no structural treatment', () => {
+    // `X-Cookie-Hash` is not a cookie header; it stays on the blanket path.
+    expect(redactHeaders({ 'X-Cookie-Hash': 'a=b' })['X-Cookie-Hash']).toBe(
+      REDACTED,
+    );
   });
 });
 
@@ -164,7 +321,7 @@ describe('redactRequest', () => {
       request({
         url: 'https://api.example.com/cart?token=live',
         requestHeaders: { Authorization: 'Bearer live', Accept: '*/*' },
-        responseHeaders: { 'Set-Cookie': 'sid=1', Server: 'nginx' },
+        responseHeaders: { 'Set-Cookie': 'sid=1; HttpOnly', Server: 'nginx' },
       }),
     );
 
@@ -174,7 +331,7 @@ describe('redactRequest', () => {
       Accept: '*/*',
     });
     expect(redacted.responseHeaders).toEqual({
-      'Set-Cookie': REDACTED,
+      'Set-Cookie': `sid=${REDACTED}; HttpOnly`,
       Server: 'nginx',
     });
   });
@@ -236,7 +393,7 @@ describe('redactRecording', () => {
     const redacted = redactRecording(recording);
 
     expect(redacted.redacted).toBe(true);
-    expect(redacted.requests[0]?.requestHeaders.Cookie).toBe(REDACTED);
+    expect(redacted.requests[0]?.requestHeaders.Cookie).toBe(`sid=${REDACTED}`);
     expect(redacted.requests[1]?.url).toBe(
       `https://x.test/a?api_key=${REDACTED}`,
     );

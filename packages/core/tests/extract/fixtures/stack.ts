@@ -1,7 +1,11 @@
 import { parseHTML } from 'linkedom';
 import { emptyTally } from '../../../src/collect.js';
 import type { AssetRef, LogEntry, PageIR, Warning } from '../../../src/ir.js';
-import type { RecordedRequest, Recording } from '../../../src/observe/types.js';
+import type {
+  CookieJar,
+  RecordedRequest,
+  Recording,
+} from '../../../src/observe/types.js';
 import type { ExtractorContext } from '../../../src/extract/types.js';
 
 /**
@@ -108,14 +112,57 @@ export function request(input: {
 export function recording(input: {
   requests: RecordedRequest[];
   redacted?: boolean;
+  cookies?: CookieJar;
 }): Recording {
   return {
     startedAt: '2026-08-31T10:00:00.000Z',
     requests: input.requests,
     redacted: input.redacted ?? false,
     bodyBytes: 0,
+    // Spread conditionally: under exactOptionalPropertyTypes an absent jar and
+    // a jar set to undefined are different types, and "nobody read one" is
+    // exactly the absent case.
+    ...(input.cookies ? { cookies: input.cookies } : {}),
   };
 }
+
+/**
+ * A jar as a host that can read one hands it over — including the cookie the
+ * page *arrived* with, which no `Set-Cookie` observation can ever see. That
+ * asymmetry is the whole reason the jar field exists.
+ */
+export const FULL_JAR: CookieJar = {
+  complete: true,
+  cookies: [
+    {
+      name: 'sid',
+      domain: 'example.com',
+      expires: '2026-09-09T10:00:00.000Z',
+      firstParty: true,
+      httpOnly: true,
+      secure: true,
+      sameSite: 'lax',
+    },
+    {
+      name: '_ga',
+      domain: 'example.com',
+      expires: '2028-08-30T10:00:00.000Z',
+      firstParty: true,
+      httpOnly: false,
+      secure: false,
+    },
+  ],
+};
+
+/** The extension's permanent case: `document.cookie` cannot see HttpOnly, so
+ * the jar is partial by construction and has to say so. */
+export const PARTIAL_JAR: CookieJar = {
+  complete: false,
+  cookies: [
+    { name: 'consent', domain: 'example.com', firstParty: true },
+    { name: '_fbp', domain: 'partner.test', firstParty: false },
+  ],
+};
 
 /** A page that is what it appears to be: no third party, no banner, no
  * generator. The empty-report baseline, and the only fixture where an empty

@@ -115,11 +115,70 @@ export type RecordedRequest = {
   body: RecordedBody;
 };
 
+// ---------------------------------------------------------------------------
+// The cookie jar
+// ---------------------------------------------------------------------------
+
+/**
+ * One cookie as the host saw it. No `value` field, deliberately: the value is
+ * the credential, and this type exists so `stack` can inventory *which*
+ * cookies a page carries without any host ever putting a session token in the
+ * IR. Every field here is metadata a reader needs and an attacker cannot use.
+ *
+ * Declared here rather than beside the report that consumes it because it is
+ * now on both sides of the boundary — a host fills it from its jar, and
+ * `extract/types.ts` re-exports it under the same name for the report.
+ */
+export type CookieRecord = {
+  name: string;
+  domain: string;
+  /** ISO expiry. Absent for a session cookie, which is a different thing from
+   * one that expires at an unknown time. */
+  expires?: string;
+  /** Against the page origin, not against the cookie's own domain. */
+  firstParty: boolean;
+  /** Absent when the host could not see the flag at all — see
+   * `CookieJar.complete`. */
+  httpOnly?: boolean;
+  secure?: boolean;
+  sameSite?: 'strict' | 'lax' | 'none';
+};
+
+/**
+ * The jar as it stood, read by a host that can read one.
+ *
+ * This closes a gap `Set-Cookie` observation cannot: a recorded response only
+ * shows cookies the page set *during* the recording, never the jar it arrived
+ * with — the logged-in session, the consent record, the returning-visitor id.
+ * Those are the interesting ones, and no amount of watching the network
+ * reveals them.
+ *
+ * The two fields are one object rather than two fields on `Recording` so they
+ * cannot drift apart: a jar whose completeness nobody stated is worse than no
+ * jar, because a reader would take the subset for the whole.
+ */
+export type CookieJar = {
+  cookies: CookieRecord[];
+  /**
+   * True only when the host read the real jar and can therefore see
+   * `HttpOnly` cookies — the CLI, via Playwright's browser context. False is
+   * the extension's permanent case: `document.cookie` cannot see `HttpOnly`
+   * by definition, and the `cookies` permission that would fix it is
+   * explicitly rejected in the design. A false here means the absence of a
+   * cookie proves nothing.
+   */
+  complete: boolean;
+};
+
 export type Recording = {
   /** ISO timestamp of when observation was armed, so a caller can tell a
    * recording apart from the page load it belongs to. */
   startedAt: string;
   requests: RecordedRequest[];
+  /** The host's cookie jar, where the host could read one. Absent — not an
+   * empty jar — when nobody looked, which is a different fact from a page
+   * that genuinely carries no cookies. */
+  cookies?: CookieJar;
   /** True on the default path. False only when the caller explicitly opted
    * out, which a report must be able to say out loud — a recording nobody
    * redacted is a different artifact from one that was. */

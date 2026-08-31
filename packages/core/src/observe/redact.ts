@@ -71,15 +71,113 @@ function isSensitiveName(name: string): boolean {
   return SENSITIVE_SUBSTRINGS.some((needle) => flat.includes(needle));
 }
 
+// ---------------------------------------------------------------------------
+// Cookies: the one header family where the value is a credential and the
+// structure around it is not.
+//
+// Blanket-redacting `Set-Cookie` is safe and useless: `stack`'s cookie
+// inventory is built out of the name, Domain, Path, Expires/Max-Age, Secure,
+// HttpOnly, and SameSite attributes, none of which is a secret, so replacing
+// the whole header value with the marker left that inventory permanently
+// empty on the default path. What has to go is the cookie's *value*; what has
+// to stay is everything else.
+//
+// The parsers below fail closed. Anything they cannot confidently split into
+// `name=value` collapses to the marker, because a mis-split leaks a secret
+// under a name we invented, and an over-redacted header only costs inventory.
+// ---------------------------------------------------------------------------
+
+/** Replaces one cookie value, keeping the shape of what was there.
+ *
+ * An *empty* value is returned as observed: there is nothing to hide, and
+ * `session=;` is how a server deletes a cookie — writing a marker in would
+ * both fabricate a value and hide the deletion. A quoted value keeps its
+ * quotes, since RFC 6265 makes them part of the syntax rather than part of
+ * the secret. */
+function redactCookieValue(raw: string): string {
+  const trimmed = raw.trim();
+  if (trimmed === '') return raw;
+  if (trimmed.length > 1 && trimmed.startsWith('"') && trimmed.endsWith('"')) {
+    return `"${REDACTED}"`;
+  }
+  return REDACTED;
+}
+
+/**
+ * One `Set-Cookie` line: `name=value` followed by `; Attr` pairs.
+ *
+ * The name/value pair is everything before the first `;` — RFC 6265 forbids a
+ * bare `;` inside a cookie value, including a quoted one, so this split is
+ * safe without tracking quote state. Within the pair the *first* `=` divides
+ * name from value, so a value containing `=` (base64 padding, a signed
+ * cookie) is redacted whole rather than half-kept. The attribute tail is
+ * copied through byte-for-byte: `Expires=Wed, 09 Sep 2026 …` must survive
+ * intact, and it is not ours to normalize.
+ */
+function redactSetCookieLine(line: string): string {
+  if (line.trim() === '') return line;
+  const semi = line.indexOf(';');
+  const pair = semi === -1 ? line : line.slice(0, semi);
+  const attributes = semi === -1 ? '' : line.slice(semi);
+  const eq = pair.indexOf('=');
+  // eq === 0 is an empty name, eq === -1 no assignment at all. Either way we
+  // are not looking at a cookie we can describe, so nothing is preserved.
+  if (eq <= 0 || pair.slice(0, eq).trim() === '') return REDACTED;
+  return `${pair.slice(0, eq)}=${redactCookieValue(pair.slice(eq + 1))}${attributes}`;
+}
+
+/**
+ * The request `Cookie` header: `name=value` pairs joined by `;`, with no
+ * attributes. The names are inventory — which session, which analytics
+ * vendor, whether consent was recorded — and are not themselves credentials,
+ * so they are kept and every value is replaced.
+ *
+ * A segment with content but no `=` means we cannot tell a name from a value
+ * anywhere in this header, so the whole header collapses. An empty segment (a
+ * trailing `; `) carries neither and is passed through.
+ */
+function redactCookieHeaderLine(line: string): string {
+  const parts = line.split(';');
+  const out: string[] = [];
+  for (const part of parts) {
+    if (part.trim() === '') {
+      out.push(part);
+      continue;
+    }
+    const eq = part.indexOf('=');
+    if (eq <= 0 || part.slice(0, eq).trim() === '') return REDACTED;
+    out.push(`${part.slice(0, eq)}=${redactCookieValue(part.slice(eq + 1))}`);
+  }
+  return out.join(';');
+}
+
+/** Applies a per-line redactor across a header value that may carry repeats.
+ * A header map collapses repeated `Set-Cookie` headers onto newline-separated
+ * lines (`extract/stack.ts` splits them back apart the same way), and one
+ * unparseable line must not cost the others — so `[^\r\n]+` rewrites each run
+ * of non-newline text in place, leaving the separators exactly as observed. */
+function perLine(value: string, redactLine: (line: string) => string): string {
+  return value.replace(/[^\r\n]+/g, redactLine);
+}
+
 /** Returns a fresh map with every credential-bearing value replaced. Header
  * names are preserved exactly as observed — the name is evidence, only the
- * value is dangerous. */
+ * value is dangerous.
+ *
+ * The two cookie headers are matched on their *exact* normalized name rather
+ * than the `cookie` substring that sends them down the blanket path: a
+ * vendor's `X-Cookie-Hash` is not a cookie header and gets no structural
+ * treatment it did not earn. */
 export function redactHeaders(
   headers: Record<string, string>,
 ): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [name, value] of Object.entries(headers)) {
-    out[name] = isSensitiveName(name) ? REDACTED : value;
+    const flat = normalize(name);
+    if (flat === 'setcookie') out[name] = perLine(value, redactSetCookieLine);
+    else if (flat === 'cookie')
+      out[name] = perLine(value, redactCookieHeaderLine);
+    else out[name] = isSensitiveName(name) ? REDACTED : value;
   }
   return out;
 }

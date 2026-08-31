@@ -5,6 +5,8 @@ export {
 } from './types.js';
 export type {
   BodySkipReason,
+  CookieJar,
+  CookieRecord,
   RecordedBody,
   RecordedRequest,
   Recording,

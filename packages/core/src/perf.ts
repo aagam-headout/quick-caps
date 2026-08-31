@@ -15,6 +15,29 @@ export type PerfReport = {
   transferSizeBytes: number | null;
   resourceCount: number;
   resourceCountByKind: Record<string, number>;
+  // -------------------------------------------------------------------------
+  // Observed over time. The three below cannot be sampled once: they
+  // accumulate, so they only exist when a host's PerformanceObserver outlived
+  // first paint. Optional rather than nullable, and never defaulted — absent
+  // means nobody watched long enough, which is a different fact from a value
+  // of zero, and `extract/vitals.ts` is built entirely on that distinction.
+  // -------------------------------------------------------------------------
+  /**
+   * Cumulative Layout Shift. A unitless ratio whose whole useful range is
+   * under 1, so it is *never* rounded anywhere in this codebase:
+   * `Math.round(0.1) === 0` conflates the good/needs-improvement boundary
+   * with a perfectly stable page.
+   */
+  cumulativeLayoutShift?: number | null;
+  /** Interaction to Next Paint, in milliseconds. Absent when nothing was
+   * interacted with — which is not an INP of zero, and must never be reported
+   * as an instant response. */
+  interactionToNextPaintMs?: number | null;
+  /** PerformanceObserver entry types the browser did not support, so an
+   * absence above can be explained instead of merely reported. This is how a
+   * degradation reaches the user: the design's contract is that an
+   * unsupported entry type is named, not thrown. */
+  unsupportedEntryTypes?: string[];
 };
 
 /** The subset of PerformanceNavigationTiming this cares about, as plain
@@ -43,6 +66,12 @@ export type BuildPerfReportInput = {
    * content loads in; the caller passes the last value observed. */
   largestContentfulPaintMs?: number;
   resources?: RawResourceTiming[];
+  /** The over-time observations, passed straight through. A host that only
+   * sampled once omits them, and the report then omits them too — see
+   * `buildPerfReport`. */
+  cumulativeLayoutShift?: number;
+  interactionToNextPaintMs?: number;
+  unsupportedEntryTypes?: string[];
 };
 
 function roundOrNull(value: number | undefined): number | null {
@@ -93,5 +122,22 @@ export function buildPerfReport(input: BuildPerfReportInput): PerfReport {
     transferSizeBytes: hasTransferSize ? Math.round(transferSizeBytes) : null,
     resourceCount: resources.length,
     resourceCountByKind,
+    // Spread conditionally rather than assigned: a caller that observed
+    // nothing over time gets a report with these keys absent, byte-identical
+    // to what this function returned before they existed. Assigning
+    // `undefined` would also fail exactOptionalPropertyTypes, and defaulting
+    // to 0 would assert a measurement nobody made. CLS is passed through
+    // unrounded on purpose — see PerfReport.
+    ...(input.cumulativeLayoutShift === undefined
+      ? {}
+      : { cumulativeLayoutShift: input.cumulativeLayoutShift }),
+    ...(input.interactionToNextPaintMs === undefined
+      ? {}
+      : {
+          interactionToNextPaintMs: roundOrNull(input.interactionToNextPaintMs),
+        }),
+    ...(input.unsupportedEntryTypes === undefined
+      ? {}
+      : { unsupportedEntryTypes: input.unsupportedEntryTypes }),
   };
 }

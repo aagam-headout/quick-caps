@@ -3,6 +3,7 @@ import type { RecordedRequest } from '../observe/types.js';
 import { REDACTED } from '../observe/redact.js';
 import type {
   ConsentBanner,
+  CookieInventorySource,
   CookieRecord,
   DetectedTechnology,
   ExtractorMap,
@@ -303,15 +304,17 @@ function parseSetCookie(
  *
  * Most of this needs no recording: script URLs and asset hosts live in
  * `ir.assets`, and the framework, generator, and consent banner are in the
- * markup. Two fields do need one — `cookies`, which is reconstructed from
- * `Set-Cookie` on recorded responses, and any detection whose evidence is a
- * response header — and both stay empty rather than warning when nobody was
- * watching, because being unarmed is the caller's choice.
+ * markup. Two fields do need one — `cookies`, and any detection whose evidence
+ * is a response header — and both stay empty rather than warning when nobody
+ * was watching, because being unarmed is the caller's choice.
  *
- * The cookie inventory is partial by construction in more than one way, and
- * `CookieInventory.includesHttpOnly` is how it says so: false means the flag
- * was never visible (the extension reading `document.cookie`, or a redacted
- * recording), so the absence of an HttpOnly cookie proves nothing.
+ * The cookie inventory has two sources, and which one a reader got changes what
+ * its silence means, so `CookieInventory.source` names it: the host's own jar
+ * (complete, and the only channel that sees cookies the page *arrived* with),
+ * or reconstruction from `Set-Cookie` on recorded responses (only what was set
+ * while someone was watching). `includesHttpOnly` is the second axis: false
+ * means the flag was never visible, so the absence of an HttpOnly cookie proves
+ * nothing.
  */
 export const extractStack: ExtractorMap['stack'] = (ctx) => {
   const { doc, ir } = ctx;
@@ -385,43 +388,99 @@ export const extractStack: ExtractorMap['stack'] = (ctx) => {
     }
   }
 
-  // --- Cookies: armed sessions only, and partial even then -----------------
+  // --- Cookies -------------------------------------------------------------
+  // The jar wins when the host could read one. `Set-Cookie` observation sees
+  // only cookies set *during* the recording — never the session, the consent
+  // record, or the visitor id the page arrived carrying — so where a real jar
+  // exists, reconstructing from responses would present the smaller set as
+  // though it were the whole. Falling back to observation is still far better
+  // than nothing, and `source` is how the report says which one a reader got.
   const cookies = new Map<string, CookieRecord>();
-  let readableSetCookies = 0;
-  let redactedSetCookies = 0;
-  const startedAtMs = recording ? Date.parse(recording.startedAt) : Number.NaN;
-  for (const request of recording?.requests ?? []) {
-    const value = header(request, 'set-cookie');
-    if (value === undefined) continue;
-    if (value.trim() === REDACTED) {
-      redactedSetCookies += 1;
-      continue;
-    }
-    const arrivedAtMs = Number.isNaN(startedAtMs)
-      ? null
-      : startedAtMs + request.at;
-    const requestHost = hostOf(request.url);
-    for (const line of setCookieLines(value)) {
-      const cookie = parseSetCookie(line, requestHost, pageHost, arrivedAtMs);
-      if (!cookie) continue;
-      readableSetCookies += 1;
-      // Last write wins, because that is what the browser's jar holds.
-      cookies.set(`${cookie.name} ${cookie.domain}`, cookie);
-      const signature = COOKIE_SIGNATURES.find(([prefix]) =>
-        cookie.name.startsWith(prefix),
-      );
-      if (signature) {
-        detect(signature[1], signature[2], 'cookie', cookie.name, requestHost);
-      }
+  let source: CookieInventorySource = 'none';
+  // Assigned by whichever branch below runs, so it has no initializer: a
+  // default here would be a third answer neither channel produced.
+  let includesHttpOnly: boolean;
+  const jar = recording?.cookies;
+
+  /** Name and domain together identify a cookie; NUL joins them because it is
+   * the one byte neither half can contain, so no pair of real cookies can
+   * collide on the key. */
+  const cookieKey = (cookie: CookieRecord): string =>
+    `${cookie.name}\u0000${cookie.domain}`;
+
+  /** Shared by both paths below: a cookie's own name is sometimes the only
+   * thing that names its setter. */
+  function detectFromCookie(cookie: CookieRecord, host: string): void {
+    const signature = COOKIE_SIGNATURES.find(([prefix]) =>
+      cookie.name.startsWith(prefix),
+    );
+    if (signature) {
+      detect(signature[1], signature[2], 'cookie', cookie.name, host);
     }
   }
-  if (redactedSetCookies > 0) {
-    // Unlike an unarmed session, this is a gap with a cause worth naming: the
-    // cookies were there and redaction — the default — removed the values.
-    ctx.warn({
-      reason: 'cookie inventory unavailable: Set-Cookie was redacted',
-      detail: `${redactedSetCookies} response(s) set cookies; re-record without redaction to inventory them`,
-    });
+
+  if (jar !== undefined) {
+    source = 'cookie-jar';
+    includesHttpOnly = jar.complete;
+    for (const cookie of jar.cookies) {
+      cookies.set(cookieKey(cookie), cookie);
+      // The jar has no request to attribute a cookie to, so the cookie's own
+      // domain is the host — which is also the more accurate answer.
+      detectFromCookie(cookie, cookie.domain);
+    }
+    if (!jar.complete) {
+      // A jar the host could only half-read is a gap with a cause worth
+      // naming, unlike an unarmed session: a host limited to `document.cookie`
+      // cannot see HttpOnly at all, so an absence here proves nothing.
+      ctx.warn({
+        reason:
+          'cookie inventory is partial: the host could not read the whole jar',
+        detail:
+          'HttpOnly cookies are invisible to a host limited to document.cookie, so a cookie missing from this inventory may still exist',
+      });
+    }
+  } else {
+    let readableSetCookies = 0;
+    let unreadableSetCookies = 0;
+    const startedAtMs = recording
+      ? Date.parse(recording.startedAt)
+      : Number.NaN;
+    for (const request of recording?.requests ?? []) {
+      const value = header(request, 'set-cookie');
+      if (value === undefined) continue;
+      // A Set-Cookie header was there, so this is the channel the inventory
+      // came from even if this particular header turns out unreadable.
+      source = 'set-cookie';
+      // Redaction now keeps a cookie's metadata and replaces only its value,
+      // so a whole-value marker no longer means "redacted" — it means the
+      // header failed closed because no parse of it was safe.
+      if (value.trim() === REDACTED) {
+        unreadableSetCookies += 1;
+        continue;
+      }
+      const arrivedAtMs = Number.isNaN(startedAtMs)
+        ? null
+        : startedAtMs + request.at;
+      const requestHost = hostOf(request.url);
+      for (const line of setCookieLines(value)) {
+        const cookie = parseSetCookie(line, requestHost, pageHost, arrivedAtMs);
+        if (!cookie) continue;
+        readableSetCookies += 1;
+        // Last write wins, because that is what the browser's jar holds.
+        cookies.set(cookieKey(cookie), cookie);
+        detectFromCookie(cookie, requestHost);
+      }
+    }
+    // Set-Cookie carries the flag, so a readable one really does see HttpOnly
+    // — for the cookies it saw at all, which is not the same as all of them.
+    includesHttpOnly = readableSetCookies > 0;
+    if (unreadableSetCookies > 0) {
+      ctx.warn({
+        reason:
+          'cookie inventory incomplete: a Set-Cookie header was unreadable',
+        detail: `${unreadableSetCookies} response(s) carried a Set-Cookie header no parse could split safely, so it was redacted whole`,
+      });
+    }
   }
 
   // --- Third-party hosts ---------------------------------------------------
@@ -482,11 +541,16 @@ export const extractStack: ExtractorMap['stack'] = (ctx) => {
     thirdPartyHosts,
     cookies: {
       cookies: [...cookies.values()],
-      // True only when a real `Set-Cookie` was readable, because that header
-      // carries the flag. False covers both hosts that can never see it (the
-      // extension, reading `document.cookie`) and a redacted recording — in
-      // either case an absent HttpOnly cookie proves nothing.
-      includesHttpOnly: readableSetCookies > 0,
+      // False covers every host that could not see the flag — the extension
+      // reading `document.cookie`, or a fallback that saw no readable
+      // Set-Cookie at all. In either case an absent HttpOnly cookie proves
+      // nothing, which is the only thing this boolean is for.
+      includesHttpOnly,
+      // Which channel produced the list above, because its silence means
+      // different things: a jar's omission is a cookie that is not set, a
+      // Set-Cookie reconstruction's omission may just be a cookie set before
+      // anyone was watching.
+      source,
     },
     consentBanner,
   };
